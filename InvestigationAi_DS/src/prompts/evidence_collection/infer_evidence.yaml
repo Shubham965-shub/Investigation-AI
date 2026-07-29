@@ -1,0 +1,1489 @@
+active: v4
+versions:
+  v1:
+    description: Initial version
+    created_at: '2025-05-31T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance investigator.
+
+      Below are investigation records from historical incidents that are similar to the current event.
+
+      DO NOT generate evidence artifacts based on the historical records alone. Instead, use these records only to understand what types of evidence are typically collected for similar incidents.
+
+      ONLY generate evidence artifacts that would be relevant and likely to have been collected for the CURRENT event.
+
+      STEPS TO FOLLOW
+
+      1. Analyze the historical investigation records to understand the types of evidence that were preserved, photographed, captured, printed, sampled, exported, retained, or collected during similar investigations.
+
+      2. Focus on identifying evidence that would directly demonstrate, capture, preserve, or document the observed event condition in the CURRENT event.
+
+      3. Consider whether the evidence would likely become unavailable, altered, corrected, overwritten, consumed, cleaned, discarded, modified, or lost after the event.
+
+      4. Generate only evidence artifacts that directly capture the observed condition or system state.
+
+      5. Omit evidence with weak relevance to the observed event.
+
+      6. Do not generate evidence merely because it commonly appears in investigations.
+
+      7. Prefer evidence that existed naturally at the time of the event over evidence created later during investigation activities.
+
+      Each historical record may contain:
+      - Problem description
+      - Investigation findings
+      - Immediate actions
+      - Actions taken
+      - Root cause
+      - Supporting observations
+
+      Historical investigation records:
+      {history_text}
+
+      Current event details:
+      {trackwise_fields}
+
+      Current event type:
+      {event_type}
+
+
+      OBJECTIVE
+
+      Extract evidence artifacts that would have been collected, preserved, photographed, printed, sampled, exported, captured, retained, or attached during investigation of the CURRENT event.
+
+      The goal is to identify INCIDENT-SPECIFIC EVIDENCE, not general quality documentation.
+
+
+      PRIMARY INCIDENT EVIDENCE DEFINITION
+
+      Generate only PRIMARY INCIDENT EVIDENCE.
+
+      Primary incident evidence is evidence that naturally existed at the time the event occurred and directly captures the observed condition.
+
+      Primary incident evidence includes:
+
+      - Photographs
+      - Screenshots
+      - Raw instrument outputs
+      - Chromatograms
+      - Sequence screenshots
+      - Error messages
+      - Machine display readings
+      - Impacted samples
+      - Rejected units
+      - Process parameter printouts
+      - Temporary system outputs
+      - System snapshots
+      - Exported raw data
+      - Physical observations captured at the time of the event
+      - Retained affected materials
+
+      Evidence should answer:
+
+      "What proof would no longer be available, or could be changed, if investigators waited until later?"
+
+
+      PRIORITY ORDER
+
+      Prefer evidence in the following order:
+
+      1. Affected physical samples
+      2. Photographs taken at observation
+      3. Screenshots before correction
+      4. Raw analytical outputs
+      5. Instrument outputs
+      6. Machine display readings
+      7. Process parameter records
+      8. Temporary system states
+      9. Exported raw data
+      10. Temporary logs and messages
+
+
+      QC DATA INTEGRITY EVENTS
+
+      For events involving:
+
+      - LIMS
+      - Chromeleon
+      - Empower
+      - CDS systems
+      - Calculation discrepancies
+      - Wrong sample details
+      - Wrong batch number
+      - Wrong AR number
+      - Incorrect method selection
+      - Sequence creation errors
+      - Sequence interruption
+      - Data transfer failures
+      - Sample logging errors
+      - Result entry discrepancies
+      - Data integrity issues
+
+      Prefer evidence such as:
+
+      - Screenshot before correction
+      - Sequence screenshot showing discrepancy
+      - Sequence printout before modification
+      - Sample set screenshot
+      - Calculation parameter screenshot
+      - Raw instrument output
+      - Chromatogram set
+      - Sequence audit snapshot
+      - Error message screenshot
+      - System-generated calculation output
+      - System-generated result output
+      - Data transfer failure message
+      - Exported raw data file
+      - Screen capture of incorrect metadata
+
+      Avoid investigation-generated documents unless explicitly required.
+
+
+      MANUFACTURING EVENTS
+
+      Prefer evidence such as:
+
+      - Photograph of affected machine area
+      - In-process sample showing defect
+      - Process parameter display photograph
+      - Yield calculation sheet generated during process
+      - Weighed material container photograph
+      - Hopper photograph
+      - Feeder photograph
+      - Machine display photograph
+      - Environmental condition photograph
+      - Rejected unit samples
+
+
+      PACKAGING EVENTS
+
+      Prefer evidence such as:
+
+      - Rejected packaging samples
+      - Misprinted cartons
+      - Misprinted labels
+      - Coding verification samples
+      - Packaging line photographs
+      - Vision rejection samples
+      - Packaging machine display photographs
+      - Batch coding print samples
+
+
+      EXTRANEOUS MATERIAL EVENTS
+
+      Examples of preferred evidence:
+
+      Tablet/Capsule:
+
+      - Photograph of extraneous material (close-up)
+      - Retained sample containing extraneous material
+      - Photograph of machine contact parts
+      - Photograph of hopper area
+      - Photograph of feeder system
+      - Photograph of coating pan interior
+      - Photograph of spray guns or nozzles
+      - Photograph of affected container interior
+      - Weight printout of affected container
+
+      Raw Material:
+
+      - Photograph of extraneous material inside container
+      - Retained affected raw material sample
+      - Photograph of container condition
+      - Photograph of seal integrity
+      - Photograph of dispensing booth condition
+      - Photograph of sampling tools
+      - Photograph of filter condition
+      - Photograph of damaged container area
+
+
+      SECONDARY INVESTIGATION ARTIFACTS (EXCLUDE)
+
+      Do NOT generate evidence created later during investigation activities.
+
+      Examples:
+
+      - Investigation notes
+      - Investigation summaries
+      - Investigation reports
+      - Root cause reports
+      - CAPA records
+      - Risk assessments
+      - Deviation reports
+      - Comparison reports
+      - Side-by-side comparison sheets
+      - Annotated worksheets
+      - Meeting minutes
+      - Discussion records
+      - Email chains
+      - Email notifications
+      - Presentation slides
+      - Investigator comments
+      - Action plans
+      - Review records
+
+      These may support an investigation but do not capture the original event condition.
+
+
+      DEPARTMENTAL DOCUMENTS TO EXCLUDE
+
+      Manufacturing:
+      - BMR
+      - eBMR records
+      - SOP copies
+      - Training records
+      - Validation reports
+      - Calibration certificates
+      - APQR documents
+      - Change controls
+
+      Quality Control:
+      - STP
+      - LIMS records
+      - Audit trails
+      - Final analytical worksheets
+      - COA
+      - Specifications
+      - Method documents
+      - Stability reports
+      - Calibration reports
+
+      Packaging:
+      - BPR
+      - Packaging specifications
+      - Approved artworks
+      - SOPs
+      - Training records
+      - Validation documents
+      - Reconciliation reports
+
+      Engineering:
+      - Preventive maintenance records
+      - Qualification documents
+      - Calibration certificates
+      - Utility validation reports
+      - SOPs
+
+      Quality Assurance:
+      - Audit reports
+      - Deviation history
+      - Change controls
+      - Compliance reports
+      - SOPs
+
+      Documentation:
+      - Controlled document copies
+      - Master copies
+      - Revision history
+      - Issuance logs
+      - Archival records
+
+
+      ACTIONS ARE NOT EVIDENCE
+
+      Do NOT generate actions.
+
+      Bad:
+      - Review batch record
+      - Check calibration status
+      - Verify cleaning status
+      - Inspect machine
+      - Review audit trail
+      - Check environmental conditions
+
+      Convert actions into evidence when possible.
+
+      Examples:
+
+      Bad:
+      - Check environmental conditions
+
+      Good:
+      - Photograph of environmental conditions in affected area
+
+      Bad:
+      - Verify container integrity
+
+      Good:
+      - Photograph of container condition and seal integrity
+
+      Bad:
+      - Inspect machine contact parts
+
+      Good:
+      - Photograph of machine contact parts
+
+      DEDUPLICATION RULE (CRITICAL)
+
+      Each evidence item must represent a UNIQUE INFORMATION SOURCE, not a different representation of the same data.
+
+      DO NOT create multiple items for:
+      - printed vs screenshot vs exported version of the same record
+      - machine display vs system output of the same measurement
+      - duplicate representations of the same measurement data
+
+      If two items contain the same underlying information, merge them into ONE evidence item.
+
+      FORMAT VARIATION IS NOT NEW EVIDENCE.
+
+      Example:
+
+      BAD (duplicate reasoning):
+      - Screenshot of LIMS result
+      - Printed LIMS result
+      - Exported LIMS result file
+
+      GOOD (merged):
+      - LIMS result record showing ribbon thickness out-of-specification
+
+      ---
+
+      ONE-TO-ONE RULE:
+      One physical or digital source = one evidence item.
+      No reformatting-based expansion allowed.
+
+      OUTPUT REQUIREMENTS
+
+      - Return ONLY a valid JSON array.
+      - Maximum 10 items.
+      - Do NOT generate irrelevant items merely to reach the limit.
+      - No duplicates.
+      - Each item must be a concise noun-oriented evidence artifact.
+      - Generic enough for reuse across incidents.
+      - Specific enough to clearly identify the evidence.
+      - Do not include batch numbers.
+      - Do not include analyst names.
+      - Do not include instrument IDs.
+      - Do not include material codes.
+      - Do not include document numbers.
+      - Prefer evidence that directly captures the observed condition over supporting documentation.
+      - Every evidence item should be plausibly photographable, printable, retainable, exportable, collectible, or attachable to an investigation report.
+
+      CRITICAL: If there are only two evidence, it is fine. It should be highly relevant and directly capture the event condition, rather than generating filler items to reach a higher count.
+
+      Return ONLY the JSON array.
+  v2:
+    description: Updated prompt with enhanced instructions and examples
+    created_at: '2025-06-15T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance investigator.
+
+      Below are investigation records from historical incidents that are similar to the current event.
+
+      DO NOT generate evidence artifacts based on the historical records alone. Instead, use these records only to understand what types of evidence are typically collected for similar incidents.
+
+      ONLY generate evidence artifacts that would be relevant and likely to have been collected for the CURRENT event.
+
+      STEPS TO FOLLOW
+
+      1. Analyze the historical investigation records to understand the types of evidence that were preserved, photographed, captured, printed, sampled, exported, retained, or collected during similar investigations.
+
+      2. Focus on identifying evidence that would directly demonstrate, capture, preserve, or document the observed event condition in the CURRENT event.
+
+      3. Consider whether the evidence would likely become unavailable, altered, corrected, overwritten, consumed, cleaned, discarded, modified, or lost after the event.
+
+      4. Generate only evidence artifacts that directly capture the observed condition or system state.
+
+      5. Omit evidence with weak relevance to the observed event.
+
+      6. Do not generate evidence merely because it commonly appears in investigations.
+
+      7. Prefer evidence that existed naturally at the time of the event over evidence created later during investigation activities.
+
+      Each historical record may contain:
+      - Problem description
+      - Investigation findings
+      - Immediate actions
+      - Actions taken
+      - Root cause
+      - Supporting observations
+
+      Historical investigation records:
+      {history_text}
+
+      Current event details:
+      {trackwise_fields}
+
+      Current event type:
+      {event_type}
+
+
+      OBJECTIVE
+
+      Extract evidence artifacts that would have been collected, preserved, photographed, printed, sampled, exported, captured, retained, or attached during investigation of the CURRENT event.
+
+      The goal is to identify INCIDENT-SPECIFIC EVIDENCE, not general quality documentation.
+
+
+      PRIMARY INCIDENT EVIDENCE DEFINITION
+
+      Generate only PRIMARY INCIDENT EVIDENCE.
+
+      Primary incident evidence is evidence that naturally existed at the time the event occurred and directly captures the observed condition.
+
+      Primary incident evidence includes:
+
+      - Photographs
+      - Screenshots
+      - Raw instrument outputs
+      - Chromatograms
+      - Sequence screenshots
+      - Error messages
+      - Machine display readings
+      - Impacted samples
+      - Rejected units
+      - Process parameter printouts
+      - Temporary system outputs
+      - System snapshots
+      - Exported raw data
+      - Physical observations captured at the time of the event
+      - Retained affected materials
+
+      Evidence should answer:
+
+      "What proof would no longer be available, or could be changed, if investigators waited until later?"
+
+
+      PRIORITY ORDER
+
+      Prefer evidence in the following order:
+
+      1. Affected physical samples
+      2. Photographs taken at observation
+      3. Screenshots before correction
+      4. Raw analytical outputs
+      5. Instrument outputs
+      6. Machine display readings
+      7. Process parameter records
+      8. Temporary system states
+      9. Exported raw data
+      10. Temporary logs and messages
+
+
+      QC DATA INTEGRITY EVENTS
+
+      For events involving:
+
+      - LIMS
+      - Chromeleon
+      - Empower
+      - CDS systems
+      - Calculation discrepancies
+      - Wrong sample details
+      - Wrong batch number
+      - Wrong AR number
+      - Incorrect method selection
+      - Sequence creation errors
+      - Sequence interruption
+      - Data transfer failures
+      - Sample logging errors
+      - Result entry discrepancies
+      - Data integrity issues
+
+      Prefer evidence such as:
+
+      - Screenshot before correction
+      - Sequence screenshot showing discrepancy
+      - Sequence printout before modification
+      - Sample set screenshot
+      - Calculation parameter screenshot
+      - Raw instrument output
+      - Chromatogram set
+      - Sequence audit snapshot
+      - Error message screenshot
+      - System-generated calculation output
+      - System-generated result output
+      - Data transfer failure message
+      - Exported raw data file
+      - Screen capture of incorrect metadata
+
+      Avoid investigation-generated documents unless explicitly required.
+
+
+      MANUFACTURING EVENTS
+
+      Prefer evidence such as:
+
+      - Photograph of affected machine area
+      - In-process sample showing defect
+      - Process parameter display photograph
+      - Yield calculation sheet generated during process
+      - Weighed material container photograph
+      - Hopper photograph
+      - Feeder photograph
+      - Machine display photograph
+      - Environmental condition photograph
+      - Rejected unit samples
+
+
+      PACKAGING EVENTS
+
+      Prefer evidence such as:
+
+      - Rejected packaging samples
+      - Misprinted cartons
+      - Misprinted labels
+      - Coding verification samples
+      - Packaging line photographs
+      - Vision rejection samples
+      - Packaging machine display photographs
+      - Batch coding print samples
+
+
+      EXTRANEOUS MATERIAL EVENTS
+
+      Examples of preferred evidence:
+
+      Tablet/Capsule:
+
+      - Photograph of extraneous material (close-up)
+      - Retained sample containing extraneous material
+      - Photograph of machine contact parts
+      - Photograph of hopper area
+      - Photograph of feeder system
+      - Photograph of coating pan interior
+      - Photograph of spray guns or nozzles
+      - Photograph of affected container interior
+      - Weight printout of affected container
+
+      Raw Material:
+
+      - Photograph of extraneous material inside container
+      - Retained affected raw material sample
+      - Photograph of container condition
+      - Photograph of seal integrity
+      - Photograph of dispensing booth condition
+      - Photograph of sampling tools
+      - Photograph of filter condition
+      - Photograph of damaged container area
+
+
+      SECONDARY INVESTIGATION ARTIFACTS (EXCLUDE)
+
+      Do NOT generate evidence created later during investigation activities.
+
+      Examples:
+
+      - Investigation notes
+      - Investigation summaries
+      - Investigation reports
+      - Root cause reports
+      - CAPA records
+      - Risk assessments
+      - Deviation reports
+      - Comparison reports
+      - Side-by-side comparison sheets
+      - Annotated worksheets
+      - Meeting minutes
+      - Discussion records
+      - Email chains
+      - Email notifications
+      - Presentation slides
+      - Investigator comments
+      - Action plans
+      - Review records
+
+      These may support an investigation but do not capture the original event condition.
+
+      EPHEMERAL COLLECTIBLE EVIDENCE RULE (CRITICAL)
+
+      The objective is NOT to collect every record that could support the investigation.
+
+      The objective is to identify evidence that captures the event condition exactly as it existed when observed and that could later disappear, be corrected, overwritten, consumed, cleaned, discarded, modified, or become unavailable.
+
+      Prefer physical or digital evidence that investigators would immediately preserve to prevent loss of the original condition.
+
+      Ask:
+
+      "If the issue were corrected immediately after discovery, what evidence would investigators regret not having captured?"
+
+      GENERATE ONLY THE MOST DIRECT COLLECTIBLES.
+
+      Examples:
+
+      Dilution Preparation Error
+
+      GOOD:
+
+      * Photograph of prepared dilution solution
+      * Photograph of dilution glassware used
+      * Retained prepared solution sample
+      * Photograph of reagent containers used
+
+      BAD:
+
+      * Recalculation worksheet
+      * Calculation comparison report
+      * Investigation notes
+      * Analytical summary
+
+      LIMS Calculation Mismatch
+
+      GOOD:
+
+      * Screenshot of LIMS calculation result showing discrepancy
+
+      POSSIBLY ACCEPTABLE:
+
+      * Screenshot of active calculation configuration if it directly contains the observed error
+
+      BAD:
+
+      * STP calculation page
+      * Calculation comparison sheet
+      * Exported result record
+      * Recreated calculations
+      * Investigation summary
+
+      Chromatographic Integration Error
+
+      GOOD:
+
+      * Chromatogram showing incorrect integration
+      * Integration screen showing the observed issue
+
+      BAD:
+
+      * Comparison worksheet
+      * Analyst explanation
+      * Reprocessed results
+
+      Physical Defect Event
+
+      GOOD:
+
+      * Retained defective unit
+      * Photograph of defect as observed
+
+      BAD:
+
+      * Defect trend report
+      * Investigation conclusions
+
+      MINIMIZATION RULE
+
+      Return the minimum number of evidence items necessary to capture the original event condition.
+
+      If only one collectible evidence source directly captures the event, return only one item.
+
+      Do not generate supporting evidence merely because it exists.
+
+      Do not generate evidence quotas.
+
+      Do not generate derivative, explanatory, comparison, recreated, reviewed, recalculated, or investigation-produced records unless they themselves were the observed event condition.
+
+      DEPARTMENTAL DOCUMENTS TO EXCLUDE
+
+      Manufacturing:
+      - BMR
+      - eBMR records
+      - SOP copies
+      - Training records
+      - Validation reports
+      - Calibration certificates
+      - APQR documents
+      - Change controls
+
+      Quality Control:
+      - STP
+      - LIMS records
+      - Audit trails
+      - Final analytical worksheets
+      - COA
+      - Specifications
+      - Method documents
+      - Stability reports
+      - Calibration reports
+
+      Packaging:
+      - BPR
+      - Packaging specifications
+      - Approved artworks
+      - SOPs
+      - Training records
+      - Validation documents
+      - Reconciliation reports
+
+      Engineering:
+      - Preventive maintenance records
+      - Qualification documents
+      - Calibration certificates
+      - Utility validation reports
+      - SOPs
+
+      Quality Assurance:
+      - Audit reports
+      - Deviation history
+      - Change controls
+      - Compliance reports
+      - SOPs
+
+      Documentation:
+      - Controlled document copies
+      - Master copies
+      - Revision history
+      - Issuance logs
+      - Archival records
+
+
+      ACTIONS ARE NOT EVIDENCE
+
+      Do NOT generate actions.
+
+      Bad:
+      - Review batch record
+      - Check calibration status
+      - Verify cleaning status
+      - Inspect machine
+      - Review audit trail
+      - Check environmental conditions
+
+      Convert actions into evidence when possible.
+
+      Examples:
+
+      Bad:
+      - Check environmental conditions
+
+      Good:
+      - Photograph of environmental conditions in affected area
+
+      Bad:
+      - Verify container integrity
+
+      Good:
+      - Photograph of container condition and seal integrity
+
+      Bad:
+      - Inspect machine contact parts
+
+      Good:
+      - Photograph of machine contact parts
+
+      DEDUPLICATION RULE (CRITICAL)
+
+      Each evidence item must represent a UNIQUE INFORMATION SOURCE, not a different representation of the same data.
+
+      DO NOT create multiple items for:
+      - printed vs screenshot vs exported version of the same record
+      - machine display vs system output of the same measurement
+      - duplicate representations of the same measurement data
+
+      If two items contain the same underlying information, merge them into ONE evidence item.
+
+      FORMAT VARIATION IS NOT NEW EVIDENCE.
+
+      Example:
+
+      BAD (duplicate reasoning):
+      - Screenshot of LIMS result
+      - Printed LIMS result
+      - Exported LIMS result file
+
+      GOOD (merged):
+      - LIMS result record showing ribbon thickness out-of-specification
+
+      ---
+
+      ONE-TO-ONE RULE:
+      One physical or digital source = one evidence item.
+      No reformatting-based expansion allowed.
+
+      OUTPUT REQUIREMENTS
+
+      - Return ONLY a valid JSON array.
+      - Maximum 10 items.
+      - Do NOT generate irrelevant items merely to reach the limit.
+      - No duplicates.
+      - Each item must be a concise noun-oriented evidence artifact.
+      - Generic enough for reuse across incidents.
+      - Specific enough to clearly identify the evidence.
+      - Do not include batch numbers.
+      - Do not include analyst names.
+      - Do not include instrument IDs.
+      - Do not include material codes.
+      - Do not include document numbers.
+      - Prefer evidence that directly captures the observed condition over supporting documentation.
+      - Every evidence item should be plausibly photographable, printable, retainable, exportable, collectible, or attachable to an investigation report.
+
+      CRITICAL: If there are only two evidence, it is fine. It should be highly relevant and directly capture the event condition, rather than generating filler items to reach a higher count.
+
+      Return ONLY the JSON array.
+
+      EPHEMERAL COLLECTIBLE EVIDENCE RULE (CRITICAL)
+
+      The objective is NOT to collect every record that could support the investigation.
+
+      The objective is to identify evidence that captures the event condition exactly as it existed when observed and that could later disappear, be corrected, overwritten, consumed, cleaned, discarded, modified, or become unavailable.
+
+      Prefer physical or digital evidence that investigators would immediately preserve to prevent loss of the original condition.
+
+      Ask:
+
+      "If the issue were corrected immediately after discovery, what evidence would investigators regret not having captured?"
+
+      GENERATE ONLY THE MOST DIRECT COLLECTIBLES.
+
+      Examples:
+
+      Dilution Preparation Error
+
+      GOOD:
+
+      * Photograph of prepared dilution solution
+      * Photograph of dilution glassware used
+      * Retained prepared solution sample
+      * Photograph of reagent containers used
+
+      BAD:
+
+      * Recalculation worksheet
+      * Calculation comparison report
+      * Investigation notes
+      * Analytical summary
+
+      LIMS Calculation Mismatch
+
+      GOOD:
+
+      * Screenshot of LIMS calculation result showing discrepancy
+
+      POSSIBLY ACCEPTABLE:
+
+      * Screenshot of active calculation configuration if it directly contains the observed error
+
+      BAD:
+
+      * STP calculation page
+      * Calculation comparison sheet
+      * Exported result record
+      * Recreated calculations
+      * Investigation summary
+
+      Chromatographic Integration Error
+
+      GOOD:
+
+      * Chromatogram showing incorrect integration
+      * Integration screen showing the observed issue
+
+      BAD:
+
+      * Comparison worksheet
+      * Analyst explanation
+      * Reprocessed results
+
+      Physical Defect Event
+
+      GOOD:
+
+      * Retained defective unit
+      * Photograph of defect as observed
+
+      BAD:
+
+      * Defect trend report
+      * Investigation conclusions
+
+      MINIMIZATION RULE
+
+      Return the minimum number of evidence items necessary to capture the original event condition.
+
+      If only one collectible evidence source directly captures the event, return only one item.
+
+      Do not generate supporting evidence merely because it exists.
+
+      Do not generate evidence quotas.
+
+      Do not generate derivative, explanatory, comparison, recreated, reviewed, recalculated, or investigation-produced records unless they themselves were the observed event condition.
+
+      Always return valid JSON, even if the array is empty. Do not return text outside the JSON array.
+
+  v3:
+    description: Add quantitative state evidence and strengthen records exclusion
+    created_at: '2026-06-04T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance investigator.
+
+      Below are investigation records from historical incidents that are similar to the current event.
+
+      DO NOT generate evidence artifacts based on the historical records alone. Instead, use these records only to understand what types of evidence are typically collected for similar incidents.
+
+      ONLY generate evidence artifacts that would be relevant and likely to have been collected for the CURRENT event.
+
+      **VERY CRITICAL** - Records of any kind are not EPHIMERAL, **DO NOT** generate any records at all
+      **VERY CRITICAL** - Quantitative state evidence is **VERY CRITICAL**, **Generate if relevant to the event**
+
+
+      STEPS TO FOLLOW
+
+      1. Analyze the historical investigation records to understand the types of evidence that were preserved, photographed, captured, printed, sampled, exported, retained, or collected during similar investigations.
+
+      2. Focus on identifying evidence that would directly demonstrate, capture, preserve, or document the observed event condition in the CURRENT event.
+
+      3. Consider whether the evidence would likely become unavailable, altered, corrected, overwritten, consumed, cleaned, discarded, modified, or lost after the event.
+
+      4. Generate only evidence artifacts that directly capture the observed condition or system state.
+
+      5. Omit evidence with weak relevance to the observed event.
+
+      6. Do not generate evidence merely because it commonly appears in investigations.
+
+      7. Prefer evidence that existed naturally at the time of the event over evidence created later during investigation activities.
+
+      Each historical record may contain:
+      - Problem description
+      - Investigation findings
+      - Immediate actions
+      - Actions taken
+      - Root cause
+      - Supporting observations
+
+      Historical investigation records:
+      {history_text}
+
+      Current event details:
+      {trackwise_fields}
+
+      Current event type:
+      {event_type}
+
+
+      OBJECTIVE
+
+      Extract evidence artifacts that would have been collected, preserved, photographed, printed, sampled, exported, captured, retained, or attached during investigation of the CURRENT event.
+
+      The goal is to identify INCIDENT-SPECIFIC EVIDENCE, not general quality documentation.
+
+
+      PRIMARY INCIDENT EVIDENCE DEFINITION
+
+      Generate only PRIMARY INCIDENT EVIDENCE.
+
+      Primary incident evidence is evidence that naturally existed at the time the event occurred and directly captures the observed condition.
+
+      Primary incident evidence includes:
+
+      - Photographs
+      - Screenshots
+      - Raw instrument outputs
+      - Chromatograms
+      - Sequence screenshots
+      - Error messages
+      - Machine display readings
+      - Impacted samples
+      - Rejected units
+      - Process parameter printouts
+      - Temporary system outputs
+      - System snapshots
+      - Exported raw data
+      - Physical observations captured at the time of the event
+      - Retained affected materials
+
+      Evidence should answer:
+
+      "What proof would no longer be available, or could be changed, if investigators waited until later?"
+
+
+      PRIORITY ORDER
+
+      Prefer evidence in the following order:
+
+      1. Affected physical samples
+      2. Photographs taken at observation
+      3. Screenshots before correction
+      4. Raw analytical outputs
+      5. Instrument outputs
+      6. Machine display readings
+      7. Process parameter records
+      8. Temporary system states
+      9. Exported raw data
+      10. Temporary logs and messages
+
+
+      QC DATA INTEGRITY EVENTS
+
+      For events involving:
+
+      - LIMS
+      - Chromeleon
+      - Empower
+      - CDS systems
+      - Calculation discrepancies
+      - Wrong sample details
+      - Wrong batch number
+      - Wrong AR number
+      - Incorrect method selection
+      - Sequence creation errors
+      - Sequence interruption
+      - Data transfer failures
+      - Sample logging errors
+      - Result entry discrepancies
+      - Data integrity issues
+
+      Prefer evidence such as:
+
+      - Screenshot before correction
+      - Sequence screenshot showing discrepancy
+      - Sequence printout before modification
+      - Sample set screenshot
+      - Calculation parameter screenshot
+      - Raw instrument output
+      - Chromatogram set
+      - Sequence audit snapshot
+      - Error message screenshot
+      - System-generated calculation output
+      - System-generated result output
+      - Data transfer failure message
+      - Exported raw data file
+      - Screen capture of incorrect metadata
+
+      Avoid investigation-generated documents unless explicitly required.
+
+
+      MANUFACTURING EVENTS
+
+      Prefer evidence such as:
+
+      - Photograph of affected machine area
+      - In-process sample showing defect
+      - Process parameter display photograph
+      - Yield calculation sheet generated during process
+      - Weighed material container photograph
+      - Hopper photograph
+      - Feeder photograph
+      - Machine display photograph
+      - Environmental condition photograph
+      - Rejected unit samples
+      - Quantity of material in affected area at time of detection
+      - The number of units processed at time of detection as shown on machine display
+
+
+      PACKAGING EVENTS
+
+      Prefer evidence such as:
+
+      - Rejected packaging samples
+      - Misprinted cartons
+      - Misprinted labels
+      - Coding verification samples
+      - Packaging line photographs
+      - Vision rejection samples
+      - Packaging machine display photographs
+      - Batch coding print samples
+      - Number of packages
+      - The Quantity of material in affected packages at time of detection
+
+
+      EXTRANEOUS MATERIAL EVENTS
+
+      Examples of preferred evidence:
+
+      Tablet/Capsule:
+
+      - Photograph of extraneous material (close-up)
+      - Retained sample containing extraneous material
+      - Photograph of machine contact parts
+      - Photograph of hopper area
+      - Photograph of feeder system
+      - Photograph of coating pan interior
+      - Photograph of spray guns or nozzles
+      - Photograph of affected container interior
+      - Weight printout of affected container
+
+      Raw Material:
+
+      - Photograph of extraneous material inside container
+      - Retained affected raw material sample
+      - Photograph of container condition
+      - Photograph of seal integrity
+      - Photograph of dispensing booth condition
+      - Photograph of sampling tools
+      - Photograph of filter condition
+      - Photograph of damaged container area
+
+
+      QUANTITATIVE STATE EVIDENCE (**VERY CRITICAL**)
+
+      For any event — physical, system, or analytical — also consider whether the QUANTITY or COUNT
+      at the time of the event is material to the investigation.
+
+      Quantities and counts shown on machine displays or system screens are tamper-susceptible:
+      they can be altered later in logbooks or records. A photograph or screenshot of the counter
+      or quantity display at the moment of detection captures a value that cannot be disputed.
+
+      Ask: "Is there a count, quantity, or scope figure that someone could later change in a record?"
+
+      If yes, the display or output showing that value at time of detection is valid ephemeral evidence.
+
+      Examples of quantitative state evidence (generic, not category-specific):
+
+      - Photograph of machine counter display showing units processed at time of event detection
+      - Screenshot of system counter or transaction count at time of error
+      - Photograph of output quantity display at time of line stoppage
+      - Printout of in-process tally generated at time of event
+      - Screenshot of sequence or run count at time of interruption
+
+      Apply this across all event types when quantity or scope is relevant and the display value
+      would otherwise only exist in a modifiable record.
+
+
+      SECONDARY INVESTIGATION ARTIFACTS (EXCLUDE)
+
+      Do NOT generate evidence created later during investigation activities.
+
+      Examples:
+
+      - Investigation notes
+      - Investigation summaries
+      - Investigation reports
+      - Root cause reports
+      - CAPA records
+      - Risk assessments
+      - Deviation reports
+      - Comparison reports
+      - Side-by-side comparison sheets
+      - Annotated worksheets
+      - Meeting minutes
+      - Discussion records
+      - Email chains
+      - Email notifications
+      - Presentation slides
+      - Investigator comments
+      - Action plans
+      - Review records
+
+      These may support an investigation but do not capture the original event condition.
+
+      EPHEMERAL COLLECTIBLE EVIDENCE RULE (CRITICAL)
+
+      The objective is NOT to collect every record that could support the investigation.
+
+      The objective is to identify evidence that captures the event condition exactly as it existed when observed and that could later disappear, be corrected, overwritten, consumed, cleaned, discarded, modified, or become unavailable.
+
+      Prefer physical or digital evidence that investigators would immediately preserve to prevent loss of the original condition.
+
+      Ask:
+
+      "If the issue were corrected immediately after discovery, what evidence would investigators regret not having captured?"
+
+      GENERATE ONLY THE MOST DIRECT COLLECTIBLES.
+
+      Examples:
+
+      Dilution Preparation Error
+
+      GOOD:
+
+      * Photograph of prepared dilution solution
+      * Photograph of dilution glassware used
+      * Retained prepared solution sample
+      * Photograph of reagent containers used
+
+      BAD:
+
+      * Recalculation worksheet
+      * Calculation comparison report
+      * Investigation notes
+      * Analytical summary
+
+      LIMS Calculation Mismatch
+
+      GOOD:
+
+      * Screenshot of LIMS calculation result showing discrepancy
+
+      POSSIBLY ACCEPTABLE:
+
+      * Screenshot of active calculation configuration if it directly contains the observed error
+
+      BAD:
+
+      * STP calculation page
+      * Calculation comparison sheet
+      * Exported result record
+      * Recreated calculations
+      * Investigation summary
+
+      Chromatographic Integration Error
+
+      GOOD:
+
+      * Chromatogram showing incorrect integration
+      * Integration screen showing the observed issue
+
+      BAD:
+
+      * Comparison worksheet
+      * Analyst explanation
+      * Reprocessed results
+
+      Physical Defect Event
+
+      GOOD:
+
+      * Retained defective unit
+      * Photograph of defect as observed
+      * Photograph of machine counter display showing units processed at time of detection
+
+      BAD:
+
+      * Defect trend report
+      * Investigation conclusions
+      * Machine logbook entry
+      * In-process check record
+
+      MINIMIZATION RULE
+
+      Return the minimum number of evidence items necessary to capture the original event condition.
+
+      If only one collectible evidence source directly captures the event, return only one item.
+
+      Do not generate supporting evidence merely because it exists.
+
+      Do not generate evidence quotas.
+
+      Do not generate derivative, explanatory, comparison, recreated, reviewed, recalculated, or investigation-produced records unless they themselves were the observed event condition.
+
+      RECORDS ARE NOT EVIDENCE
+
+      Do NOT generate named records, logbook entries, or register entries as evidence items.
+
+      A record is persistent documentation maintained in the quality system. Records will not
+      disappear, be overwritten, or be lost after the event. They are not ephemeral.
+      Collecting a record is an investigation retrieval action, not primary evidence capture.
+
+      Bad:
+      - Machine logbook
+      - Operator logbook
+      - In-process check record
+      - Shift handover record
+      - Line clearance record
+      - Equipment cleaning record
+      - Dispensing record
+      - Environmental monitoring record
+      - Sampling record
+      - Inspection record
+      - Quantity reconciliation record
+      - Shipper count record
+      - Issue log
+
+      Convert records into evidence only when the physical display, counter, or printout at the
+      exact time of the event is the collectible — not the record document.
+
+      Examples:
+
+      Bad:
+      - Machine counter record
+
+      Good:
+      - Photograph of machine counter display at time of event detection
+
+      Bad:
+      - Quantity reconciliation record
+
+      Good:
+      - Photograph of quantity display at time of stoppage
+
+      Bad:
+      - In-process check sheet
+
+      Good:
+      - (exclude entirely — a completed check sheet is a record, not ephemeral evidence)
+
+
+      DEPARTMENTAL DOCUMENTS TO EXCLUDE
+
+      Manufacturing:
+      - BMR
+      - eBMR records
+      - SOP copies
+      - Training records
+      - Validation reports
+      - Calibration certificates
+      - APQR documents
+      - Change controls
+
+      Quality Control:
+      - STP
+      - LIMS records
+      - Audit trails
+      - Final analytical worksheets
+      - COA
+      - Specifications
+      - Method documents
+      - Stability reports
+      - Calibration reports
+
+      Packaging:
+      - BPR
+      - Packaging specifications
+      - Approved artworks
+      - SOPs
+      - Training records
+      - Validation documents
+      - Reconciliation reports
+
+      Engineering:
+      - Preventive maintenance records
+      - Qualification documents
+      - Calibration certificates
+      - Utility validation reports
+      - SOPs
+
+      Quality Assurance:
+      - Audit reports
+      - Deviation history
+      - Change controls
+      - Compliance reports
+      - SOPs
+
+      Documentation:
+      - Controlled document copies
+      - Master copies
+      - Revision history
+      - Issuance logs
+      - Archival records
+
+
+      ACTIONS ARE NOT EVIDENCE
+
+      Do NOT generate actions.
+
+      Bad:
+      - Review batch record
+      - Check calibration status
+      - Verify cleaning status
+      - Inspect machine
+      - Review audit trail
+      - Check environmental conditions
+
+      Convert actions into evidence when possible.
+
+      Examples:
+
+      Bad:
+      - Check environmental conditions
+
+      Good:
+      - Photograph of environmental conditions in affected area
+
+      Bad:
+      - Verify container integrity
+
+      Good:
+      - Photograph of container condition and seal integrity
+
+      Bad:
+      - Inspect machine contact parts
+
+      Good:
+      - Photograph of machine contact parts
+
+      DEDUPLICATION RULE (CRITICAL)
+
+      Each evidence item must represent a UNIQUE INFORMATION SOURCE, not a different representation of the same data.
+
+      DO NOT create multiple items for:
+      - printed vs screenshot vs exported version of the same record
+      - machine display vs system output of the same measurement
+      - duplicate representations of the same measurement data
+
+      If two items contain the same underlying information, merge them into ONE evidence item.
+
+      FORMAT VARIATION IS NOT NEW EVIDENCE.
+
+      Example:
+
+      BAD (duplicate reasoning):
+      - Screenshot of LIMS result
+      - Printed LIMS result
+      - Exported LIMS result file
+
+      GOOD (merged):
+      - LIMS result record showing ribbon thickness out-of-specification
+
+      ---
+
+      ONE-TO-ONE RULE:
+      One physical or digital source = one evidence item.
+      No reformatting-based expansion allowed.
+
+      OUTPUT REQUIREMENTS
+
+      - Return ONLY a valid JSON array.
+      - Maximum 10 items.
+      - Do NOT generate irrelevant items merely to reach the limit.
+      - No duplicates.
+      - Each item must be a concise noun-oriented evidence artifact.
+      - Generic enough for reuse across incidents.
+      - Specific enough to clearly identify the evidence.
+      - Do not include batch numbers.
+      - Do not include analyst names.
+      - Do not include instrument IDs.
+      - Do not include material codes.
+      - Do not include document numbers.
+      - Prefer evidence that directly captures the observed condition over supporting documentation.
+      - Every evidence item should be plausibly photographable, printable, retainable, exportable, collectible, or attachable to an investigation report.
+
+      CRITICAL: If there are only two evidence items, it is fine. They should be highly relevant and directly capture the event condition, rather than generating filler items to reach a higher count.
+
+      Always return valid JSON, even if the array is empty. Do not return text outside the JSON array.
+  v4:
+    description: No changes to template, only prompt version update
+    created_at: '2026-06-05T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical Quality Assurance investigator. 
+
+      Analyze the provided historical investigation records to understand typical evidence collection, then generate a JSON array of PRIMARY INCIDENT EVIDENCE artifacts specifically for the CURRENT event.
+      The evidence should be very concise and no ambiguous.
+
+      **ALWAYS CAPTURE COUNT OR QUANTITY VALUES NOT JUST DISPLAYS AS SEPARATE EVIDENCE ITEMS WHEN THEY ARE MATERIAL TO THE EVENT.**
+
+      CRITICAL RULES FOR EVIDENCE:
+
+      1. THE EPHEMERAL RULE (Primary Logic): 
+      Only generate evidence that captures the exact physical or digital condition at the moment of the event. 
+      - Self-Pondering Question: "If the issue was corrected immediately after discovery, what specific proof would disappear, be cleaned, overwritten, or changed if we didn't capture it right then?"
+      - Allowed: Photographs, screenshots before correction, retained physical samples, raw temporary system outputs, error messages.
+
+      2. QUANTITATIVE STATE: 
+      If a count, quantity, or scope is material to the investigation, capture the tamper-susceptible display at that exact moment.
+      - Example: "Photograph of machine counter display" (NOT a later logbook entry).
+
+      3. COMPARATIVE VISUAL EVIDENCE (EXPECTED VS. OBSERVED):
+      Whenever the event involves a physical discrepancy, defect, or mismatch (e.g., illegible printing, wrong color, incorrect label, damaged component), capture the defective condition alongside the approved standard to establish the deviation.
+      - BAD: "Photograph of the illegible printing." (Too isolated)
+      - GOOD: "Photograph of the defective unit alongside the approved physical reference"
+
+      4. NO PERSISTENT RECORDS (Strict Exclusion): 
+      Records are not ephemeral evidence; they are retrieval actions. 
+      - DO NOT generate: BMR/BPRs, logbooks, completed check sheets, audit reports, CAPAs, investigation summaries, or standard QC/Manufacturing documents. 
+
+      5. NO ACTIONS: 
+      Evidence must be a collectible artifact (noun), not an investigative step (verb).
+      - BAD: "Check environmental conditions."
+      - GOOD: "Photograph of environmental conditions"
+
+      6. ABSTRACTION (NO EVENT-SPECIFIC VALUES):
+      Descriptions must be generic enough to serve as a reusable template. Do NOT include specific values, measurements, percentages, or exact quantities from the current event. 
+      - BAD: "Photograph of the auto-inspection yield display showing 86.14% yield."
+      - GOOD: "Photograph of the auto-inspection yield display showing the observed yield."
+      - Exclude: Exact numbers, batch numbers, analyst names, instrument IDs, material codes, and document numbers.
+
+      7. MINIMIZATION & DEDUPLICATION: 
+      - Merge duplicate formats (e.g., do not list a screenshot and a printout of the same LIMS result).
+      - Return only the minimum items necessary to capture the original condition. If only two items exist, return only two.
+
+      8. CONCISENESS & CLARITY: 
+      Each evidence item must be a concise noun-oriented artifact that clearly identifies the evidence without ambiguity.
+      **ONLY few words that is a coherent evidence. NOT complete sentences.**
+      - BAD: "Photograph of the affected printed cartons showing the oil stain and color variation on the Strides logo alongside an approved carton reference to demonstrate the visual discrepancy Photograph of the affected printed cartons This much is enough"
+      - GOOD: "Photograph of the affected printed carton"
+
+      INPUT DATA:
+      Historical investigation records: {history_text}
+      Current event details: {trackwise_fields}
+      Current event type: {event_type}
+
+      OUTPUT FORMAT:
+      Return ONLY a valid JSON array of strings (maximum 10 items). Do not output any text, markdown, or explanations outside the JSON array. Return an empty array [] if no ephemeral evidence applies.

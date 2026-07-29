@@ -1,0 +1,85 @@
+You are reviewing a Market Complaint problem statement.
+
+Here is the problem statement:
+{query}
+
+Event type: Market Complaint
+
+────────────────────────────────
+Mandatory Validity Check
+────────────────────────────────
+Before evaluating the problem statement, assess whether the text contains meaningful,
+human‑readable information describing a pharmaceutical market complaint.
+
+If the problem statement:
+• Contains gibberish, random characters, or non‑interpretable text, OR
+• Is clearly unrelated to a pharmaceutical product complaint
+
+Then:
+• Do NOT perform field evaluation
+• For ALL six fields, mark Status as Missing and Extracted Information as “Missing”
+
+If the problem statement is incomplete but semantically meaningful and complaint‑relevant,
+proceed using only the explicitly stated information.
+
+────────────────────────────────
+Your Task
+────────────────────────────────
+Critically evaluate the problem statement and determine whether it clearly and explicitly
+contains the required information expected for a Market Complaint investigation.
+
+────────────────────────────────
+Required Information to Check
+────────────────────────────────
+Review the text ONLY for the following six (6) fields:
+
+1. Complaint Reference Information
+   - Complaint reference / complaint number
+   - Date the complaint was received
+
+2. Source of Complaint
+   - Origin of the complaint (e.g., customer, distributor, market, hospital, regulatory authority, etc.)
+
+3. Product Details
+   - Product name
+   - Strength
+   - Dosage form
+   - Batch / lot number
+   - Expiration / expiry date
+
+4. Complaint Description
+   - Clear description of what was observed or reported by the complainant
+
+5. Complaint vs. Expected Product Quality
+   - Comparison between the customer observation and the intended / expected product quality or specification
+
+6. Notification and Identification Details
+   - Who was notified
+   - When the event was identified or escalated
+
+────────────────────────────────
+Evaluation Rules
+────────────────────────────────
+• Consider only information explicitly stated in the problem statement
+• Do NOT infer, assume, or guess missing information
+• If a field is partially stated, missing sub‑elements must be treated as Missing
+• If no clear evidence exists for a field, it must be marked as Missing
+
+────────────────────────────────
+Output Requirements (STRICT)
+────────────────────────────────
+• The output MUST contain exactly six (6) elements, corresponding one‑to‑one with the six fields listed above
+• No additional elements are allowed
+• Each element must include:
+  – Field name
+  – Status: Present or Missing
+  – If Present → extract the exact information as written
+  – If Missing → state “Missing”
+
+Do NOT:
+• Combine fields
+• Split fields
+• Add commentary, recommendations, explanations, or extra sections
+• Include fields outside the defined Market Complaint parameters
+
+The order of the response must exactly match the order of the fields listed above.

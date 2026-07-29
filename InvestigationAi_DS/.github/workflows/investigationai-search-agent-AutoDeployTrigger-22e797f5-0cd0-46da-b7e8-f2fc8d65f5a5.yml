@@ -1,0 +1,33 @@
+name: Build, Push & Deploy — investigationai-search-agent
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.INVESTIGATIONAISEARCHAGENT_AZURE_CREDENTIALS }}
+
+      - name: Build, push and deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath:    ${{ github.workspace }}
+          dockerfilePath:   Dockerfile
+          registryUrl:      investigationaiacr.azurecr.io
+          registryUsername: ${{ secrets.INVESTIGATIONAISEARCHAGENT_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.INVESTIGATIONAISEARCHAGENT_REGISTRY_PASSWORD }}
+          containerAppName: investigationai-search-agent
+          resourceGroup:    QA-Lighthouse
+          imageToBuild:     investigationaiacr.azurecr.io/investigationai-search-agent:${{ github.sha }}
+          imageToSpecify:   investigationaiacr.azurecr.io/investigationai-search-agent:${{ github.sha }}

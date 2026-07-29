@@ -1,0 +1,176 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.field-label {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-text-muted);
+  margin: 0 0 4px;
+}
+
+.field-value {
+  background: var(--color-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-btn);
+  padding: 9px 13px;
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--color-text);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+textarea.field-value {
+  resize: vertical;
+  min-height: 90px;
+  font-family: inherit;
+}
+
+.field-grid {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.field-grid > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.collapse-chevron {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-btn);
+  padding: 8px 24px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.btn-secondary {
+  background: none;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-btn);
+  padding: 8px 16px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-outline {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-btn);
+  padding: 7px 12px;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checklist-row {
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  padding: 13px 17px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.checklist-checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+.checklist-checkbox.unchecked {
+  background: var(--color-surface);
+}
+
+.checklist-text {
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.checklist-desc {
+  font-weight: 500;
+  font-size: 14px;
+  color: #595a5c;
+  margin: 4px 0 0;
+}
+
+.footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.footer-actions.split {
+  justify-content: space-between;
+}
+
+.empty-state {
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.error-banner {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  border-radius: var(--radius-btn);
+  padding: 10px 14px;
+  font-size: 14px;
+}

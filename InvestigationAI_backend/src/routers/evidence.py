@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, HTTPException, status
+
+from src.clients.ds_client import ds_post
+from src.db.field_mapping import build_trackwise_fields, resolved_event_type
+from src.db.generated_content_queries import fetch_evidence_items, replace_evidence_items
+from src.db.module_stage import stage_for
+from src.db.queries import fetch_investigation_row
+from src.schemas.evidence import (
+    EvidenceCollectionRecord,
+    EvidenceCollectionRequest,
+    EvidenceCollectionResponse,
+    EvidenceItem,
+)
+
+logger = logging.getLogger(__name__)
+
+_NOT_FOUND_DETAIL = "No evidence list found for this investigation yet"
+
+router = APIRouter(prefix="/evidence", tags=["Evidence Collection"])
+
+
+@router.post("/{record_id}/collect", response_model=EvidenceCollectionResponse)
+async def collect_evidence(record_id: str, request: EvidenceCollectionRequest) -> EvidenceCollectionResponse:
+    data = await ds_post("/evidence/collect", json=request.model_dump())
+    response = EvidenceCollectionResponse(**data)
+
+    # Persisting is best-effort — a DB/table issue must never break generation
+    # itself, especially before generated_content.sql has been run anywhere.
+    try:
+        deviation_id = int(record_id)
+        await replace_evidence_items(
+            deviation_id,
+            [{"description": item.description, "is_checked": True} for item in response.evidence],
+        )
+    except Exception:
+        logger.warning("Could not persist evidence items for record_id=%s", record_id, exc_info=True)
+
+    return response
+
+
+@router.get("/{record_id}", response_model=EvidenceCollectionRecord)
+async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    row = await fetch_investigation_row(deviation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    event_type = resolved_event_type(row["qe_type"])
+    if event_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    persisted = await fetch_evidence_items(deviation_id)
+    return EvidenceCollectionRecord(
+        record_id=record_id,
+        event_type=event_type,
+        trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=False),
+        evidence=[EvidenceItem(**item) for item in persisted] if persisted else None,
+        stage=stage_for(row["status"]),
+    )

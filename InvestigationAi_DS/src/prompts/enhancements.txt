@@ -1,0 +1,7 @@
+capa:
+1. grammatical errors
+2. duplication
+
+
+RCS:
+trendline is followin the example

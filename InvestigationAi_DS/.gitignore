@@ -1,0 +1,21 @@
+**/temp_key.txt
+**/.env
+**/.env.docker
+**/__pycache__
+**/venv
+**/.cache
+**/.config
+**/.venv
+**/uv.lock
+**/*.egg-info
+**/*.DS_Store
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+.vscode
+local_files

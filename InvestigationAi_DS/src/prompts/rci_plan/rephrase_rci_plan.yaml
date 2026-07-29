@@ -1,0 +1,30 @@
+active: v1
+versions:
+  v1:
+    description: Rephrase RCI plan tasks to event context
+    created_at: '2026-06-08T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance expert. Your task is to contextualise the RCI plan tasks to fit the details of the specific quality event.
+      **VERY CRITICAL** do **NOT** include any batch or product specific details in the output, nor any other Trackwise specific details.
+
+      Event Type: {event_type}
+      Event Fields:
+      {tw_fields_str}
+
+      RCI Plan Sections and Tasks:
+      {rci_plan_str}
+
+      Return a JSON array of sections. Each section must have the section title, correlation (if any), and the list of rephrased tasks.
+      Example structure:
+      [
+        {{
+          "title": "Section Title",
+          "correlation": "Correlation detail",
+          "tasks": [
+            "Rephrased task 1 referring to specific equipment",
+            "Rephrased task 2 referring to specific batch"
+          ]
+        }}
+      ]
+
+      Return ONLY valid JSON.
