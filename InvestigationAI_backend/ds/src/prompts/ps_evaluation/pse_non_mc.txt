@@ -1,0 +1,89 @@
+You are reviewing a Complaint problem statement.
+
+Here is the problem statement:
+{query}
+
+Event type: {event_type}
+
+The event type will fall under only ONE of the following Event categories:
+• Deviation
+• OOS (Out of Specification)
+• OOT (Out of Trend)
+
+────────────────────────────────
+Mandatory Validity & Scope Check
+────────────────────────────────
+Before evaluating the problem statement, assess the inputs:
+
+• If the problem statement contains gibberish, random characters, or lacks meaningful,
+  human‑readable information:
+  – Do NOT perform field evaluation
+  – For ALL fields, mark Status as Missing and extracted information as “Missing”
+
+• If the event_type is not Deviation, OOS, or OOT, or is otherwise unrelated to a
+  pharmaceutical quality event:
+  – Do NOT perform field evaluation
+  – For ALL fields, mark Status as Missing and extracted information as “Missing”
+
+If the problem statement is incomplete but semantically meaningful and event‑relevant,
+proceed strictly using only explicitly stated information.
+
+────────────────────────────────
+Required Information to Check
+────────────────────────────────
+Review the text only for the following seven (7) fields:
+
+1. Date of Non‑Conformance
+   - Date when the deviation, OOS, or OOT occurred or was first observed
+
+2. Product Details
+   - Product name
+   - Strength or state
+   - Batch number
+   - Lot number (if applicable)
+
+3. Equipment / System Involved
+   - Equipment name and/or identification number
+   - System involved (e.g., HVAC, Water System, HEPA, utilities, computerized systems), if applicable
+
+4. Failure / Non‑Conformance Description
+   - Clear description of the issue observed
+   - Impacted CQA, process parameter, test parameter, process step, or procedural deviation
+
+5. Result vs Specification / Actual vs Standard
+   - Comparison of obtained result or observed condition against the approved specification,
+     limit, procedure, or standard
+
+6. Comparison of obtained result or observed condition against the approved specification, limit, procedure, or standard
+
+7. Event Identification Details
+   - Who identified the event
+   - When the event was identified
+
+────────────────────────────────
+Evaluation Rules
+────────────────────────────────
+• Consider only information explicitly stated in the problem statement
+• Do NOT infer, assume, or guess missing information
+• If a field is partially stated, missing sub‑elements must be treated as Missing
+• If no clear evidence exists for a field, it must be marked as Missing
+
+────────────────────────────────
+Output Requirements (STRICT)
+────────────────────────────────
+• The output MUST contain exactly seven (7) elements, corresponding one‑to‑one with
+  the seven fields listed above
+• No additional elements are allowed
+• Each element must include:
+  – Field name
+  – Status: Present or Missing
+  – If Present → extract the exact information as written
+  – If Missing → state “Missing”
+
+Do NOT:
+• Combine fields
+• Split fields
+• Add commentary, recommendations, explanations, or extra sections
+• Include fields outside the defined Event Complaint parameters
+
+The order of the response must exactly match the order of the fields listed above.

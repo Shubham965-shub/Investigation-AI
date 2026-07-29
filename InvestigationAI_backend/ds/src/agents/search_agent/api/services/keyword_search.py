@@ -1,0 +1,94 @@
+"""
+PostgreSQL full-text keyword search implementation utilizing tsvector and tsquery.
+"""
+from __future__ import annotations
+
+import sys
+import logging
+from pathlib import Path
+from typing import Any, Literal
+
+# Inject project root path for configuration loading
+PROJECT_ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT_DIR))
+
+import asyncpg
+from config.settings import settings
+from src.agents.search_agent.api.services.filters import SearchFilters, build_filter_clause
+
+kw_logger = logging.getLogger(__name__)
+
+# Dictionary correlating application field names to physical DB columns
+TARGET_SEARCH_FIELDS: dict[str, str] = {
+    "description": settings.COLUMN_DESCRIPTION,
+    "root_cause_summary": settings.COLUMN_ROOT_CAUSE,
+}
+
+
+def build_tsquery_format(raw_input: str) -> str:
+    """
+    Transforms plain text into a valid PostgreSQL ``tsquery`` structured format.
+    Whitespace splitting provides an inclusive AND-based filter strategy.
+    """
+    words = raw_input.strip().split()
+    if not words:
+        return ""
+    return " & ".join(words)
+
+
+async def keyword_search(
+    pool: asyncpg.Pool,
+    query: str,
+    search_field: Literal["description", "root_cause_summary"],
+    filters: SearchFilters,
+    limit: int = 50000,
+) -> list[dict[str, Any]]:
+    """
+    Execute a full-text lookup against a defined target field.
+
+    Applies dynamic ``to_tsvector`` functionality dynamically across texts
+    allowing schema adaptability without pre-indexed columns.
+    Results are strictly sorted by date, bypassing relevance scores.
+    """
+    formatted_tsquery = build_tsquery_format(query)
+    if not formatted_tsquery:
+        return []
+
+    # Map target physical column
+    db_text_col = TARGET_SEARCH_FIELDS[search_field]
+
+    # Dynamically build filter constraints (offset by 1 since query string occupies $1)
+    condition_clause = build_filter_clause(filters, param_offset=1)
+    limit_param_index = 2 + len(condition_clause.params)
+
+    # Perform TS search prioritizing descending date sorting
+    search_sql = f"""
+        SELECT 
+            t.*,
+            ts_rank_cd(to_tsvector('english', "{db_text_col}"), query_t) AS relevance_score
+        FROM "{settings.SEARCH_TABLE}" t,
+             to_tsquery('english', $1) AS query_t
+        WHERE to_tsvector('english', "{db_text_col}") @@ query_t
+            {condition_clause.sql}
+        ORDER BY "{settings.COLUMN_DATE_OPENED}" DESC
+        LIMIT ${limit_param_index}
+    """
+
+    sql_args: list[Any] = [formatted_tsquery, *condition_clause.params, limit]
+
+    kw_logger.debug("Executing keyword search sql: %s | with %d parameters", search_sql, len(sql_args))
+
+    async with pool.acquire() as db_conn:
+        query_rows = await db_conn.fetch(search_sql, *sql_args)
+
+    columns_to_omit = settings.excluded_columns_list
+    
+    # Process return data shaping
+    output_records = []
+    for raw_row in query_rows:
+        record = {k: v for k, v in dict(raw_row).items() if k not in columns_to_omit}
+        record["match_type"] = "keyword"
+        record["matched_field"] = search_field
+        output_records.append(record)
+        
+    return output_records

@@ -1,0 +1,71 @@
+You are given the following inputs:
+
+Problem statement:
+{query}
+
+Event type (as identified upstream):
+{event_type}
+
+Checklist of Market Complaint required fields and their presence status:
+{checklist}
+(Each checklist item includes a field label and a boolean value indicating whether the information is present.)
+
+This event is a Market Complaint, defined as complaints received from customers, distributors, or markets.
+
+────────────────────────────────
+Mandatory Validity & Scope Check
+────────────────────────────────
+Before reviewing the checklist, assess the inputs:
+
+• If the problem statement contains gibberish, random characters, or lacks meaningful, interpretable information:
+  – Do NOT generate suggestions
+  – Respond only with:
+    "The problem statement lacks meaningful information. Unable to evaluate missing market complaint fields."
+
+• If the event_type is clearly not a Market Complaint or unrelated to pharmaceutical quality complaints:
+  – Do NOT generate suggestions
+  – Respond only with:
+    "The provided input is not applicable to a Market Complaint."
+
+If the problem statement is incomplete but contains meaningful information relevant to a market complaint,
+proceed conservatively using only the available context.
+
+────────────────────────────────
+Your Task
+────────────────────────────────
+Review the checklist and identify ONLY those fields where present = false.
+
+For each missing field, generate a clear, practical suggestion describing:
+• What information should be added
+• How it should be written to meet QA and regulatory expectations
+
+Use the problem statement ({query}) as contextual reference and include the relevant excerpt
+(specific word or phrase only) in the response under the field original.
+
+Do NOT:
+• Generate suggestions for fields already marked as present
+• Add new fields beyond those defined for a Market Complaint
+• Include analysis, summaries, conclusions, or commentary
+
+────────────────────────────────
+Market Complaint Fields in Scope
+────────────────────────────────
+• Complaint reference number and date received  
+• Source of complaint  
+• Product details  
+• Complaint description  
+• Complaint vs expected product quality  
+• Who was notified and when the event was identified  
+
+────────────────────────────────
+Example Guidance (for suggestion wording)
+────────────────────────────────
+Source of complaint → “The complaint arose from a customer.”
+Product details → “The product is Cetirizine 10 mg tablets, Batch K123, Expiry MM‑YYYY.”
+Complaint description → “The customer reported a missing tablet in the blister.”
+Complaint vs expected product quality → “The product was expected to contain 10 tablets; however, only 9 tablets were present.”
+
+────────────────────────────────
+Output Format
+────────────────────────────────
+Respond only as a list of suggested improvements, one per missing field.

@@ -1,0 +1,39 @@
+active: v1
+versions:
+  v1:
+    description: Initial version
+    created_at: '2025-05-31T00:00:00+00:00'
+    template: |
+      You are a quality assurance expert. Generate a complete, exhaustive list of evidence items for the failure type below.
+
+      Failure Type: {archetype_name}
+      Event Type: {event_type}
+      Trackwise Fields: {trackwise_fields_json}
+
+      Existing Evidence Items:
+      {existing_evidence}
+
+      Each item must be a physical artifact, document, or record that can be collected, printed, photographed, or attached — not an action or task.
+
+      Good examples:
+      - "Calibration certificate for the instrument used"
+      - "HPLC chromatogram from the impacted analysis"
+      - "Retained sample from the impacted batch"
+      - "Batch manufacturing record"
+      - "Environmental monitoring log"
+      - "Operator training record"
+      - "Instrument usage logbook"
+
+      Bad examples (do NOT generate these):
+      - "Check calibration status" (action)
+      - "Review the batch record" (action)
+      - "Perform environmental monitoring" (action)
+      - "Implement CAPA" (CAPA item, not evidence)
+      - "Train personnel on SOP" (action)
+      - "Calibration certificate for instrument TAB/DVC/008" (specific ID — keep generic)
+      - "Batch record for batch 12345" (specific batch number — keep generic)
+
+      Return a JSON array of strings:
+      ["evidence item 1", "evidence item 2", ...]
+
+      Return ONLY the JSON array.

@@ -1,0 +1,125 @@
+active: v2
+versions:
+  v1:
+    description: Original OOS prompt — batch number included in output if provided
+    created_at: '2026-06-12T00:00:00+00:00'
+    template: |
+      Generate a concise OOS (Out-of-Specification) problem statement by rewriting the provided details in a professional laboratory investigation format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date or time information in the problem statement even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as dates, times, batch numbers, product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      OOS-specific rules:
+
+      1. Conditional Field Inclusion Rule:
+         - Include the following fields only if they are explicitly provided in the input:
+           - Test name / activity name
+           - Test parameter
+           - Method / instrument / technique
+           - Product / material name
+           - Batch number / SR number / sample number
+           - Analyst name
+           - Instrument / equipment ID
+           - Observed result
+           - Specification limit
+
+      2. Exact Value Preservation Rule:
+         - If both observed result and specification limit are provided, include them exactly as given in the input.
+         - Do not rephrase, interpret, or modify numeric or textual values.
+
+      3. No Inference / No Addition Rule:
+         - Do not include any information that is not explicitly present in the input.
+         - Specifically, do NOT add: Analyst name, Laboratory name, Instrument or equipment details, Observed values, Specification limits unless they are explicitly provided.
+
+      4. Prohibited Interpretation Rule:
+         - Do not use interpretive or evaluative phrases such as: "above the approved specification limit", "out of limit", "failed specification" unless such wording is explicitly present in the input.
+
+      5. Strict Data Dependency Rule:
+         - The output must be strictly derived from the input without inference, assumption, or completion of missing information.
+
+      6. Do not include date or time information in the problem statement even if provided in the input fields.
+
+      Structure:
+      - <Test Parameter/Activity Name> for <Product/Material Name> <Batch/SR Number if available> was reported as <Observed Result> against the specification limit of <Specification Limit>.
+
+      Real-world examples:
+      NDSRI result for the product Tramadol Hydrochloride Tablets USP 50 mg was reported 0.100 ppm against the specification limit of NMT 0.033 ppm.
+      OOS was observed for N-Nitroso-di-butylamine (NDBA) exceeding the specification limit while NDEA remained within limit, during GC-MS testing of Artemether/Lumefantrine Tablets 20/120 mg (Dispersible), Batch No. 7254175.
+
+  v2:
+    description: Batch number and date excluded from output
+    created_at: '2026-06-12T00:00:00+00:00'
+    template: |
+      Generate a concise OOS (Out-of-Specification) problem statement by rewriting the provided details in a professional laboratory investigation format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      OOS-specific rules:
+
+      1. Conditional Field Inclusion Rule:
+         - Include the following fields only if they are explicitly provided in the input:
+           - Test name / activity name
+           - Test parameter
+           - Method / instrument / technique
+           - Product / material name
+           - Analyst name
+           - Instrument / equipment ID
+           - Observed result
+           - Specification limit
+         - Do NOT include batch number, AR number, or SR number in the problem statement.
+
+      2. Exact Value Preservation Rule:
+         - If both observed result and specification limit are provided, include them exactly as given in the input.
+         - Do not rephrase, interpret, or modify numeric or textual values.
+
+      3. No Inference / No Addition Rule:
+         - Do not include any information that is not explicitly present in the input.
+         - Specifically, do NOT add: Analyst name, Laboratory name, Instrument or equipment details, Observed values, Specification limits unless they are explicitly provided.
+
+      4. Prohibited Interpretation Rule:
+         - Do not use interpretive or evaluative phrases such as: "above the approved specification limit", "out of limit", "failed specification" unless such wording is explicitly present in the input.
+
+      5. Strict Data Dependency Rule:
+         - The output must be strictly derived from the input without inference, assumption, or completion of missing information.
+
+      6. Do not include date, time, batch number, AR number, or SR number in the problem statement.
+
+      Structure:
+      - <Test Parameter/Activity Name> for <Product/Material Name> was reported as <Observed Result> against the specification limit of <Specification Limit>.
+
+      Real-world examples:
+      NDSRI result for the product Tramadol Hydrochloride Tablets USP 50 mg was reported 0.100 ppm against the specification limit of NMT 0.033 ppm.
+      OOS was observed for N-Nitroso-di-butylamine (NDBA) exceeding the specification limit while NDEA remained within limit, during GC-MS testing of Artemether/Lumefantrine Tablets 20/120 mg (Dispersible).
