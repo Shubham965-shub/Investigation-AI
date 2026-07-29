@@ -315,9 +315,19 @@ async def get_action_center_summary(
         StatusCard(key="l5", label="L5", count=len(overdue_30_plus), rows=[[">30 days overdue", len(overdue_30_plus)]]),
     ]
 
-    # ── Pending actions: unassigned or overdue, most urgent first ────
+    # ── Pending actions: unassigned or overdue, critical first, most
+    # urgent first within each group ──────────────────────────────────
+    # dim_event.criticality (backend engineer, 2026-07-29): "Critical" marks
+    # investigations that must surface ahead of everything else in this
+    # list, regardless of due date — matches the "Critical" badge already
+    # rendered in the frontend (ActionCenterPage.tsx).
     candidates = [i for i in enriched if i["bucket"] in ("unassigned", "overdue")]
-    candidates.sort(key=lambda i: (i["days_until_due"] if i["days_until_due"] is not None else 9999))
+    candidates.sort(
+        key=lambda i: (
+            0 if i["criticality"] == "Critical" else 1,
+            i["days_until_due"] if i["days_until_due"] is not None else 9999,
+        )
+    )
 
     def _pending_action_text(stage: int) -> str:
         next_label = next_module_label(stage)
