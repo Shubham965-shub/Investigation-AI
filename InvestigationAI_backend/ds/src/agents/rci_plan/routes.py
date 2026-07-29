@@ -295,10 +295,11 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                         """
                         SELECT id
                         FROM archetype
-                        WHERE LOWER(name) = LOWER($1)
+                        WHERE LOWER(name) = LOWER($1) AND archetype_type_id = $2
                         LIMIT 1
                         """,
                         archetype_name,
+                        archetype_type_id,
                     )
 
                     if archetype_row_db:

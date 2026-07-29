@@ -30,6 +30,7 @@ dependencies = [
     "numpy",
     "python-dateutil",
     "openpyxl",
+    "pypdf",
 ]
 
 [project.optional-dependencies]

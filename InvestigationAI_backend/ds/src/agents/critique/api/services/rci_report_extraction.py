@@ -8,6 +8,10 @@ scans body elements in document order to locate and extract the relevant section
 import re
 from pathlib import Path
 from docx import Document
+from markitdown import MarkItDown
+
+_md = MarkItDown()
+_BASE64_RE = re.compile(r"!\[.*?\]\(data:[^)]+\)", re.DOTALL)
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -240,6 +244,20 @@ def extract_rci_report_sections(docx_path) -> dict:
                 collecting_ps = False
                 continue
 
+            # Detect "Problem statement:" as a plain body paragraph (task report format)
+            if current_section is None and not result["problem_statement"]:
+                tl = text.lower()
+                if "problem statement" in tl or "problem description" in tl:
+                    after = re.sub(
+                        r".*?problem\s+(?:statement|description)[:\s]*",
+                        "", text, flags=re.IGNORECASE
+                    ).strip()
+                    if after:
+                        result["problem_statement"] = after
+                    else:
+                        collecting_ps = True
+                    continue
+
             # Executive summary content
             if current_section == "exec":
                 tl = text.lower()
@@ -333,3 +351,14 @@ def extract_rci_report_sections(docx_path) -> dict:
     result["problem_statement"] = result["problem_statement"].strip()
 
     return result
+
+
+def extract_full_document_text(docx_path) -> str:
+    """
+    Convert a docx to clean markdown text for full-document LLM critique.
+    Strips base64-encoded images to keep the payload lean.
+    """
+    raw = _md.convert(str(docx_path)).text_content
+    text = _BASE64_RE.sub("", raw)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()

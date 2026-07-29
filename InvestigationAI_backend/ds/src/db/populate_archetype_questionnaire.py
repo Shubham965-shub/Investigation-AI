@@ -8,7 +8,7 @@ DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/app"
 
 EXCEL_PATH = os.path.join(
     os.path.dirname(__file__),
-    "Interview Questionnaire (2).xlsx",
+    "Interview_Questionnaire__2__corrected.xlsx",
 )
 
 engine = create_engine(DATABASE_URL)

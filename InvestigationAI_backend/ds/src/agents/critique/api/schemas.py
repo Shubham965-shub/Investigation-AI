@@ -104,16 +104,10 @@ class RCConclusionCritiqueRequest(BaseModel):
     is_repeat_occurrence: Optional[bool] = None
 
 
-class RuleCritique(BaseModel):
-    rule_number: int
-    rule_name: str
-    critique: str                   # empty string if the rule is fully satisfied
-
-
 class RCConclusionCritiqueResponse(BaseModel):
     rc_conclusion_text: str
-    rule_critiques: List[RuleCritique]
-    overall_assessment: str
+    recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
+    strengths: str                  # 1-2 sentences on what was done well
 
 
 # ---------- CAPA Critique ----------
@@ -134,8 +128,8 @@ class CAPACritiqueRequest(BaseModel):
 
 
 class CAPACritiqueResponse(BaseModel):
-    rule_critiques: List[RuleCritique]
-    overall_assessment: str
+    recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
+    strengths: str                  # 1-2 sentences on what was done well
 
 
 # ---------- Combined RCI Report Critique ----------

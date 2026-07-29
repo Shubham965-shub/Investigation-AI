@@ -22,6 +22,9 @@ from src.agents.interview_questionnaire.routes import router as router_questionn
 from src.agents.rci_plan.routes import router as router_rci_plan
 from src.agents.critique.api.routes.task_report_critique_route import router as router_task_report_critique
 from src.agents.archetypes.routes import router as router_archetypes
+from src.agents.capa_depth_effectiveness.api.routes.capa_depth_effectiveness_route import (
+    router as router_capa_depth_effectiveness,
+)
 from src.prompt_registry.service import PromptRegistry
 from src.prompt_registry.routes import router as router_prompts
 from src.db.pool import close_pool, create_pool
@@ -76,5 +79,6 @@ def create_app() -> FastAPI:
     api_instance.include_router(router_rci_plan)
     api_instance.include_router(router_task_report_critique)
     api_instance.include_router(router_archetypes)
+    api_instance.include_router(router_capa_depth_effectiveness)
 
     return api_instance

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import Any, Dict, Optional
 
 
@@ -102,6 +102,11 @@ class MarketComplaintTrackwiseFields(BaseModel):
     dosage_form: str = Field(..., alias="Dosage Form")
     market: str = Field(..., alias="Market")
     product_manufacturing_info: str = Field(..., alias="Product Manufacturing Info")
+    complainant_name: Optional[str] = Field(None, alias="Complainant Name")
+    complaint_received_by: Optional[str] = Field(None, alias="Complaint Received By")
+    customer: Optional[str] = Field(None, alias="Customer")
+    complaint_country: Optional[str] = Field(None, alias="Complaint Country")
+    complaint_number: Optional[str] = Field(None, alias="Complaint Number")
 
     class Config:
         populate_by_name = True
@@ -115,7 +120,12 @@ class ArchetypeInfo(BaseModel):
     reasoning: Optional[str] = Field(None)
 
 
-def validate_trackwise_fields(event_type: str, v: Dict[str, Any], event_functionality: Optional[str] = None) -> Dict[str, Any]:
+def validate_trackwise_fields(
+    event_type: str,
+    v: Dict[str, Any],
+    event_functionality: Optional[str] = None,
+    by_alias: bool = False,
+) -> Dict[str, Any]:
     """Validate and normalise trackwise fields for the given event type."""
     event_type_lower = event_type.lower().strip()
 
@@ -134,8 +144,44 @@ def validate_trackwise_fields(event_type: str, v: Dict[str, Any], event_function
             "Must be one of: Deviation, OOS, OOT, OOS/OOT, Market Complaint"
         )
 
+    empty_fields = [
+        field.alias or name
+        for name, field in schema.model_fields.items()
+        if field.is_required()
+        and isinstance(v.get(field.alias or name), str)
+        and not v.get(field.alias or name).strip()
+    ]
+
+    def display_name(loc_key: Any) -> Any:
+        field = schema.model_fields.get(loc_key)
+        return field.alias or loc_key if field else loc_key
+
     try:
         validated = schema(**v)
-        return validated.dict(by_alias=False)
+        result = validated.dict(by_alias=by_alias)
+    except ValidationError as e:
+        missing_fields = [
+            display_name(err["loc"][0]) for err in e.errors() if err["type"] == "missing"
+        ]
+        other_errors = [
+            f"{display_name(err['loc'][0])}: {err['msg']}"
+            for err in e.errors()
+            if err["type"] != "missing"
+        ]
+        details = []
+        if empty_fields:
+            details.append(f"empty fields: {', '.join(empty_fields)}")
+        if missing_fields:
+            details.append(f"missing required fields: {', '.join(missing_fields)}")
+        if other_errors:
+            details.append(f"invalid fields: {', '.join(other_errors)}")
+        raise ValueError(f"Invalid trackwise fields for {event_type}: {'; '.join(details)}")
     except Exception as e:
         raise ValueError(f"Invalid trackwise fields for {event_type}: {e}")
+
+    if empty_fields:
+        raise ValueError(
+            f"Invalid trackwise fields for {event_type}: "
+            f"empty fields: {', '.join(empty_fields)}"
+        )
+    return result

@@ -4,18 +4,22 @@ API routes for archetype library management.
 Evidence Collection:
   GET  /archetypes/evidence           — list all archetypes with their evidence items
   POST /archetypes/evidence           — add a new archetype (skipped if name already exists)
+  POST /archetypes/evidence/upload    — bulk-load the Evidence Library Excel (per-archetype upsert)
 
 Interview Questionnaire:
   GET  /archetypes/questionnaire      — list all archetypes with their questions
   POST /archetypes/questionnaire      — add a new archetype (skipped if name already exists)
+  POST /archetypes/questionnaire/upload — bulk-load the Interview Questionnaire Excel (per-archetype upsert)
 """
 
 from __future__ import annotations
 
+import io
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+import pandas as pd
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 from src.utils.deps import get_db_pool
@@ -62,6 +66,14 @@ class AddArchetypeResponse(BaseModel):
     name: str
     message: str
 
+class LibraryUploadResponse(BaseModel):
+    status: str
+    message: str
+    archetypes_processed: List[str]
+    archetypes_created: int
+    archetypes_updated: int
+    items_created: int
+
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 async def _get_type_id(conn, type_name: str) -> int:
@@ -74,6 +86,177 @@ async def _get_type_id(conn, type_name: str) -> int:
             detail=f"Archetype type '{type_name}' not found in database. Run the populate script first.",
         )
     return row["id"]
+
+
+def _find_col(possible_names: List[str], df_cols: List[Any]) -> Optional[Any]:
+    normalized = {name.strip().lower() for name in possible_names}
+    for col in df_cols:
+        if str(col).strip().lower() in normalized:
+            return col
+    return None
+
+
+def _find_sheet(sheet_names: List[str], candidates: List[str]) -> Optional[str]:
+    normalized = {c.strip().lower() for c in candidates}
+    for name in sheet_names:
+        if name.strip().lower() in normalized:
+            return name
+    return None
+
+
+async def _upload_library_excel(
+    *,
+    file: UploadFile,
+    type_name: str,
+    sheet_candidates: List[str],
+    name_col_candidates: List[str],
+    definition_col_candidates: List[str],
+    item_col_candidates: List[str],
+    item_table: str,
+) -> LibraryUploadResponse:
+    """Shared bulk-upload logic for the Evidence and Interview Questionnaire
+    libraries: one flat sheet, archetype name repeated/blank-filled down
+    column A, one item (evidence description / question) per row.
+
+    Each archetype is upserted by name: its child items are replaced
+    wholesale so re-uploading a corrected file reflects the new content,
+    matching the per-archetype replace semantics of POST /rci/upload.
+    """
+    filename = (file.filename or "").strip()
+    suffix = filename.split(".")[-1].lower() if "." in filename else ""
+    if suffix not in ["xlsx", "xls"]:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only Excel (.xlsx, .xls) files are supported.",
+        )
+
+    try:
+        contents = await file.read()
+        excel_file = pd.ExcelFile(io.BytesIO(contents))
+
+        sheet_name = _find_sheet(excel_file.sheet_names, sheet_candidates)
+        if not sheet_name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"None of the expected sheets {sheet_candidates} were found. "
+                    f"Sheets present: {excel_file.sheet_names}"
+                ),
+            )
+
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
+        df.columns = [str(col).strip() for col in df.columns]
+
+        name_col = _find_col(name_col_candidates, df.columns)
+        definition_col = _find_col(definition_col_candidates, df.columns)
+        item_col = _find_col(item_col_candidates, df.columns)
+
+        if not name_col or not item_col:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Could not find required columns in sheet '{sheet_name}'. "
+                    f"Looked for name in {name_col_candidates}, item in {item_col_candidates}. "
+                    f"Columns present: {list(df.columns)}"
+                ),
+            )
+
+        # Merged/blank-continuation cells: forward-fill the archetype name
+        # (and definition, if present) down to the item rows beneath them.
+        df[name_col] = df[name_col].ffill()
+        if definition_col:
+            df[definition_col] = df[definition_col].ffill()
+
+        df = df.dropna(subset=[item_col])
+        if df.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"No usable rows found in sheet '{sheet_name}'.",
+            )
+
+        archetypes_processed: List[str] = []
+        archetypes_created = 0
+        archetypes_updated = 0
+        items_created = 0
+
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            type_id = await _get_type_id(conn, type_name)
+
+            async with conn.transaction():
+                for archetype_name, group in df.groupby(name_col):
+                    archetype_name = str(archetype_name).strip()
+                    if not archetype_name:
+                        continue
+
+                    definition_value = None
+                    if definition_col:
+                        defs = group[definition_col].dropna().astype(str)
+                        if not defs.empty:
+                            definition_value = defs.iloc[0].strip() or None
+
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id FROM archetype
+                        WHERE LOWER(name) = LOWER($1) AND archetype_type_id = $2
+                        """,
+                        archetype_name, type_id,
+                    )
+
+                    if existing:
+                        archetype_id = existing["id"]
+                        await conn.execute(
+                            "UPDATE archetype SET definition = COALESCE($1, definition) WHERE id = $2",
+                            definition_value, archetype_id,
+                        )
+                        await conn.execute(
+                            f"DELETE FROM {item_table} WHERE archetype_id = $1",
+                            archetype_id,
+                        )
+                        archetypes_updated += 1
+                    else:
+                        archetype_id = await conn.fetchval(
+                            """
+                            INSERT INTO archetype (name, definition, archetype_type_id)
+                            VALUES ($1, $2, $3)
+                            RETURNING id
+                            """,
+                            archetype_name, definition_value, type_id,
+                        )
+                        archetypes_created += 1
+
+                    archetypes_processed.append(archetype_name)
+
+                    item_values = [
+                        str(v).strip() for v in group[item_col].tolist()
+                        if str(v).strip() and str(v).strip().lower() != "nan"
+                    ]
+                    if item_values:
+                        await conn.executemany(
+                            f"INSERT INTO {item_table} (description, archetype_id) VALUES ($1, $2)",
+                            [(v, archetype_id) for v in item_values],
+                        )
+                        items_created += len(item_values)
+
+        return LibraryUploadResponse(
+            status="success",
+            message=f"Successfully imported '{type_name}' templates from {filename}.",
+            archetypes_processed=archetypes_processed,
+            archetypes_created=archetypes_created,
+            archetypes_updated=archetypes_updated,
+            items_created=items_created,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to parse and upload '%s' library", type_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process upload: {str(e)}",
+        )
+    finally:
+        await file.close()
 
 
 def _group_archetype_rows(rows) -> list[dict]:
@@ -182,6 +365,28 @@ async def add_evidence_archetype(body: NewEvidenceArchetypeRequest) -> AddArchet
     )
 
 
+@router.post(
+    "/evidence/upload",
+    response_model=LibraryUploadResponse,
+    summary="Bulk-load the Evidence Library Excel (per-archetype upsert)",
+)
+async def upload_evidence_library(file: UploadFile = File(...)) -> LibraryUploadResponse:
+    """
+    Expects a sheet named 'Evidence Library' with columns:
+    Failure Type | ... | Description/Definition | Evidence to Collect
+    (archetype name and definition may be blank-filled across their item rows).
+    """
+    return await _upload_library_excel(
+        file=file,
+        type_name="Evidence Collection",
+        sheet_candidates=["Evidence Library"],
+        name_col_candidates=["Failure Type", "Failure Mode"],
+        definition_col_candidates=["Description/Definition", "Definition"],
+        item_col_candidates=["Evidence to Collect", "Evidence"],
+        item_table="evidence",
+    )
+
+
 # ── Interview Questionnaire endpoints ───────────────────────────────────────
 
 @router.get(
@@ -265,4 +470,26 @@ async def add_questionnaire_archetype(body: NewQuestionnaireArchetypeRequest) ->
         id=archetype_id,
         name=body.name,
         message=f"Archetype created with {len(body.questions)} question(s).",
+    )
+
+
+@router.post(
+    "/questionnaire/upload",
+    response_model=LibraryUploadResponse,
+    summary="Bulk-load the Interview Questionnaire Excel (per-archetype upsert)",
+)
+async def upload_questionnaire_library(file: UploadFile = File(...)) -> LibraryUploadResponse:
+    """
+    Expects a sheet named 'Events' with columns:
+    Error type | Definition | Questions
+    (archetype name and definition may be blank-filled across their item rows).
+    """
+    return await _upload_library_excel(
+        file=file,
+        type_name="Interview Questionnaire",
+        sheet_candidates=["Events"],
+        name_col_candidates=["Error type", "Failure Type"],
+        definition_col_candidates=["Definition"],
+        item_col_candidates=["Questions", "Question"],
+        item_table="interview_questionnaire",
     )

@@ -191,13 +191,17 @@ class SharedSettings:
     def DATABASE_URL(self) -> str:
         """Construct PostgreSQL connection URL.
 
-        quote(..., safe="") so special characters in the user/password (#, @,
-        /, etc.) can't be misparsed as URL structure (userinfo delimiter,
-        fragment marker, ...) — local-only fix, not committed to this repo.
+        User/password are percent-encoded (safe="") since credentials may
+        contain characters like '#' or '@' that would otherwise be
+        misinterpreted as URL delimiters (e.g. '#' truncating the DSN as a
+        fragment marker, corrupting the host/port that follow it).
         """
         user = quote(self._env.DB_USER, safe="")
         password = quote(self._env.DB_PASSWORD, safe="")
-        return f"postgresql://{user}:{password}@{self._env.DB_HOST}:{self._env.DB_PORT}/{self._env.DB_NAME}"
+        return (
+            f"postgresql://{user}:{password}"
+            f"@{self._env.DB_HOST}:{self._env.DB_PORT}/{self._env.DB_NAME}"
+        )
 
     @property
     def PROMPTS_DIR(self) -> Path:
