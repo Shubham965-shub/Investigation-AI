@@ -1,0 +1,22 @@
+node_modules
+dist
+dist-ssr
+
+# Secrets/env — VITE_API_BASE_URL is passed at build time via --build-arg
+# instead (see Dockerfile), never baked in by copying a checked-out .env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# VCS / editor
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+*.local

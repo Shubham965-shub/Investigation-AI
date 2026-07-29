@@ -1,0 +1,63 @@
+# Local/dev orchestration for all three services. Both backend and ds talk to
+# the same external Azure Postgres instance (DB_HOST in their own .env files)
+# — there's no local database service here, nothing to provision.
+#
+# Usage:
+#   docker compose up --build
+#
+# Prereqs: backend/backend/.env and ds/.env must already exist (copy from
+# their .env.example templates and fill in real credentials) — they are NOT
+# baked into the images (see each service's .dockerignore), only read at
+# container start via env_file.
+
+services:
+  ds:
+    build:
+      context: ./ds
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./ds/.env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/docs')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/backend/.env
+    environment:
+      # Overrides whatever DS_SERVICE_BASE_URL is set to in the .env file
+      # above: inside the compose network, ds is reachable by service name,
+      # not localhost (localhost inside this container is this container).
+      DS_SERVICE_BASE_URL: http://ds:8001
+    depends_on:
+      ds:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked in at build time (Vite env vars aren't runtime-configurable)
+        # — must be reachable from the BROWSER, not from inside the compose
+        # network, so this stays as localhost:8000 (backend's published port)
+        # rather than the internal service name used by `backend` above.
+        VITE_API_BASE_URL: http://localhost:8000/api
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
