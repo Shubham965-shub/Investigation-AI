@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { AddItemDialog } from "../components/AddItemDialog";
 
 interface ChecklistItem {
   description: string;
@@ -13,8 +14,6 @@ interface ChecklistItem {
 import checkIcon from "../assets/icons/interview-checkbox.svg";
 import addPlusIcon from "../assets/icons/interview-add-plus.svg";
 import chatbotFab from "../assets/icons/chatbot-fab.svg";
-import thumbUp from "../assets/icons/thumb-up.png";
-import thumbDown from "../assets/icons/thumb-down.png";
 import "./RecordModulePage.css";
 
 export function InterviewQuestionnairePage() {
@@ -31,8 +30,8 @@ export function InterviewQuestionnairePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   // Everything comes from the DB — no localStorage. Interview Questionnaire
   // depends on the Problem Statement record existing (fetched here directly
@@ -122,8 +121,9 @@ export function InterviewQuestionnairePage() {
     });
   }
 
-  function addItem() {
-    setItems((prev) => [...(prev ?? []), { description: "New question", checked: true }]);
+  function addItem(name: string) {
+    setShowAddDialog(false);
+    setItems((prev) => [...(prev ?? []), { description: name, checked: true }]);
   }
 
   function handleAgreeAndCopy() {
@@ -147,14 +147,6 @@ export function InterviewQuestionnairePage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card-header">
           <p className="card-title">Interview Questionnaire</p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={() => setFeedback("up")} style={{ background: "none", border: "none", padding: 0 }} aria-label="Helpful">
-              <img src={thumbUp} alt="" width={20} height={20} style={{ opacity: feedback === "up" ? 1 : 0.6 }} />
-            </button>
-            <button type="button" onClick={() => setFeedback("down")} style={{ background: "none", border: "none", padding: 0 }} aria-label="Not helpful">
-              <img src={thumbDown} alt="" width={20} height={20} style={{ opacity: feedback === "down" ? 1 : 0.6 }} />
-            </button>
-          </div>
         </div>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
@@ -183,7 +175,7 @@ export function InterviewQuestionnairePage() {
       </div>
 
       <div className="footer-actions split">
-        <button type="button" className="btn-secondary" onClick={addItem}>
+        <button type="button" className="btn-secondary" onClick={() => setShowAddDialog(true)}>
           <img src={addPlusIcon} alt="" width={16} height={16} />
           Add Your Own Question
         </button>
@@ -191,6 +183,17 @@ export function InterviewQuestionnairePage() {
           {saved ? "Saved" : "Agree & Copy"}
         </button>
       </div>
+
+      {showAddDialog && (
+        <AddItemDialog
+          title="Add Question"
+          label="Question"
+          placeholder="Enter Question"
+          confirmLabel="Add Question"
+          onCancel={() => setShowAddDialog(false)}
+          onConfirm={addItem}
+        />
+      )}
 
       {showConfirm && (
         <ConfirmDialog

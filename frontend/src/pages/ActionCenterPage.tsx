@@ -268,22 +268,37 @@ export function ActionCenterPage() {
         <div>
           <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
           <div className="ac-pending-grid">
-            {summary.pending_actions.map((action) => (
-              <div className="ac-card" key={action.id}>
-                <div className="ac-pending-card-header">
-                  <span className="ac-pending-card-id">{action.id}</span>
-                  {action.is_unassigned && <span className="ac-badge gray">Unassigned</span>}
+            {summary.pending_actions.map((action) => {
+              // Pending actions carry only a summary shape (no event_type/
+              // investigator/stage) — look up the matching full row from
+              // summary.investigations (same source list backend-side) to
+              // build the same PreviewInvestigation the table/grid rows use.
+              const fullInvestigation = summary.investigations.find((inv) => inv.id === action.id);
+              return (
+                <div
+                  className="ac-card"
+                  key={action.id}
+                  onClick={() => fullInvestigation && setPreviewInvestigation(toPreview(fullInvestigation))}
+                  style={{ cursor: fullInvestigation ? "pointer" : undefined }}
+                >
+                  <div className="ac-pending-card-header">
+                    <span className="ac-pending-card-id">{action.id}</span>
+                    {action.is_overdue && <span className="ac-badge critical">Overdue</span>}
+                  </div>
+                  <p className="ac-pending-card-title">{action.title}</p>
+                  <div className="ac-pending-action-row">
+                    {!action.is_unassigned && fullInvestigation?.investigator && (
+                      <span className="ac-pending-card-investigator">{fullInvestigation.investigator}</span>
+                    )}
+                    {action.is_unassigned && <span className="ac-badge gray">Unassigned</span>}
+                    {action.criticality === "Critical" && <span className="ac-badge critical">Critical</span>}
+                    <span className="ac-badge due">Due date: {action.due_date ?? "—"}</span>
+                  </div>
+                  <p className="ac-pending-action-label">ACTION</p>
+                  <p className="ac-pending-action-desc">{action.action}</p>
                 </div>
-                <p className="ac-pending-card-title">{action.title}</p>
-                <div className="ac-pending-action-row">
-                  {action.criticality === "Critical" && <span className="ac-badge critical">Critical</span>}
-                  {action.is_overdue && <span className="ac-badge critical">Overdue</span>}
-                  <span className="ac-badge due">Due date: {action.due_date ?? "—"}</span>
-                </div>
-                <p className="ac-pending-action-label">ACTION</p>
-                <p className="ac-pending-action-desc">{action.action}</p>
-              </div>
-            ))}
+              );
+            })}
             {summary.pending_actions.length === 0 && (
               <p style={{ color: "var(--color-text-muted)" }}>No pending actions right now.</p>
             )}

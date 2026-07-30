@@ -16,10 +16,11 @@ async def fetch_rci_plan(state: RciPlanState) -> RciPlanState:
         state.rci_plan_original = []
         return state
 
-    db_url = (
-        f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}"
-        f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-    )
+    # settings.DATABASE_URL (not a raw f-string) — DB_PASSWORD contains
+    # characters (#, ,) that are URL-structural if not percent-encoded;
+    # unencoded, asyncpg fails to parse the DSN at all, silently caught by
+    # the except below and turning every call into "no archetype found".
+    db_url = settings.DATABASE_URL
     try:
         conn = await asyncpg.connect(db_url)
         try:

@@ -83,7 +83,7 @@ export function LoginPage() {
             fontWeight: 700,
           }}
         >
-          {submitting ? "Signing in…" : "Sign in"}
+          {submitting ? "Logging in…" : "Log in"}
         </button>
       </form>
     </div>

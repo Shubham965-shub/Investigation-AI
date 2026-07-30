@@ -13,12 +13,18 @@ Known gaps (best-effort, not silently guessed — flag for the DB owner):
   which (if either) maps to "Batches Details" vs. some other UI field.
 - "Equipment Name" and "Name of the Instrument" both resolve to the single
   instrument_equipment column — there's no second source column for either.
-- Deviation-extended's "Equipment ID": equipment_number was confirmed
-  [DROPPED] from dim_event in the 2026-07-24 schema update, with no
-  replacement column added — reuses dim_equipment.instrument_equipment_id
+- Deviation-extended's "Equipment ID" AND "Equipment Number" (two separate
+  required fields in DS's ExtendedDeviationTrackwiseFields): equipment_number
+  was confirmed [DROPPED] from dim_event in the 2026-07-24 schema update, with
+  no replacement column added — both reuse dim_equipment.instrument_equipment_id
   (same real column "Instrument ID Number" already uses; 95.3% filled for
   Deviation as of 2026-07-28) rather than being hardcoded None, per the same
-  "no second source column" precedent as Equipment Name above. [2026-07-28:
+  "no second source column" precedent as Equipment Name above. [2026-07-29:
+  "Equipment Number" was previously missing from this dict entirely (not
+  hardcoded None — just absent), which made every single Deviation RCI-plan
+  generation call fail DS's validation with "missing required fields:
+  Equipment Number" — confirmed by the backend engineer that
+  instrument_equipment_id is the right source for it too.] [2026-07-28:
   previously hardcoded None here regardless of live data — changed after the
   user flagged that nothing should be null-by-code when a real column value
   might exist; None should only ever come from a genuinely blank DB value.]
@@ -34,7 +40,7 @@ Known gaps (best-effort, not silently guessed — flag for the DB owner):
 from __future__ import annotations
 
 import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import asyncpg
 
@@ -51,6 +57,43 @@ def _val(row: asyncpg.Record, col: str) -> Any:
     if isinstance(v, (datetime.date, datetime.datetime, datetime.time)):
         return v.isoformat()
     return v
+
+
+def _val_joined(row: asyncpg.Record, col: str, sep: str = ", ") -> Any:
+    """Like _val, but joins array-typed columns into a single string.
+
+    related_market/related_customer are text[] in dim_event (confirmed via
+    information_schema, 2026-07-29) for every row regardless of event type,
+    but ExtendedDeviationTrackwiseFields (DS, used for RCI plan generation)
+    declares both as plain required str fields — every Deviation RCI-plan
+    request failed DS's validation as a result (missing-type error, not a
+    null/empty one). Joining here rather than loosening DS's schema, since a
+    single flat string is what the RCI-plan UI field (a plain text input,
+    not a "list"-kind one — see frontend constants/trackwiseFields.ts) is
+    designed to display and round-trip.
+    """
+    v = _val(row, col)
+    if isinstance(v, list):
+        return sep.join(str(item) for item in v)
+    return v
+
+
+def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
+    """Wraps a plain-text column into the single-element list
+    ExtendedDeviationTrackwiseFields's list-typed fields expect.
+
+    NOTE on impact_on_other_batches/impact_justification: the backend
+    engineer suggested merging these into "Impact Details" instead of
+    impact_details (2026-07-29), but a per-event-type breakdown showed
+    both are 0/2304 filled for qe_type='Deviation' specifically — they're
+    only ever populated for OOS/OOT/Complaint rows, none of which have an
+    "Impact Details" field at all (Deviation-only, extended schema). The
+    impact_details column itself is 2177/2304 (94.5%) filled for Deviation,
+    so it's kept as the source here; only wrapped in a list to satisfy the
+    schema's type, not replaced. Flagged back rather than merged in blind.
+    """
+    v = _val(row, col)
+    return [str(v)] if v else []
 
 
 def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = False) -> Dict[str, Any]:
@@ -77,17 +120,18 @@ def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = F
                     "Observation Date": _val(row, "observation_date"),
                     "Observation Time": _val(row, "observation_time"),
                     "Failure Duration": _val(row, "failure_duration"),
-                    "Related Market": _val(row, "related_market"),
-                    "Related Customer": _val(row, "related_customer"),
+                    "Related Market": _val_joined(row, "related_market"),
+                    "Related Customer": _val_joined(row, "related_customer"),
                     "Equipment ID": _val(row, "instrument_equipment_id"),  # equipment_number [DROPPED] 2026-07-24; reuses the same column "Instrument ID Number" uses
+                    "Equipment Number": _val(row, "instrument_equipment_id"),  # per backend engineer (2026-07-29): same source column as Equipment ID/Instrument ID Number, no separate column exists
                     "Deviation Owner": _val(row, "owner_name"),
                     "Originator": _val(row, "originator"),
-                    "Immediate Actions": _val(row, "immediate_actions"),
+                    "Immediate Actions": _val_as_list(row, "immediate_actions"),
                     "Impact on Deviation Batches": _val(row, "impact_on_deviation_batches"),
-                    "Impact Details": _val(row, "impact_details"),
+                    "Impact Details": _val_as_list(row, "impact_details"),
                     "Immediate Cause Known": _val(row, "immediate_cause_known"),
                     "Cause Detail": _val(row, "cause_detail"),
-                    "Proposal for Resolution": _val(row, "proposal_for_resolution"),
+                    "Proposal for Resolution": _val_as_list(row, "proposal_for_resolution"),
                 }
             )
         return fields

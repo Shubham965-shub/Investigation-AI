@@ -167,6 +167,12 @@
   font-size: 14px;
 }
 
+.ac-pending-card-investigator {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .ac-pending-card-title {
   font-weight: 700;
   margin: 0 0 10px;

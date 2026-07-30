@@ -61,7 +61,14 @@ export function RciPlanPage() {
           const prefill: Record<string, string> = {};
           for (const field of fieldsNeeded) {
             const value = rciRecord.trackwise_fields[field.key];
+            // "list"-kind fields (Immediate Actions, Impact Details, Proposal
+            // for Resolution) come back as arrays — join with "\n" to match
+            // the same one-per-line textarea convention handleGenerate's
+            // split("\n") expects on submit, instead of dropping the field
+            // (typeof value === "string" alone would silently leave it
+            // blank, same class of bug as Related Market/Related Customer).
             if (typeof value === "string") prefill[field.key] = value;
+            else if (Array.isArray(value)) prefill[field.key] = value.join("\n");
           }
           setAdditionalValues(prefill);
         }
@@ -210,7 +217,7 @@ export function RciPlanPage() {
           <p className="card-title">RCI Plan Generated</p>
           <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10, opacity: 0.5 }} disabled title="Export not wired up yet">
             <img src={exportIcon} alt="" width={16} height={16} />
-            Save and Send
+            Accept and Push to TW
           </button>
         </div>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

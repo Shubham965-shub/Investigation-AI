@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { AddItemDialog } from "../components/AddItemDialog";
 
 interface ChecklistItem {
   description: string;
@@ -32,6 +33,7 @@ export function EvidenceCollectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   // Everything comes from the DB — no localStorage. Evidence Collection
   // depends on the Problem Statement record existing (fetched here directly
@@ -121,8 +123,9 @@ export function EvidenceCollectionPage() {
     });
   }
 
-  function addItem() {
-    setItems((prev) => [...(prev ?? []), { description: "New evidence item", checked: true }]);
+  function addItem(name: string) {
+    setShowAddDialog(false);
+    setItems((prev) => [...(prev ?? []), { description: name, checked: true }]);
   }
 
   function handleAgreeAndCopy() {
@@ -188,7 +191,7 @@ export function EvidenceCollectionPage() {
       </div>
 
       <div className="footer-actions split">
-        <button type="button" className="btn-secondary" onClick={addItem}>
+        <button type="button" className="btn-secondary" onClick={() => setShowAddDialog(true)}>
           <img src={addPlusIcon} alt="" width={16} height={16} />
           Add Evidence
         </button>
@@ -196,6 +199,17 @@ export function EvidenceCollectionPage() {
           {saved ? "Saved" : "Agree & Copy"}
         </button>
       </div>
+
+      {showAddDialog && (
+        <AddItemDialog
+          title="Add Evidence"
+          label="Evidence Name"
+          placeholder="Enter Evidence Name"
+          confirmLabel="Add Evidence"
+          onCancel={() => setShowAddDialog(false)}
+          onConfirm={addItem}
+        />
+      )}
 
       {showConfirm && (
         <ConfirmDialog
