@@ -150,8 +150,74 @@ async def format_result(state: RciPlanState) -> RciPlanState:
     return state
 
 
-# Historical path commented out as per user request:
-# async def infer_rci_plan_from_historical_data(state: RciPlanState) -> RciPlanState:
-#     """Infer RCI plan from historical incidents."""
-#     # No historical path needed for RCI plan
-#     pass
+async def infer_rci_plan_from_historical_data(state: RciPlanState) -> RciPlanState:
+    """Draft an RCI plan directly from the event's own fields, grounded in
+    historical incidents when available — the low-confidence fallback when
+    no archetype confidently matched (see graph.py's routing). Populates
+    state.rci_plan_rephrased directly so format_result needs no changes.
+    """
+    try:
+        llm = await get_llm_client()
+    except Exception:
+        from src.llm.client import LLMClient
+        llm = LLMClient()
+
+    def _truncate(text: str | None, limit: int = 600) -> str:
+        if not text:
+            return ""
+        text = text.strip()
+        return text[:limit] + "…" if len(text) > limit else text
+
+    top_hits = (state.search_results or [])[:5]
+    incident_blocks: List[str] = []
+    for i, h in enumerate(top_hits, 1):
+        parts = [f"Incident {i}: {h.get('title', 'Untitled')}"]
+        if rc := _truncate(h.get("root_cause_summary")):
+            parts.append(f"  Root cause: {rc}")
+        if act := _truncate(h.get("actions_taken")):
+            parts.append(f"  Actions taken: {act}")
+        if capa := _truncate(h.get("capa_details")):
+            parts.append(f"  CAPA: {capa}")
+        incident_blocks.append("\n".join(parts))
+
+    history_text = "\n\n".join(incident_blocks) if incident_blocks else "No historical incidents found."
+    tw_fields_str = "\n".join(f"- {k}: {v}" for k, v in state.trackwise_fields.items() if v)
+
+    registry = get_prompt_registry()
+    prompt = registry.get("rci_plan/infer_rci_plan").format(
+        event_type=state.event_type,
+        trackwise_fields=tw_fields_str,
+        history_text=history_text,
+    )
+
+    try:
+        result = await llm.chat(prompt)
+        sections = json.loads(result.strip())
+        if not isinstance(sections, list):
+            raise ValueError("Expected a JSON array")
+    except Exception:
+        logger.exception("Failed to infer RCI plan from historical data")
+        sections = []
+
+    # Normalize structure — same shape rephrase_rci_plan already produces,
+    # so format_result (which reads rci_plan_rephrased first) needs no changes.
+    state.rci_plan_rephrased = []
+    for sec in sections:
+        title = sec.get("title", "Section")
+        correlation = sec.get("correlation")
+        tasks = []
+        for t in sec.get("tasks", []):
+            if isinstance(t, dict):
+                tasks.append({"description": t.get("description", "")})
+            elif isinstance(t, str):
+                tasks.append({"description": t})
+            else:
+                tasks.append({"description": str(t)})
+        state.rci_plan_rephrased.append({
+            "title": title,
+            "correlation": correlation,
+            "tasks": tasks
+        })
+
+    logger.info(f"Inferred {len(state.rci_plan_rephrased)} RCI plan sections from historical data")
+    return state
