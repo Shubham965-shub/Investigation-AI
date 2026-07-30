@@ -285,15 +285,18 @@ async def get_action_center_summary(
     overdue_near = sum(1 for i in overdue if -30 <= (i["days_until_due"] or 0))
     overdue_far = len(overdue) - overdue_near
 
+    # Order: Overdue, Delay, Unassigned, On Track (per the user, 2026-07-30) —
+    # most urgent first, not the original Unassigned/On Track/Delay/Overdue
+    # grouping.
     status_cards = [
+        StatusCard(key="overdue", label="Overdue", count=len(overdue),
+                    rows=[["1-30 days overdue", overdue_near], [">30 days overdue", overdue_far]]),
+        StatusCard(key="delay", label="Delay", count=len(delay),
+                    rows=_split(delay, "days_until_due", "1-10 days", "11-15 days", 10)),
         StatusCard(key="unassigned", label="Unassigned", count=len(unassigned),
                     rows=_split(unassigned, "days_since_opened", "1-3 days", "4-7 days", 3)),
         StatusCard(key="on-track", label="On Track", count=len(on_track),
                     rows=_split(on_track, "days_until_due", "16-18 days", "19-20 days", 18)),
-        StatusCard(key="delay", label="Delay", count=len(delay),
-                    rows=_split(delay, "days_until_due", "1-10 days", "11-15 days", 10)),
-        StatusCard(key="overdue", label="Overdue", count=len(overdue),
-                    rows=[["1-30 days overdue", overdue_near], [">30 days overdue", overdue_far]]),
     ]
 
     # ── Severity buckets (6-card filtered/drill-down view) ────────────

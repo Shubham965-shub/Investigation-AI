@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ValidationError
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class DeviationTrackwiseFields(BaseModel):
@@ -112,6 +112,146 @@ class MarketComplaintTrackwiseFields(BaseModel):
         populate_by_name = True
 
 
+class RciReportDeviationTrackwiseFields(ExtendedDeviationTrackwiseFields):
+    """Additional fields RCI Report generation needs on top of what RCI Plan needs.
+
+    Everything here is Optional: rci_report_db_schema_findings.md confirmed several
+    of these (risk_analysis, capa_details, capa_effectiveness) are empty even on a
+    fully-complete real report, so treating them as required would hard-reject real
+    production records the way validate_trackwise_fields' empty-string check does
+    for required fields.
+    """
+    sub_area: Optional[str] = Field(None, alias="Sub Area")
+
+    # 3-tier root-cause taxonomy confirmed live (broad_category -> category ->
+    # root_cause_sub_category). root_cause_category is NOT modeled: confirmed empty
+    # across all 7,161 sample rows in rci_report_db_schema_findings.md — dead column.
+    broad_category: Optional[str] = Field(None, alias="Broad Category")
+    category: Optional[str] = Field(None, alias="Category")
+    root_cause_sub_category: Optional[str] = Field(None, alias="Root Cause Sub Category")
+
+    # Three overlapping severity fields exist live; criticality is the only one
+    # confirmed populated on the one fully-complete example record — see
+    # src/agents/rci_report/GAPS.md.
+    classification: Optional[str] = Field(None, alias="Classification")
+    criticality: Optional[str] = Field(None, alias="Criticality")
+    final_deviation_classification: Optional[str] = Field(None, alias="Final Deviation Classification")
+
+    # root_cause_conclusion and impact_details are typed `list` on
+    # ExtendedDeviationTrackwiseFields (see immediate_actions above), but the live DB
+    # confirms both are plain narrative TEXT columns (root_cause_conclusion in
+    # particular is one blob spanning root cause + impact + risk + remedial action
+    # concatenated) — redeclared here as Optional[str] to match reality.
+    root_cause_conclusion: Optional[str] = Field(None, alias="Root Cause Conclusion")
+    impact_details: Optional[str] = Field(None, alias="Impact Details")
+    # Carries a raw TrackWise audit-log prefix baked into the value, e.g.
+    # "10/31/2025 10:02 PM (GMT+5:30) added by R Anand (PID-008030): <text>" — strip
+    # via text_cleaning.strip_audit_log_prefix() before use, never read raw.
+    correction_or_remedial_action: Optional[str] = Field(None, alias="Correction or Remedial Action")
+
+    # Confirmed empty in practice for a fully-complete example report. Captured here
+    # in case a future TrackWise change populates them, but generation logic must
+    # never depend on their presence — Risk Assessment and CAPA Effectiveness Check
+    # Plan are synthesized from upstream evidence, never field-extracted.
+    risk_analysis: Optional[str] = Field(None, alias="Risk Analysis")
+    capa_details: Optional[str] = Field(None, alias="CAPA Details")
+    capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
+
+    capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    # DB: text[] — supports multiple markets/customers per CAPA extrapolation.
+    # Overrides ExtendedDeviationTrackwiseFields' related_market/related_customer,
+    # which are typed plain `str` there; that's a separate, pre-existing typing gap
+    # on the base class, out of scope here (see GAPS.md).
+    related_market: List[str] = Field(default_factory=list, alias="Related Market")
+    related_customer: List[str] = Field(default_factory=list, alias="Related Customer")
+
+    market: Optional[str] = Field(None, alias="Market")
+    time_elapsed: Optional[str] = Field(None, alias="Time Elapsed")
+    closure_days: Optional[str] = Field(None, alias="Closure Days")
+
+    class Config:
+        populate_by_name = True
+
+
+class RciReportOOSTrackwiseFields(OOSTrackwiseFields):
+    """Additional fields RCI Report generation needs for OOS/OOT events."""
+    sub_area: Optional[str] = Field(None, alias="Sub Area")
+    broad_category: Optional[str] = Field(None, alias="Broad Category")
+    category: Optional[str] = Field(None, alias="Category")
+    root_cause_sub_category: Optional[str] = Field(None, alias="Root Cause Sub Category")
+    classification: Optional[str] = Field(None, alias="Classification")
+    criticality: Optional[str] = Field(None, alias="Criticality")
+    final_deviation_classification: Optional[str] = Field(None, alias="Final Deviation Classification")
+    root_cause_conclusion: Optional[str] = Field(None, alias="Root Cause Conclusion")
+    impact_details: Optional[str] = Field(None, alias="Impact Details")
+    correction_or_remedial_action: Optional[str] = Field(None, alias="Correction or Remedial Action")
+    risk_analysis: Optional[str] = Field(None, alias="Risk Analysis")
+    capa_details: Optional[str] = Field(None, alias="CAPA Details")
+    capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
+    capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    related_market: List[str] = Field(default_factory=list, alias="Related Market")
+    related_customer: List[str] = Field(default_factory=list, alias="Related Customer")
+    market: Optional[str] = Field(None, alias="Market")
+    time_elapsed: Optional[str] = Field(None, alias="Time Elapsed")
+    closure_days: Optional[str] = Field(None, alias="Closure Days")
+
+    # OOS/OOT-specific fields not covered by the base OOSTrackwiseFields.
+    oos_type: Optional[str] = Field(None, alias="OOS Type")
+    oot_type: Optional[str] = Field(None, alias="OOT Type")
+    causal_factor: Optional[str] = Field(None, alias="Causal Factor")
+    repeat_occurrence: Optional[bool] = Field(None, alias="Repeat Occurrence")
+    identified_root_cause: Optional[str] = Field(None, alias="Identified Root Cause")
+    # Confirmed: no TrackWise field on Immediate Action for OOS/OOT — expect this to
+    # arrive via RciReportGenerationRequest.manual_entries instead, never TrackWise.
+    immediate_actions: Optional[str] = Field(None, alias="Immediate Actions")
+
+    class Config:
+        populate_by_name = True
+
+
+class RciReportMarketComplaintTrackwiseFields(MarketComplaintTrackwiseFields):
+    """Additional fields RCI Report generation needs for Market Complaint events."""
+    sub_area: Optional[str] = Field(None, alias="Sub Area")
+    broad_category: Optional[str] = Field(None, alias="Broad Category")
+    category: Optional[str] = Field(None, alias="Category")
+    root_cause_sub_category: Optional[str] = Field(None, alias="Root Cause Sub Category")
+    classification: Optional[str] = Field(None, alias="Classification")
+    criticality: Optional[str] = Field(None, alias="Criticality")
+    final_deviation_classification: Optional[str] = Field(None, alias="Final Deviation Classification")
+    root_cause_conclusion: Optional[str] = Field(None, alias="Root Cause Conclusion")
+    impact_details: Optional[str] = Field(None, alias="Impact Details")
+    correction_or_remedial_action: Optional[str] = Field(None, alias="Correction or Remedial Action")
+    risk_analysis: Optional[str] = Field(None, alias="Risk Analysis")
+    capa_details: Optional[str] = Field(None, alias="CAPA Details")
+    capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
+    capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    related_market: List[str] = Field(default_factory=list, alias="Related Market")
+    related_customer: List[str] = Field(default_factory=list, alias="Related Customer")
+    market: Optional[str] = Field(None, alias="Market")
+    time_elapsed: Optional[str] = Field(None, alias="Time Elapsed")
+    closure_days: Optional[str] = Field(None, alias="Closure Days")
+
+    # Market Complaint-specific fields. Several have no TrackWise field at all
+    # (confirmed in rci_report_trackwise_fields.md) — expect these via
+    # RciReportGenerationRequest.manual_entries, never assume TrackWise populates them.
+    complaint_related_to: Optional[str] = Field(None, alias="Complaint Related To")   # no TW field
+    primary_defect: Optional[str] = Field(None, alias="Primary Defect")               # no TW field
+    nature_of_complaint: Optional[str] = Field(None, alias="Nature of Complaint")     # no TW field
+    reserve_sample_observations: Optional[str] = Field(None, alias="Reserve Sample Observations")
+    stability_review_comments: Optional[str] = Field(None, alias="Stability Review Comments")
+    counterfeiting_details: Optional[str] = Field(None, alias="Counterfeiting Details")
+    explanation_reg_notification: Optional[str] = Field(None, alias="Explanation - Reg. Notification")
+    rationale_for_recall_decision: Optional[str] = Field(None, alias="Rationale for Recall decision")
+    medical_investigation_summary: Optional[str] = Field(None, alias="Medical Investigation Summary")
+    medical_impact_analysis: Optional[str] = Field(None, alias="Medical Impact Analysis")
+    health_hazard_evaluation: Optional[str] = Field(None, alias="Health Hazard Evaluation")
+    impact_on_other_batches: Optional[str] = Field(None, alias="Impact on Other Batches")
+    impact_justification: Optional[str] = Field(None, alias="Impact Justification")
+
+    class Config:
+        populate_by_name = True
+
+
 class ArchetypeInfo(BaseModel):
     id: Optional[int]
     name: str
@@ -130,14 +270,20 @@ def validate_trackwise_fields(
     event_type_lower = event_type.lower().strip()
 
     if event_type_lower == "deviation":
-        if event_functionality == "rci_plan":
+        if event_functionality == "rci_report":
+            schema = RciReportDeviationTrackwiseFields
+        elif event_functionality == "rci_plan":
             schema = ExtendedDeviationTrackwiseFields
         else:
             schema = DeviationTrackwiseFields
     elif event_type_lower in ["oos", "oot", "oos/oot"]:
-        schema = OOSTrackwiseFields
+        schema = RciReportOOSTrackwiseFields if event_functionality == "rci_report" else OOSTrackwiseFields
     elif event_type_lower == "market complaint":
-        schema = MarketComplaintTrackwiseFields
+        schema = (
+            RciReportMarketComplaintTrackwiseFields
+            if event_functionality == "rci_report"
+            else MarketComplaintTrackwiseFields
+        )
     else:
         raise ValueError(
             f"Invalid event_type: {event_type}. "

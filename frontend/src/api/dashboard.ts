@@ -54,6 +54,17 @@ export function getProblemStatementRecord(
   return getRecordOrNull<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`);
 }
 
+export interface SimilarInvestigation {
+  deviation_id: number;
+  title: string;
+  status: "Open" | "Closed" | "Cancelled" | "Unknown";
+  relevance_score: number;
+}
+
+export function getSimilarInvestigations(recordId: string): Promise<SimilarInvestigation[]> {
+  return apiGet<SimilarInvestigation[]>(`/problem-statement/${recordId}/historic`);
+}
+
 // ── Evidence collection ──────────────────────────────────────────────────
 
 export interface EvidenceItem {

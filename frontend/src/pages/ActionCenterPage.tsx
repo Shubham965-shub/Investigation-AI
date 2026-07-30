@@ -3,7 +3,7 @@ import { StatusChart } from "../components/StatusChart";
 import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ApiError } from "../api/client";
-import { getActionCenterSummary, type ActionCenterSummaryResponse, type StatusCardResponse } from "../api/dashboard";
+import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
 import iconOnTrack from "../assets/icons/status-on-track.svg";
 import iconDelay from "../assets/icons/status-delay.svg";
@@ -45,6 +45,57 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   on_track: { status: "in-progress", label: "In Progress" },
   overdue: { status: "overdue", label: "Overdue" },
 };
+
+// Every Investigation Details column except "Investigation" itself is
+// sortable — this list drives both the clickable headers and the sort logic.
+type SortColumn = "event_type" | "investigator" | "progress" | "start_date" | "due_date" | "status";
+
+const SORTABLE_COLUMNS: { key: SortColumn; label: string }[] = [
+  { key: "event_type", label: "Event Type" },
+  { key: "investigator", label: "Investigator" },
+  { key: "progress", label: "Progress" },
+  { key: "start_date", label: "Start Date" },
+  { key: "due_date", label: "Due Date" },
+  { key: "status", label: "Status" },
+];
+
+// start_date/due_date are pre-formatted display strings ("29 Jul 2026"), not
+// ISO — plain string comparison would sort by month name alphabetically
+// (Apr, Aug, Dec, Feb...), so parse to a timestamp for real chronological
+// sorting instead.
+function parseDisplayDateMs(value: string | null): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function getSortValue(inv: InvestigationRowResponse, column: SortColumn): string | number | null {
+  switch (column) {
+    case "event_type":
+      return inv.event_type;
+    case "investigator":
+      return inv.investigator;
+    case "progress":
+      return inv.total_stages ? inv.stage / inv.total_stages : 0;
+    case "start_date":
+      return parseDisplayDateMs(inv.start_date);
+    case "due_date":
+      return parseDisplayDateMs(inv.due_date);
+    case "status":
+      return inv.is_cancelled ? "Cancelled" : (BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned).label;
+  }
+}
+
+// Nulls (no investigator/date yet) always sort to the end regardless of
+// direction — flipping them with the rest of the comparison on "desc" would
+// put blanks first, which reads as broken rather than sorted.
+function compareForSort(a: string | number | null, b: string | number | null, direction: "asc" | "desc"): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  const cmp = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
+  return direction === "asc" ? cmp : -cmp;
+}
 
 // Supervisor variant of the Action Center (see project memory: Action Center
 // has CXO/Supervisor/Investigator variants — CXO is on hold, Investigator
@@ -152,6 +203,8 @@ export function ActionCenterPage() {
   // into an actual "start_date_from" date at fetch time.
   const [startPreset, setStartPreset] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     let cancelled = false;
@@ -208,12 +261,27 @@ export function ActionCenterPage() {
       const q = searchQuery.trim().toLowerCase();
       return inv.id.toLowerCase().includes(q) || inv.title.toLowerCase().includes(q);
     });
+  const sortedInvestigations = sortColumn
+    ? [...visibleInvestigations].sort((a, b) =>
+        compareForSort(getSortValue(a, sortColumn), getSortValue(b, sortColumn), sortDirection)
+      )
+    : visibleInvestigations;
   const statusCards = activeFilter ? summary.severity_cards : summary.status_cards;
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
-  const totalPages = Math.max(1, Math.ceil(visibleInvestigations.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedInvestigations.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pagedInvestigations = visibleInvestigations.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pagedInvestigations = sortedInvestigations.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  function handleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+    setPage(1);
+  }
 
   function setFilter(label: string) {
     setActiveFilter((prev) => (prev === label ? null : label));
@@ -408,12 +476,18 @@ export function ActionCenterPage() {
             <thead>
               <tr>
                 <th>Investigation</th>
-                <th>Event Type</th>
-                <th>Investigator</th>
-                <th>Progress</th>
-                <th>Start Date</th>
-                <th>Due Date</th>
-                <th>Status</th>
+                {SORTABLE_COLUMNS.map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                  >
+                    {col.label}
+                    {sortColumn === col.key && (
+                      <span style={{ marginLeft: 4, fontSize: 10 }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                    )}
+                  </th>
+                ))}
                 <th />
               </tr>
             </thead>

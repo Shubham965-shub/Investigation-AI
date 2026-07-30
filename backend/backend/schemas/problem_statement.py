@@ -21,6 +21,17 @@ class ProblemStatementGenerateResponse(BaseModel):
     problem_statement: str
 
 
+class SimilarInvestigation(BaseModel):
+    """A historic investigation this one is based on/similar to, ranked by
+    cosine similarity over ds's precomputed description embeddings
+    (t_deviations_vector_test)."""
+
+    deviation_id: int
+    title: str
+    status: Literal["Open", "Closed", "Cancelled", "Unknown"]
+    relevance_score: float
+
+
 class ProblemStatementRecord(BaseModel):
     """A real investigation record's Trackwise fields, hydrated from the STAR
     schema. problem_statement is None until one has been generated and

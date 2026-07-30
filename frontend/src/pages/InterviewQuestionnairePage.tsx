@@ -13,7 +13,6 @@ interface ChecklistItem {
 }
 import checkIcon from "../assets/icons/interview-checkbox.svg";
 import addPlusIcon from "../assets/icons/interview-add-plus.svg";
-import chatbotFab from "../assets/icons/chatbot-fab.svg";
 import "./RecordModulePage.css";
 
 export function InterviewQuestionnairePage() {
@@ -203,27 +202,6 @@ export function InterviewQuestionnairePage() {
           onConfirm={handleAgreeAndCopy}
         />
       )}
-
-      <button
-        type="button"
-        aria-label="Open assistant chat"
-        style={{
-          position: "fixed",
-          right: 24,
-          bottom: 24,
-          width: 56,
-          height: 56,
-          borderRadius: "50%",
-          background: "var(--color-primary)",
-          border: "none",
-          boxShadow: "0 10px 15px rgba(0,0,0,0.15)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <img src={chatbotFab} alt="" width={24} height={24} />
-      </button>
     </div>
   );
 }
