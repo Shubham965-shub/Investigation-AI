@@ -308,7 +308,7 @@ async def _process_investigation(
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Report what would be generated without calling DS or writing to the DB")
-    parser.add_argument("--concurrency", type=int, default=3, help="Investigations processed in parallel (default 3)")
+    parser.add_argument("--concurrency", type=int, default=15, help="Investigations processed in parallel (default 3)")
     parser.add_argument("--limit", type=int, default=None, help="Only consider the first N investigations (for testing)")
     args = parser.parse_args()
 

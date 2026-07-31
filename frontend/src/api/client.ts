@@ -59,3 +59,22 @@ export function apiPostForm<T>(path: string, formData: FormData): Promise<T> {
 export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path, { method: "GET" });
 }
+
+/** For binary downloads (e.g. the RCI Plan .docx export) — bypasses
+ * request<T>'s .json() parsing, which would throw on a real file body. */
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    let detail: unknown;
+    try {
+      detail = (await response.json()).detail;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, detail);
+  }
+  return response.blob();
+}

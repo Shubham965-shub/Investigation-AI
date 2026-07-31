@@ -53,6 +53,17 @@ function formatSiteLabel(site: string): string {
   return SITE_FILTER_LABEL_OVERRIDES[site] ?? site;
 }
 
+// Matches the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly —
+// sent/received as a plain investigator= value, same as a real name, just
+// matched server-side against a null/blank investigator instead of an
+// equality check. Only appears in filter_options.investigators when at
+// least one investigation in view actually has none.
+const UNASSIGNED_INVESTIGATOR_FILTER = "__unassigned__";
+
+function formatInvestigatorLabel(investigator: string): string {
+  return investigator === UNASSIGNED_INVESTIGATOR_FILTER ? "Unassigned" : investigator;
+}
+
 // Every Investigation Details column except "Investigation" itself is
 // sortable — this list drives both the clickable headers and the sort logic.
 type SortColumn = "event_type" | "investigator" | "progress" | "start_date" | "due_date" | "status";
@@ -437,6 +448,7 @@ export function ActionCenterPage() {
               }}
               defaultLabel="All Investigators"
               options={summary.filter_options.investigators}
+              formatOption={formatInvestigatorLabel}
             />
             <FilterSelect
               value={startPreset}

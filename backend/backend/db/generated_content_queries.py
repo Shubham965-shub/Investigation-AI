@@ -16,11 +16,25 @@ problem isn't silently swallowed.
 """
 from __future__ import annotations
 
+import datetime
 from typing import Any, Dict, List, Optional
 
 import asyncpg
 
 from backend.clients.db_client import get_pool
+
+
+def _parse_date(value: Any) -> Optional[datetime.date]:
+    """investigation_rci_sections.due_date is a real `date` column — asyncpg
+    requires an actual datetime.date object for it, not the "YYYY-MM-DD"
+    string the frontend's <input type="date"> (and JSON generally) sends;
+    passing the raw string through fails with "'str' object has no
+    attribute 'toordinal'" (confirmed live, 2026-07-31)."""
+    if not value:
+        return None
+    if isinstance(value, datetime.date):
+        return value
+    return datetime.date.fromisoformat(value)
 
 
 async def fetch_problem_statement(deviation_id: int) -> Optional[str]:
@@ -198,7 +212,7 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                     deviation_id,
                     section["title"],
                     section.get("correlation"),
-                    section.get("due_date"),
+                    _parse_date(section.get("due_date")),
                     section.get("assignee"),
                     i,
                 )

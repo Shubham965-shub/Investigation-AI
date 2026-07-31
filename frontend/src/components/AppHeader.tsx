@@ -1,17 +1,25 @@
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import logo from "../assets/icons/logo.png";
 import badge from "../assets/icons/badge.png";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
 import headerIcon2 from "../assets/icons/header-icon-2.svg";
+import headerIconInfo from "../assets/icons/header-icon-info.svg";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
+import { InvestigationStatusInfo } from "./InvestigationStatusInfo";
 
 export function AppHeader() {
   const { theme, toggleTheme } = useTheme();
   const { username, logout } = useAuth();
   const { isPanelOpen } = usePanelState();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  // Action Center-only — per the user (2026-07-31), this explains that
+  // page's own status-card thresholds, so it doesn't make sense on the
+  // record module pages or Analytics.
+  const isActionCenter = useLocation().pathname === "/";
 
   return (
     <header
@@ -46,6 +54,45 @@ export function AppHeader() {
         <img src={badge} alt="" style={{ height: 42 }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {isActionCenter && (
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              aria-label="Investigation status thresholds"
+              onClick={() => setInfoOpen((prev) => !prev)}
+              style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <img src={headerIconInfo} alt="" width={20} height={20} style={{ filter: theme === "dark" ? "invert(1)" : "none" }} />
+            </button>
+
+            {infoOpen && (
+              <>
+                <div onClick={() => setInfoOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 10 }} />
+                <div
+                  style={{
+                    position: "absolute",
+                    // Anchored to the button's right edge (like the account
+                    // menu panel below) so it opens leftward into the header,
+                    // not rightward off the edge of a 40px-wide wrapper —
+                    // that was pushing the whole page wider (per the user,
+                    // 2026-07-31).
+                    right: 0,
+                    top: 48,
+                    background: "var(--color-surface)",
+                    border: "1px solid var(--color-card-border)",
+                    borderRadius: "var(--radius-card)",
+                    boxShadow: "0 10px 15px rgba(0,0,0,0.15)",
+                    padding: 16,
+                    zIndex: 20,
+                  }}
+                >
+                  <InvestigationStatusInfo />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           aria-label="Toggle dark mode"

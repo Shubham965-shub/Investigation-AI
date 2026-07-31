@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 
 from backend.clients.ds_client import ds_post, get_client
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
@@ -16,6 +17,7 @@ from backend.schemas.rci_plan import (
     RciSectionItem,
     RciTemplateUploadResponse,
 )
+from backend.services.rci_plan_export import build_rci_plan_docx
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,46 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
             }
             for section in sections
         ],
+    )
+
+
+@router.get("/{record_id}/export")
+async def export_rci_plan(record_id: str) -> Response:
+    """The real .docx download for "Accept and Push to TW" (RciPlanPage.tsx)
+    — fills the company's actual RCI Plan template (assets/rci_plan_template.docx)
+    with this investigation's persisted sections, per the user (2026-07-31)."""
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    row = await fetch_investigation_row(deviation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    event_type = resolved_event_type(row["qe_type"])
+    if event_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    persisted = await fetch_rci_sections(deviation_id)
+    if not persisted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    extended = event_type == "Deviation"
+    trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
+    sections = [RciSectionItem(**section) for section in persisted]
+
+    docx_bytes, truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
+    if truncated:
+        logger.warning(
+            "RCI plan export for record_id=%s has %d section(s) beyond the template's %d-slot capacity — dropped",
+            record_id, truncated, len(sections) - truncated,
+        )
+
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="RCI_Plan_{record_id}.docx"'},
     )
 
 

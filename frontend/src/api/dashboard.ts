@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost, apiPostForm, apiPut } from "./client";
+import { ApiError, apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "./client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 
 export interface ArchetypeInfo {
@@ -203,6 +203,12 @@ export interface RciTemplateUploadResponse {
  * full replace, same pattern as evidence/questionnaire persistence. */
 export function updateRciPlanSections(recordId: string, sections: RciSectionItem[]): Promise<void> {
   return apiPut<void>(`/rci-plan/${recordId}`, sections);
+}
+
+/** The real .docx file — filled from the company's RCI Plan Word template
+ * (backend/assets/rci_plan_template.docx) with this investigation's data. */
+export function exportRciPlanDocx(recordId: string): Promise<Blob> {
+  return apiGetBlob(`/rci-plan/${recordId}/export`);
 }
 
 export function uploadRciTemplates(file: File): Promise<RciTemplateUploadResponse> {

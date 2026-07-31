@@ -30,6 +30,13 @@ _PENDING_ACTIONS_PER_ROW = 3
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
 
+# Sentinel the Investigator filter uses to mean "no investigator assigned" —
+# per the user (2026-07-31). Sent/received as a plain investigator= query
+# value, same as a real name, just matched against a null/blank investigator
+# instead of an equality check. Unlikely enough to collide with a real name
+# that no extra guarding is needed.
+_UNASSIGNED_INVESTIGATOR_FILTER = "__unassigned__"
+
 # Chart-only grouping (per the user, 2026-07-31): Problem Statement, Evidence
 # Collection and Interview Questionnaire — the first 3 of MODULE_LABELS —
 # are merged into a single bar, labelled with all 3 names stacked one below
@@ -216,11 +223,19 @@ async def get_action_center_summary(
             i for i in scoped_for_investigator_options if i["date_opened"] and i["date_opened"] <= start_date_to
         ]
 
+    investigator_options = sorted({i["investigator"] for i in scoped_for_investigator_options if i["investigator"]})
+    # "Unassigned" only appears when at least one investigation in the
+    # current (site/department/product/date-scoped) view actually has no
+    # investigator — same "only list what's genuinely present" rule the
+    # real names already follow (see comment above).
+    if any(not i["investigator"] for i in scoped_for_investigator_options):
+        investigator_options = [_UNASSIGNED_INVESTIGATOR_FILTER] + investigator_options
+
     filter_options = FilterOptions(
         sites=sorted({i["site"] for i in enriched if i["site"]}),
         departments=sorted({i["department"] for i in enriched if i["department"]}),
         products=sorted({i["product"] for i in enriched if i["product"]}),
-        investigators=sorted({i["investigator"] for i in scoped_for_investigator_options if i["investigator"]}),
+        investigators=investigator_options,
     )
 
     if site:
@@ -230,7 +245,10 @@ async def get_action_center_summary(
     if product:
         enriched = [i for i in enriched if i["product"] == product]
     if investigator:
-        enriched = [i for i in enriched if i["investigator"] == investigator]
+        if investigator == _UNASSIGNED_INVESTIGATOR_FILTER:
+            enriched = [i for i in enriched if not i["investigator"]]
+        else:
+            enriched = [i for i in enriched if i["investigator"] == investigator]
     if start_date_from is not None:
         enriched = [i for i in enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:
@@ -246,7 +264,10 @@ async def get_action_center_summary(
     if product:
         cancelled_enriched = [i for i in cancelled_enriched if i["product"] == product]
     if investigator:
-        cancelled_enriched = [i for i in cancelled_enriched if i["investigator"] == investigator]
+        if investigator == _UNASSIGNED_INVESTIGATOR_FILTER:
+            cancelled_enriched = [i for i in cancelled_enriched if not i["investigator"]]
+        else:
+            cancelled_enriched = [i for i in cancelled_enriched if i["investigator"] == investigator]
     if start_date_from is not None:
         cancelled_enriched = [i for i in cancelled_enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:

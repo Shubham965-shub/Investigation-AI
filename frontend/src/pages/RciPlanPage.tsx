@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  exportRciPlanDocx,
   generateRciPlan,
   getProblemStatementRecord,
   getRciPlanRecord,
@@ -19,10 +20,20 @@ import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkIcon from "../assets/icons/evidence-checkbox.svg";
 import "./RecordModulePage.css";
 
+// TCD (target completion date) must be a future date — per the user
+// (2026-07-31), the calendar picker should only allow dates after today, so
+// this is used as the <input type="date">'s min (exclusive of today itself).
+function tomorrowIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function RciPlanPage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
   const persistTimerRef = useRef<number | null>(null);
+  const minDueDate = useMemo(() => tomorrowIso(), []);
 
   const [recordLoading, setRecordLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -37,6 +48,7 @@ export function RciPlanPage() {
   const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushed, setPushed] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. RCI Plan depends on the
   // Problem Statement record existing (fetched here directly rather than
@@ -181,42 +193,39 @@ export function RciPlanPage() {
     persistSections(newSections);
   }
 
-  // Plain-text placeholder export — the exact document template/format the
-  // real push-to-Trackwise flow should produce hasn't been provided yet, so
-  // this exists to give the button a real, working download in the meantime.
-  // Swap the body of this function out once the format spec arrives.
-  function buildRciPlanDocument(): string {
-    const lines: string[] = [`RCI Plan — Record ${recordId}`, ""];
-    if (problemStatement) {
-      lines.push("Problem Statement", problemStatement, "");
-    }
-    (sections ?? []).forEach((section, index) => {
-      lines.push(`${index + 1}. ${section.title}`);
-      if (section.correlation) lines.push(section.correlation);
-      lines.push(`TCD: ${section.due_date ?? "—"}    Assigned To: ${section.assignee ?? "Unassigned"}`);
-      section.tasks.forEach((task) => lines.push(`  - ${task.description}`));
-      lines.push("");
-    });
-    return lines.join("\n");
+  function setSectionDueDate(index: number, dueDate: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, due_date: dueDate || null } : s));
+    setSections(newSections);
+    persistSections(newSections);
   }
 
-  function downloadRciPlanDocument() {
-    const blob = new Blob([buildRciPlanDocument()], { type: "text/plain;charset=utf-8" });
+  // Real .docx download — the backend fills the company's actual RCI Plan
+  // Word template (assets/rci_plan_template.docx) with this investigation's
+  // persisted sections and returns the file directly.
+  async function downloadRciPlanDocument() {
+    if (!recordId) return;
+    const blob = await exportRciPlanDocx(recordId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `RCI_Plan_${recordId}.txt`;
+    a.download = `RCI_Plan_${recordId}.docx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   }
 
-  function handleAcceptAndPush() {
+  async function handleAcceptAndPush() {
     setShowConfirm(false);
-    downloadRciPlanDocument();
-    setPushed(true);
-    setTimeout(() => setPushed(false), 1500);
+    setExportError(null);
+    try {
+      await downloadRciPlanDocument();
+      setPushed(true);
+      setTimeout(() => setPushed(false), 1500);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI plan document");
+    }
   }
 
   if (!sections) {
@@ -311,8 +320,16 @@ export function RciPlanPage() {
                     <p style={{ margin: "2px 0 0", fontSize: 15, color: "#585858" }}>{section.correlation}</p>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", fontSize: 16, color: "#585858" }}>
-                  TCD: {section.due_date ?? "—"}
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: 16, color: "#585858" }}>
+                  <span>TCD:</span>
+                  <input
+                    type="date"
+                    min={minDueDate}
+                    value={section.due_date ?? ""}
+                    onChange={(e) => setSectionDueDate(index, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ border: "none", background: "none", fontSize: 16, color: "#585858", padding: 0 }}
+                  />
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
                   <img src={personDefaultIcon} alt="" width={16} height={16} />
@@ -362,6 +379,8 @@ export function RciPlanPage() {
           );
         })}
       </div>
+
+      {exportError && <p className="error-banner">{exportError}</p>}
 
       <div className="footer-actions">
         <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10 }} onClick={() => setShowConfirm(true)}>
