@@ -94,7 +94,10 @@ def build_rci_plan_docx(
         block_start = 1 + i * 3  # header row is row 0; each section owns rows [block_start, block_start+2]
         row = tasks_table.rows[block_start]
         objective = section.title if not section.correlation else f"{section.title}\n{section.correlation}"
-        details = "\n".join(f"- {t.description}" for t in section.tasks)
+        # Unchecked tasks are excluded from the exported report — same
+        # "checked = keep it" convention Evidence Collection/Interview
+        # Questionnaire already use.
+        details = "\n".join(f"- {t.description}" for t in section.tasks if t.is_checked)
         _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], objective)
         _set_cell_text(row.cells[2], details)

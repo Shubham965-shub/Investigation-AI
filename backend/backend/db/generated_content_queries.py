@@ -102,14 +102,16 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
         section_ids = [r["id"] for r in section_rows]
         task_rows = await conn.fetch(
             """
-            SELECT section_id, description FROM investigation_rci_tasks
+            SELECT section_id, description, is_checked FROM investigation_rci_tasks
             WHERE section_id = ANY($1::int[]) ORDER BY sort_order, id
             """,
             section_ids,
         )
         tasks_by_section: Dict[int, List[Dict[str, Any]]] = {}
         for t in task_rows:
-            tasks_by_section.setdefault(t["section_id"], []).append({"description": t["description"]})
+            tasks_by_section.setdefault(t["section_id"], []).append(
+                {"description": t["description"], "is_checked": t["is_checked"]}
+            )
 
         return [
             {
@@ -219,6 +221,9 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                 tasks = section.get("tasks") or []
                 if tasks:
                     await conn.executemany(
-                        "INSERT INTO investigation_rci_tasks (section_id, description, sort_order) VALUES ($1, $2, $3)",
-                        [(section_id, task["description"], j) for j, task in enumerate(tasks)],
+                        """
+                        INSERT INTO investigation_rci_tasks (section_id, description, is_checked, sort_order)
+                        VALUES ($1, $2, $3, $4)
+                        """,
+                        [(section_id, task["description"], task.get("is_checked", True), j) for j, task in enumerate(tasks)],
                     )

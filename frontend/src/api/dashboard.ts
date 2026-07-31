@@ -153,6 +153,7 @@ export function updateQuestionnaireItems(recordId: string, items: InterviewQuest
 
 export interface RciTaskItem {
   description: string;
+  is_checked?: boolean;
 }
 
 export interface RciSectionItem {
