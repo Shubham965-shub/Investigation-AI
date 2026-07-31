@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ─────────────────────────────────────────
-FROM ghcr.io/astral-sh/uv:0.12-python3.12-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS builder
 
 WORKDIR /build
 

@@ -311,7 +311,7 @@ export function ActionCenterPage() {
     setPage(1);
   }
 
-  function toPreview(inv: (typeof summary.investigations)[number]): PreviewInvestigation {
+  function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
     return {
       id: inv.id,
       title: inv.title,

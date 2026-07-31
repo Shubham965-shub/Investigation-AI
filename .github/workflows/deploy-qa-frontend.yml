@@ -1,0 +1,53 @@
+# CD: frontend → Azure Static Web App investigationai-fe-qa-v2 (QA).
+#
+# Builds with the QA backend URL baked in (Vite env vars are build-time; the
+# committed frontend/.env keeps its localhost value for local dev — process
+# env wins). Deploys the prebuilt dist/ with the SWA deployment token.
+name: Deploy frontend to QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-qa-frontend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-qa-frontend
+  cancel-in-progress: false
+
+env:
+  VITE_API_BASE_URL: https://investigationai-be-qa.redtree-0b17d746.centralindia.azurecontainerapps.io/api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assert QA API URL baked into bundle
+        run: |
+          grep -rql "investigationai-be-qa" frontend/dist/assets
+          ! grep -rq "localhost:8000" frontend/dist/assets
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: frontend/dist
+          skip_app_build: true
+          output_location: ""

@@ -1,0 +1,2 @@
+# Deploy rollback snapshots (contain resource state, keep local)
+deploy/.qa-rollback-*.json

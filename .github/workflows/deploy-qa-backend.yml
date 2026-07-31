@@ -1,0 +1,57 @@
+# CD: backend → Azure Container App investigationai-be-qa (QA).
+#
+# Image build+push authenticates with ACR admin creds (ACR_USERNAME/PASSWORD
+# secrets). The container-app update authenticates via GitHub OIDC against the
+# user-assigned managed identity `investigationai-envinvestigationaiacrQA-LighthouseOidc`
+# (federated credential: this repo, main branch) — that identity must hold a
+# role on QA-Lighthouse (e.g. Contributor) for the update step to work.
+name: Deploy backend to QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-qa-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-qa-backend
+  cancel-in-progress: false
+
+env:
+  IMAGE: investigationaiacr.azurecr.io/investigationai-backend:${{ github.sha }}
+  RG: QA-Lighthouse
+  APP: investigationai-be-qa
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: investigationaiacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        run: |
+          docker build -t "$IMAGE" backend
+          docker push "$IMAGE"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update container app
+        run: az containerapp update -n "$APP" -g "$RG" --image "$IMAGE"
