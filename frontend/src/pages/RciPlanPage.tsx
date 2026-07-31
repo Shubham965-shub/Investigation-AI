@@ -200,6 +200,28 @@ export function RciPlanPage() {
     persistSections(newSections);
   }
 
+  function toggleTask(sectionIndex: number, taskIndex: number) {
+    if (!sections) return;
+    const newSections = sections.map((s, si) => {
+      if (si !== sectionIndex) return s;
+      const tasks = s.tasks.map((t, ti) => (ti === taskIndex ? { ...t, is_checked: !(t.is_checked ?? true) } : t));
+      return { ...s, tasks };
+    });
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  function setTaskDescription(sectionIndex: number, taskIndex: number, description: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, si) => {
+      if (si !== sectionIndex) return s;
+      const tasks = s.tasks.map((t, ti) => (ti === taskIndex ? { ...t, description } : t));
+      return { ...s, tasks };
+    });
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
   // Real .docx download — the backend fills the company's actual RCI Plan
   // Word template (assets/rci_plan_template.docx) with this investigation's
   // persisted sections and returns the file directly.
@@ -358,21 +380,35 @@ export function RciPlanPage() {
                     <span style={{ width: 160 }}>Description</span>
                     <span style={{ width: 160 }}>Assigned To</span>
                   </div>
-                  {section.tasks.map((task, taskIndex) => (
-                    <div
-                      key={taskIndex}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, width: 700 }}>
-                        <span style={{ background: "var(--color-primary)", border: "2px solid var(--color-primary)", borderRadius: 4, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <img src={checkIcon} alt="" width={12} height={12} />
-                        </span>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{task.description}</span>
+                  {section.tasks.map((task, taskIndex) => {
+                    const checked = task.is_checked ?? true;
+                    return (
+                      <div
+                        key={taskIndex}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, width: 700 }}>
+                          <button
+                            type="button"
+                            className={`checklist-checkbox ${checked ? "" : "unchecked"}`}
+                            onClick={() => toggleTask(index, taskIndex)}
+                            aria-label={checked ? "Uncheck task" : "Check task"}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {checked && <img src={checkIcon} alt="" width={12} height={12} />}
+                          </button>
+                          <input
+                            type="text"
+                            value={task.description}
+                            onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
+                            style={{ fontSize: 14, fontWeight: 600, color: "#374151", border: "none", background: "none", flex: 1, padding: 0 }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 14, color: "#374151", width: 160 }}>Description goes here...</span>
+                        <span style={{ fontSize: 14, color: "#374151", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
                       </div>
-                      <span style={{ fontSize: 14, color: "#374151", width: 160 }}>Description goes here...</span>
-                      <span style={{ fontSize: 14, color: "#374151", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

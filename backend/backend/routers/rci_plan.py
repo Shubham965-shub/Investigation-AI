@@ -43,7 +43,7 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
                     "correlation": section.correlation,
                     "due_date": None,
                     "assignee": None,
-                    "tasks": [{"description": task.description} for task in section.tasks],
+                    "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
                 }
                 for section in response.sections
             ],
@@ -88,7 +88,7 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
                 "correlation": section.correlation,
                 "due_date": section.due_date,
                 "assignee": section.assignee,
-                "tasks": [{"description": task.description} for task in section.tasks],
+                "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
             }
             for section in sections
         ],

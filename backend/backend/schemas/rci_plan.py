@@ -14,6 +14,7 @@ class RciPlanGenerateRequest(TrackwiseRequest):
 
 class RciTaskItem(BaseModel):
     description: str
+    is_checked: bool = True
 
 
 class RciSectionItem(BaseModel):
