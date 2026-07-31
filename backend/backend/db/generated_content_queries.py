@@ -128,6 +128,10 @@ async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]])
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # See replace_rci_sections' comment — same DELETE-then-INSERT
+            # race applies here (called on every checkbox toggle/add), so
+            # the same per-investigation advisory lock is needed.
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             await conn.execute("DELETE FROM investigation_evidence_items WHERE deviation_id = $1", deviation_id)
             if items:
                 await conn.executemany(
@@ -146,6 +150,10 @@ async def replace_questionnaire_items(deviation_id: int, items: List[Dict[str, A
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # See replace_rci_sections' comment — same DELETE-then-INSERT
+            # race applies here (called on every checkbox toggle/add), so
+            # the same per-investigation advisory lock is needed.
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             await conn.execute("DELETE FROM investigation_questionnaire_items WHERE deviation_id = $1", deviation_id)
             if items:
                 await conn.executemany(
@@ -164,6 +172,19 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Serializes concurrent replace calls for the same investigation
+            # (e.g. a double-clicked "Generate" plus a burst of assignee-edit
+            # PUT calls firing close together) — without this, two
+            # overlapping DELETE-then-INSERT sequences can each see "nothing
+            # to delete yet" (the other call hasn't committed its INSERT
+            # yet) and both insert their own full section set, silently
+            # multiplying every section instead of one cleanly replacing the
+            # other. Confirmed live: deviation_id 504419 ended up with 6
+            # sections x 8 duplicate copies each, with different assignee
+            # values frozen from different in-flight PUT calls. Transaction-
+            # scoped — auto-released on commit/rollback, so callers just
+            # block-and-wait rather than needing to release it explicitly.
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             # ON DELETE CASCADE on investigation_rci_tasks.section_id takes care of tasks.
             await conn.execute("DELETE FROM investigation_rci_sections WHERE deviation_id = $1", deviation_id)
             for i, section in enumerate(sections):

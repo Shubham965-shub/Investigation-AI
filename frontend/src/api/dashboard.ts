@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost, apiPostForm } from "./client";
+import { ApiError, apiGet, apiPost, apiPostForm, apiPut } from "./client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 
 export interface ArchetypeInfo {
@@ -101,6 +101,12 @@ export function getEvidenceRecord(
   return getRecordOrNull<EvidenceCollectionRecordResponse>(`/evidence/${recordId}`);
 }
 
+/** Persists the current check/uncheck state + any user-added items — full
+ * replace, same as generation's own persistence, just triggered by edits. */
+export function updateEvidenceItems(recordId: string, items: EvidenceItem[]): Promise<void> {
+  return apiPut<void>(`/evidence/${recordId}`, items);
+}
+
 // ── Interview questionnaire ───────────────────────────────────────────────
 
 export interface InterviewQuestion {
@@ -135,6 +141,12 @@ export function getQuestionnaireRecord(
   recordId: string
 ): Promise<QuestionnaireRecordResponse | null> {
   return getRecordOrNull<QuestionnaireRecordResponse>(`/questionnaire/${recordId}`);
+}
+
+/** Persists the current check/uncheck state + any user-added questions —
+ * full replace, same as generation's own persistence, just triggered by edits. */
+export function updateQuestionnaireItems(recordId: string, items: InterviewQuestion[]): Promise<void> {
+  return apiPut<void>(`/questionnaire/${recordId}`, items);
 }
 
 // ── RCI plan ──────────────────────────────────────────────────────────────
@@ -187,6 +199,12 @@ export interface RciTemplateUploadResponse {
   tasks_created: number;
 }
 
+/** Persists investigator-name edits (and any other section field changes) —
+ * full replace, same pattern as evidence/questionnaire persistence. */
+export function updateRciPlanSections(recordId: string, sections: RciSectionItem[]): Promise<void> {
+  return apiPut<void>(`/rci-plan/${recordId}`, sections);
+}
+
 export function uploadRciTemplates(file: File): Promise<RciTemplateUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -216,6 +234,8 @@ export interface PendingActionResponse {
   is_unassigned: boolean;
   criticality: string | null;
   action: string;
+  // Drives the panel's fixed two-row layout: row 1 = OOS, row 2 = Deviation.
+  event_type: string;
 }
 
 export interface InvestigationRowResponse {
@@ -252,7 +272,9 @@ export interface ActionCenterSummaryResponse {
   total_investigations: number;
   event_type_counts: EventTypeCount[];
   status_cards: StatusCardResponse[];
-  severity_cards: StatusCardResponse[];
+  // Same 4 cards as status_cards, scoped to just that event type — keyed by
+  // the same labels as event_type_counts[].label.
+  status_cards_by_event_type: Record<string, StatusCardResponse[]>;
   pending_actions: PendingActionResponse[];
   chart: ChartBarResponse[];
   investigations: InvestigationRowResponse[];

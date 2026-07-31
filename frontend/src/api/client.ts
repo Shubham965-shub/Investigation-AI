@@ -36,11 +36,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, detail);
   }
 
+  // 204 No Content has no body — calling .json() on it throws.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
 export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function apiPut<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: "PUT", body: JSON.stringify(body) });
 }
 
 export function apiPostForm<T>(path: string, formData: FormData): Promise<T> {

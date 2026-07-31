@@ -112,6 +112,26 @@ export const EVENT_TYPE_OPTIONS: Record<Module, EventType[]> = {
   "rci-plan": ["Deviation", "OOS", "OOT", "OOS/OOT", "Market Complaint"],
 };
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^\d{2}:\d{2}(:\d{2})?$/;
+
+/**
+ * Real DB values behind "date"/"time"-kind fields aren't always shaped like
+ * the native <input type="date"/"time"> pickers require — e.g. Deviation's
+ * observation_time is a free-text column (real values like "01:30hrs"), and
+ * Date Opened is a full timestamp ("2025-10-24T08:01:00"), not a bare date.
+ * Those native inputs silently blank out any value that doesn't match their
+ * strict format, hiding real DB text from the user. Fall back to a plain
+ * text input whenever the actual value isn't timestamp-shaped so it stays
+ * visible and editable exactly as entered; empty values still get the native
+ * picker for a normal blank-entry experience.
+ */
+export function nativeInputType(kind: FieldDef["kind"], rawValue: string): "date" | "time" | "text" {
+  if (kind === "date") return rawValue === "" || DATE_PATTERN.test(rawValue) ? "date" : "text";
+  if (kind === "time") return rawValue === "" || TIME_PATTERN.test(rawValue) ? "time" : "text";
+  return "text";
+}
+
 export function getFieldSet(module: Module, eventType: EventType): FieldDef[] {
   if (eventType === "Market Complaint") {
     return module === "problem-statement" ? MARKET_COMPLAINT_EXTENDED_FIELDS : MARKET_COMPLAINT_BASE_FIELDS;

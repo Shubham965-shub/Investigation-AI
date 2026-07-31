@@ -65,3 +65,21 @@ async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
         evidence=[EvidenceItem(**item) for item in persisted] if persisted else None,
         stage=stage_for(row["status"]),
     )
+
+
+@router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def update_evidence(record_id: str, items: list[EvidenceItem]) -> None:
+    """Persist the current check/uncheck state and any user-added items —
+    called by the frontend on every toggle/add so a refresh no longer
+    reverts to the last-generated state. Full replace, same as /collect's
+    own persistence, just triggered by user edits instead of generation.
+    """
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    await replace_evidence_items(
+        deviation_id,
+        [{"description": item.description, "is_checked": item.is_checked} for item in items],
+    )

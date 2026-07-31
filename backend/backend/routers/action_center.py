@@ -26,16 +26,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/action-center", tags=["Action Center"])
 
-_PENDING_ACTIONS_LIMIT = 6
+_PENDING_ACTIONS_PER_ROW = 3
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
 
-# The dashboard chart shows one extra bar beyond the 6 real MODULE_LABELS
-# (Figma node 1229:38395) — "IQ Rubrics" has no backing stage/table yet, so
-# it always renders at 0. Kept separate from MODULE_LABELS since that list
-# also drives the Investigation Details progress fraction ("X/6 steps"),
-# which does NOT include this extra category.
-_CHART_EXTRA_CATEGORIES = ["IQ Rubrics"]
+# Chart-only grouping (per the user, 2026-07-31): Problem Statement, Evidence
+# Collection and Interview Questionnaire — the first 3 of MODULE_LABELS —
+# are merged into a single bar, labelled with all 3 names stacked one below
+# the other (see StatusChart.tsx's "\n"-split rendering). MODULE_LABELS
+# itself is untouched — it still drives stage_for()/next_module_label() and
+# the Investigation Details "X/6 steps" progress fraction, which must keep
+# counting all 6 real modules individually.
+_CHART_MERGED_GROUP = ["Problem Statement", "Evidence Collection", "Interview Questionnaire"]
+_CHART_MERGED_LABEL = "\n".join(_CHART_MERGED_GROUP)
 
 # dim_event.module (Trackwise's own current-stage field, renamed from
 # `status` on 2026-07-27 — see project memory: star_schema) mapped to the
@@ -267,70 +270,78 @@ async def get_action_center_summary(
         for label in ordered_labels
     ]
 
-    # ── Status buckets (4-card unfiltered view) ───────────────────────
-    unassigned = [i for i in enriched if i["bucket"] == "unassigned"]
-    on_track = [i for i in enriched if i["bucket"] == "on_track"]
-    delay = [i for i in enriched if i["bucket"] == "delay"]
-    overdue = [i for i in enriched if i["bucket"] == "overdue"]
-
+    # ── Status buckets (4-card view) ──────────────────────────────────
     # Sub-row day bands and thresholds match Figma (node 1246:15617) exactly.
     def _split(items: List[Dict[str, Any]], key: str, low_label: str, high_label: str, threshold: int) -> List[List[object]]:
         low = sum(1 for i in items if (i[key] or 0) <= threshold)
         high = len(items) - low
         return [[low_label, low], [high_label, high]]
 
-    # Overdue's days_until_due is negative (more negative = further overdue),
-    # so the near/far bands are built explicitly rather than via _split to
-    # keep the near-band first, matching the other 3 cards' ascending order.
-    overdue_near = sum(1 for i in overdue if -30 <= (i["days_until_due"] or 0))
-    overdue_far = len(overdue) - overdue_near
+    def _build_status_cards(items: List[Dict[str, Any]]) -> List[StatusCard]:
+        unassigned = [i for i in items if i["bucket"] == "unassigned"]
+        on_track = [i for i in items if i["bucket"] == "on_track"]
+        delay = [i for i in items if i["bucket"] == "delay"]
+        overdue = [i for i in items if i["bucket"] == "overdue"]
 
-    # Order: Overdue, Delay, Unassigned, On Track (per the user, 2026-07-30) —
-    # most urgent first, not the original Unassigned/On Track/Delay/Overdue
-    # grouping.
-    status_cards = [
-        StatusCard(key="overdue", label="Overdue", count=len(overdue),
-                    rows=[["1-30 days overdue", overdue_near], [">30 days overdue", overdue_far]]),
-        StatusCard(key="delay", label="Delay", count=len(delay),
-                    rows=_split(delay, "days_until_due", "1-10 days", "11-15 days", 10)),
-        StatusCard(key="unassigned", label="Unassigned", count=len(unassigned),
-                    rows=_split(unassigned, "days_since_opened", "1-3 days", "4-7 days", 3)),
-        StatusCard(key="on-track", label="On Track", count=len(on_track),
-                    rows=_split(on_track, "days_until_due", "16-18 days", "19-20 days", 18)),
-    ]
+        # Overdue's days_until_due is negative (more negative = further
+        # overdue), so the near/far bands are built explicitly rather than
+        # via _split to keep the near-band first, matching the other 3
+        # cards' ascending order.
+        overdue_near = sum(1 for i in overdue if -30 <= (i["days_until_due"] or 0))
+        overdue_far = len(overdue) - overdue_near
 
-    # ── Severity buckets (6-card filtered/drill-down view) ────────────
-    # L1/L2 reuse Delay/On Track counts exactly; L3-L5 split Overdue by how
-    # many days past due — same placeholder-rule spirit as the 4-card view.
-    overdue_1_15 = [i for i in overdue if -15 <= (i["days_until_due"] or 0)]
-    overdue_16_30 = [i for i in overdue if -30 <= (i["days_until_due"] or 0) < -15]
-    overdue_30_plus = [i for i in overdue if (i["days_until_due"] or 0) < -30]
+        # Order: Overdue, Delay, Unassigned, On Track (per the user,
+        # 2026-07-30) — most urgent first, not the original Unassigned/On
+        # Track/Delay/Overdue grouping.
+        return [
+            StatusCard(key="overdue", label="Overdue", count=len(overdue),
+                        rows=[["1-30 days overdue", overdue_near], [">30 days overdue", overdue_far]]),
+            StatusCard(key="delay", label="Delay", count=len(delay),
+                        rows=_split(delay, "days_until_due", "1-10 days", "11-15 days", 10)),
+            StatusCard(key="unassigned", label="Unassigned", count=len(unassigned),
+                        rows=_split(unassigned, "days_since_opened", "1-3 days", "4-7 days", 3)),
+            StatusCard(key="on-track", label="On Track", count=len(on_track),
+                        rows=_split(on_track, "days_until_due", "16-18 days", "19-20 days", 18)),
+        ]
 
-    severity_cards = [
-        StatusCard(key="unassigned", label="Unassigned", count=len(unassigned),
-                    rows=_split(unassigned, "days_since_opened", "≤7 days", ">7 days", 7)),
-        StatusCard(key="l1", label="L1", count=len(delay),
-                    rows=_split(delay, "days_until_due", "0-3 days", "4-7 days", 3)),
-        StatusCard(key="l2", label="L2", count=len(on_track),
-                    rows=_split(on_track, "days_until_due", "8-20 days", ">20 days", 20)),
-        StatusCard(key="l3", label="L3", count=len(overdue_1_15), rows=[["1-15 days overdue", len(overdue_1_15)]]),
-        StatusCard(key="l4", label="L4", count=len(overdue_16_30), rows=[["16-30 days overdue", len(overdue_16_30)]]),
-        StatusCard(key="l5", label="L5", count=len(overdue_30_plus), rows=[[">30 days overdue", len(overdue_30_plus)]]),
-    ]
+    status_cards = _build_status_cards(enriched)
 
-    # ── Pending actions: unassigned or overdue, critical first, most
-    # urgent first within each group ──────────────────────────────────
-    # dim_event.criticality (backend engineer, 2026-07-29): "Critical" marks
-    # investigations that must surface ahead of everything else in this
-    # list, regardless of due date — matches the "Critical" badge already
-    # rendered in the frontend (ActionCenterPage.tsx).
-    candidates = [i for i in enriched if i["bucket"] in ("unassigned", "overdue")]
-    candidates.sort(
-        key=lambda i: (
-            0 if i["criticality"] == "Critical" else 1,
-            i["days_until_due"] if i["days_until_due"] is not None else 9999,
-        )
-    )
+    # Per the user (2026-07-31): clicking a Deviation/OOS/OOT/Market
+    # Complaint pill keeps showing these SAME 4 cards (not a different
+    # drill-down set) with counts filtered to just that event type — the
+    # frontend picks status_cards_by_event_type[label] instead of status_cards
+    # when a pill is active. Keyed by the same labels as event_type_counts.
+    status_cards_by_event_type: Dict[str, List[StatusCard]] = {
+        label: _build_status_cards([i for i in enriched if QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown") == label])
+        for label in ordered_labels
+    }
+
+    # ── Pending actions: fixed two-row layout (per the user, 2026-07-30) —
+    # row 1 = top overdue+critical OOS, row 2 = top overdue+critical
+    # Deviation (3 columns × 2 rows — see .ac-pending-grid CSS). Each row
+    # prioritizes overdue+Critical first (most overdue first); if fewer than
+    # _PENDING_ACTIONS_PER_ROW of those exist for that event type (per the
+    # user, 2026-07-31), the remaining slots are filled with other Critical
+    # rows of the same type that aren't overdue (soonest due first) rather
+    # than leaving the row sparse. Supersedes the prior unified
+    # unassigned-or-overdue/criticality-first sort — this panel is now
+    # scoped to exactly these two event types.
+    def _urgent_critical_overdue(qe_type: str) -> List[Dict[str, Any]]:
+        same_type_critical = [
+            i for i in enriched if i["qe_type"] == qe_type and i["criticality"] == "Critical"
+        ]
+        overdue_first = [i for i in same_type_critical if i["bucket"] == "overdue"]
+        overdue_first.sort(key=lambda i: i["days_until_due"] if i["days_until_due"] is not None else 9999)
+        remaining = _PENDING_ACTIONS_PER_ROW - len(overdue_first)
+        if remaining <= 0:
+            return overdue_first[:_PENDING_ACTIONS_PER_ROW]
+        fallback = [i for i in same_type_critical if i["bucket"] != "overdue"]
+        fallback.sort(key=lambda i: i["days_until_due"] if i["days_until_due"] is not None else 9999)
+        return overdue_first + fallback[:remaining]
+
+    row_1_oos = _urgent_critical_overdue("Out Of Specification")
+    row_2_deviation = _urgent_critical_overdue("Deviation")
+    candidates = row_1_oos + row_2_deviation
 
     def _pending_action_text(stage: int) -> str:
         next_label = next_module_label(stage)
@@ -347,20 +358,29 @@ async def get_action_center_summary(
             is_unassigned=i["bucket"] == "unassigned",
             criticality=i["criticality"],
             action=_pending_action_text(i["stage"]),
+            event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
         )
-        for i in candidates[:_PENDING_ACTIONS_LIMIT]
+        for i in candidates
     ]
 
     # ── Progress chart: one bar per module (dim_event.module), each stacked
     # by dim_event.module_risk_status — per the backend engineer (2026-07-28).
     # Cancelled investigations aren't a real module stage and are excluded
-    # entirely (see _CANCELLED_MODULE_VALUE / is_cancelled).
-    chart_labels = MODULE_LABELS + _CHART_EXTRA_CATEGORIES
+    # entirely (see _CANCELLED_MODULE_VALUE / is_cancelled). Problem
+    # Statement/Evidence Collection/Interview Questionnaire are merged into
+    # one bar (_CHART_MERGED_LABEL/_CHART_MERGED_GROUP above); the old
+    # always-0 "IQ Rubrics" placeholder bar is dropped entirely rather than
+    # merged in.
+    chart_labels = [_CHART_MERGED_LABEL] + [l for l in MODULE_LABELS if l not in _CHART_MERGED_GROUP]
     chart_counts: Dict[str, Dict[str, int]] = {
         label: {"on_track": 0, "at_risk": 0, "delayed": 0} for label in chart_labels
     }
     for inv in enriched:
         label = _MODULE_TEXT_TO_LABEL.get((inv["module"] or "").strip().lower())
+        if label is None:
+            continue
+        if label in _CHART_MERGED_GROUP:
+            label = _CHART_MERGED_LABEL
         if label not in chart_counts:
             continue
         risk_key = _MODULE_RISK_TO_KEY.get(inv["module_risk_status"], "on_track")
@@ -422,7 +442,7 @@ async def get_action_center_summary(
         total_investigations=total,
         event_type_counts=event_type_counts,
         status_cards=status_cards,
-        severity_cards=severity_cards,
+        status_cards_by_event_type=status_cards_by_event_type,
         pending_actions=pending_actions,
         chart=chart,
         investigations=investigations,

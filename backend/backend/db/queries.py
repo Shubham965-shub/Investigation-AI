@@ -16,6 +16,12 @@ SELECT
     ec.qe_type,
     e.module AS status,
     e.failure_type,
+    -- OOT's failure_type is 0% filled live (2026-07-31) — these 3 are what
+    -- OOT's "Failure Type" trackwise field is actually built from instead
+    -- (see field_mapping.py's _merge_root_cause_category).
+    e.root_cause_broad_category,
+    e.root_cause_category,
+    e.root_cause_sub_category,
     e.title,
     e.description,
     e.deviation_to,

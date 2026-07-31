@@ -1,7 +1,7 @@
 """Response shapes for the Action Center dashboard (GET /api/action-center/summary)."""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -27,6 +27,9 @@ class PendingAction(BaseModel):
     is_unassigned: bool
     criticality: Optional[str] = None
     action: str
+    # Drives the panel's fixed two-row layout: row 1 = top overdue+critical
+    # OOS, row 2 = top overdue+critical Deviation (see action_center.py).
+    event_type: str
 
 
 class InvestigationRow(BaseModel):
@@ -67,7 +70,12 @@ class ActionCenterSummary(BaseModel):
     total_investigations: int
     event_type_counts: List[EventTypeCount]
     status_cards: List[StatusCard]
-    severity_cards: List[StatusCard]
+    # Same 4 cards as status_cards, scoped to just that event type — per the
+    # user (2026-07-31), clicking a Deviation/OOS/OOT/Market Complaint pill
+    # keeps the same card set (not a different drill-down layout) with
+    # counts filtered to that type. Keyed by the same labels as
+    # event_type_counts (see action_center.py).
+    status_cards_by_event_type: Dict[str, List[StatusCard]]
     pending_actions: List[PendingAction]
     chart: List[ChartBar]
     investigations: List[InvestigationRow]

@@ -22,20 +22,13 @@ const STATUS_ICONS: Record<string, string> = {
   overdue: iconOverdue,
 };
 
-// Backend status_cards/severity_cards use finer-grained keys (l1-l5 for the
-// filtered/drill-down view) than the 4 CSS/icon variants that actually
-// exist — map each card key to the css class + icon it should reuse. See
-// src/routers/action_center.py for how these buckets are computed.
+// Maps each status card's backend key to the css class + icon it should
+// reuse. See src/routers/action_center.py for how these buckets are computed.
 const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
   unassigned: "unassigned",
   "on-track": "on-track",
   delay: "delay",
   overdue: "overdue",
-  l1: "delay",
-  l2: "on-track",
-  l3: "overdue",
-  l4: "overdue",
-  l5: "overdue",
 };
 
 // Real backend bucket -> the table/grid status-pill styling + label.
@@ -45,6 +38,20 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   on_track: { status: "in-progress", label: "In Progress" },
   overdue: { status: "overdue", label: "Overdue" },
 };
+
+// Display-only relabeling for the Sites filter dropdown — per the user
+// (2026-07-31), dim_location's real value "Oral Dosage Form" should show as
+// "KRSG" in the filter, without changing the underlying value sent to the
+// backend (site filtering still matches against the real DB text) or
+// anything else that reads it (e.g. the Investigation Details table's own
+// site column, if it's ever shown there).
+const SITE_FILTER_LABEL_OVERRIDES: Record<string, string> = {
+  "Oral Dosage Form": "KRSG",
+};
+
+function formatSiteLabel(site: string): string {
+  return SITE_FILTER_LABEL_OVERRIDES[site] ?? site;
+}
 
 // Every Investigation Details column except "Investigation" itself is
 // sortable — this list drives both the clickable headers and the sort logic.
@@ -259,14 +266,19 @@ export function ActionCenterPage() {
     .filter((inv) => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
-      return inv.id.toLowerCase().includes(q) || inv.title.toLowerCase().includes(q);
+      return (
+        inv.id.toLowerCase().includes(q) ||
+        inv.title.toLowerCase().includes(q) ||
+        (inv.investigator ?? "").toLowerCase().includes(q) ||
+        (inv.product ?? "").toLowerCase().includes(q)
+      );
     });
   const sortedInvestigations = sortColumn
     ? [...visibleInvestigations].sort((a, b) =>
         compareForSort(getSortValue(a, sortColumn), getSortValue(b, sortColumn), sortDirection)
       )
     : visibleInvestigations;
-  const statusCards = activeFilter ? summary.severity_cards : summary.status_cards;
+  const statusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
   const totalPages = Math.max(1, Math.ceil(sortedInvestigations.length / PAGE_SIZE));
@@ -328,26 +340,30 @@ export function ActionCenterPage() {
         </div>
       </section>
 
-      <div className={`ac-status-row ${activeFilter ? "severity" : ""}`}>
+      <div className="ac-status-row">
         {statusCards.map(renderStatusCard)}
       </div>
 
-      {!activeFilter && (
-        <div>
-          <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
-          <div className="ac-pending-grid">
+      <div>
+        <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
+        <div className="ac-pending-grid">
             {summary.pending_actions.map((action) => {
-              // Pending actions carry only a summary shape (no event_type/
-              // investigator/stage) — look up the matching full row from
-              // summary.investigations (same source list backend-side) to
-              // build the same PreviewInvestigation the table/grid rows use.
+              // Pending actions carry a summary shape (no investigator/stage)
+              // — look up the matching full row from summary.investigations
+              // (same source list backend-side) to build the same
+              // PreviewInvestigation the table/grid rows use.
               const fullInvestigation = summary.investigations.find((inv) => inv.id === action.id);
+              // Fixed two-row layout: row 1 = OOS, row 2 = Deviation (see
+              // action_center.py) — explicit gridRow so the split stays
+              // correct even when one side has fewer than 3 cards, rather
+              // than letting grid auto-placement slide the next group up.
+              const gridRow = action.event_type === "OOS" ? 1 : 2;
               return (
                 <div
                   className="ac-card"
                   key={action.id}
                   onClick={() => fullInvestigation && setPreviewInvestigation(toPreview(fullInvestigation))}
-                  style={{ cursor: fullInvestigation ? "pointer" : undefined }}
+                  style={{ cursor: fullInvestigation ? "pointer" : undefined, gridRow }}
                 >
                   <div className="ac-pending-card-header">
                     <span className="ac-pending-card-id">{action.id}</span>
@@ -372,14 +388,11 @@ export function ActionCenterPage() {
             )}
           </div>
         </div>
-      )}
 
-      {!activeFilter && (
-        <div className="ac-card">
-          <h2 className="ac-section-title" style={{ marginBottom: 16 }}>Status Of Open Investigations</h2>
-          <StatusChart data={chartData} />
-        </div>
-      )}
+      <div className="ac-card">
+        <h2 className="ac-section-title" style={{ marginBottom: 16 }}>Status Of Open Investigations</h2>
+        <StatusChart data={chartData} />
+      </div>
 
       <div className="ac-card">
         <div className="ac-details-header">
@@ -396,6 +409,7 @@ export function ActionCenterPage() {
               }}
               defaultLabel="All Sites"
               options={summary.filter_options.sites}
+              formatOption={formatSiteLabel}
             />
             <FilterSelect
               value={deptFilter}

@@ -68,3 +68,21 @@ async def get_questionnaire(record_id: str) -> QuestionnaireRecord:
         questions=[InterviewQuestion(**item) for item in persisted] if persisted else None,
         stage=stage_for(row["status"]),
     )
+
+
+@router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def update_questionnaire(record_id: str, items: list[InterviewQuestion]) -> None:
+    """Persist the current check/uncheck state and any user-added questions —
+    called by the frontend on every toggle/add so a refresh no longer
+    reverts to the last-generated state. Full replace, same as /generate's
+    own persistence, just triggered by user edits instead of generation.
+    """
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    await replace_questionnaire_items(
+        deviation_id,
+        [{"description": item.description, "is_checked": item.is_checked} for item in items],
+    )

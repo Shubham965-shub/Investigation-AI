@@ -78,6 +78,25 @@ def _val_joined(row: asyncpg.Record, col: str, sep: str = ", ") -> Any:
     return v
 
 
+def _merge_root_cause_category(row: asyncpg.Record) -> Optional[str]:
+    """OOT's failure_type column is 0% filled live (2398/2398 null as of
+    2026-07-31) — root_cause_sub_category/root_cause_category/
+    root_cause_broad_category are ~96% filled instead (2308/2398) and are
+    what OOT's "Failure Type" trackwise field should actually reflect, per
+    the user. OOS is the opposite (failure_type is 98.8% filled,
+    root_cause_broad_category is 0% filled for OOS specifically) so this is
+    OOT-only — see build_trackwise_fields. Joined narrowest-to-broadest per
+    the user; blank parts are skipped rather than leaving stray separators.
+    """
+    parts = [
+        _val(row, "root_cause_sub_category"),
+        _val(row, "root_cause_category"),
+        _val(row, "root_cause_broad_category"),
+    ]
+    joined = ", ".join(str(p) for p in parts if p)
+    return joined or None
+
+
 def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
     """Wraps a plain-text column into the single-element list
     ExtendedDeviationTrackwiseFields's list-typed fields expect.
@@ -146,7 +165,7 @@ def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = F
             "Stability Condition": _val(row, "stability_condition"),
             "Stability Protocol Number": _val(row, "stability_protocol_number"),
             "Labelled Storage Conditions": _val(row, "labelled_storage_conditions"),
-            "Failure type": _val(row, "failure_type"),
+            "Failure type": _merge_root_cause_category(row) if event_type == "OOT" else _val(row, "failure_type"),
             "Observation Time": _val(row, "observation_time"),
             "Product Type": _val(row, "product_type"),
             "STP Number": _val(row, "stp_number"),

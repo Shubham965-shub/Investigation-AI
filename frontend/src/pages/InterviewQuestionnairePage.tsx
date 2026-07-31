@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateQuestionnaire, getProblemStatementRecord, getQuestionnaireRecord } from "../api/dashboard";
+import { generateQuestionnaire, getProblemStatementRecord, getQuestionnaireRecord, updateQuestionnaireItems } from "../api/dashboard";
 import { ApiError } from "../api/client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
@@ -10,6 +10,11 @@ import { AddItemDialog } from "../components/AddItemDialog";
 interface ChecklistItem {
   description: string;
   checked: boolean;
+  // Client-side only — distinguishes AI-generated suggestions (whether just
+  // generated or loaded from a previously-persisted record) from items the
+  // user typed in via "Add Your Own Question" in this session. Drives the
+  // "can't deselect more than half the generated suggestions" cap below.
+  isUserAdded: boolean;
 }
 import checkIcon from "../assets/icons/interview-checkbox.svg";
 import addPlusIcon from "../assets/icons/interview-add-plus.svg";
@@ -31,6 +36,7 @@ export function InterviewQuestionnairePage() {
   const [saved, setSaved] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. Interview Questionnaire
   // depends on the Problem Statement record existing (fetched here directly
@@ -55,7 +61,7 @@ export function InterviewQuestionnairePage() {
           setEventType(qRecord.event_type);
           setTrackwiseFields(qRecord.trackwise_fields);
           if (qRecord.questions) {
-            setItems(qRecord.questions.map((q) => ({ description: q.description, checked: q.is_checked ?? true })));
+            setItems(qRecord.questions.map((q) => ({ description: q.description, checked: q.is_checked ?? true, isUserAdded: false })));
           }
         }
       } catch (err) {
@@ -77,7 +83,7 @@ export function InterviewQuestionnairePage() {
       .then((response) => {
         // Session-only display — the backend persists this (best-effort) as
         // part of the generate call.
-        setItems(response.questions.map((q) => ({ description: q.description, checked: true })));
+        setItems(response.questions.map((q) => ({ description: q.description, checked: true, isUserAdded: false })));
       })
       .catch((err) => {
         setError(err instanceof ApiError ? String(err.detail) : "Failed to generate questionnaire");
@@ -111,18 +117,45 @@ export function InterviewQuestionnairePage() {
     );
   }
 
-  // Session-only — no backend endpoint yet to persist individual
-  // toggle/add-item edits; a refresh reverts to the last generated/DB state.
-  function toggleItem(index: number) {
-    setItems((prev) => {
-      if (!prev) return prev;
-      return prev.map((item, i) => (i === index ? { ...item, checked: !item.checked } : item));
+  // Persisted best-effort on every toggle/add — a failed PUT is logged but
+  // never blocks the UI; the change stays reflected locally either way.
+  function persistItems(list: ChecklistItem[]) {
+    if (!recordId) return;
+    updateQuestionnaireItems(
+      recordId,
+      list.map((i) => ({ description: i.description, is_new: false, is_checked: i.checked }))
+    ).catch((err) => {
+      console.error("Failed to persist questionnaire items", err);
     });
+  }
+
+  // Deselection cap: the user can't uncheck more than half of the AI-
+  // generated suggestions (isUserAdded: false) — user-added questions are
+  // exempt in both directions, and re-checking a generated item is always
+  // allowed since it only lowers the deselected count.
+  function toggleItem(index: number) {
+    if (!items) return;
+    const item = items[index];
+    if (!item.isUserAdded && item.checked) {
+      const generatedCount = items.filter((i) => !i.isUserAdded).length;
+      const maxDeselectable = Math.floor(generatedCount / 2);
+      const deselectedCount = items.filter((i) => !i.isUserAdded && !i.checked).length;
+      if (deselectedCount + 1 > maxDeselectable) {
+        setLimitMessage(`You can't deselect more than half of the generated questions (max ${maxDeselectable}).`);
+        return;
+      }
+    }
+    setLimitMessage(null);
+    const newItems = items.map((it, i) => (i === index ? { ...it, checked: !it.checked } : it));
+    setItems(newItems);
+    persistItems(newItems);
   }
 
   function addItem(name: string) {
     setShowAddDialog(false);
-    setItems((prev) => [...(prev ?? []), { description: name, checked: true }]);
+    const newItems = [...(items ?? []), { description: name, checked: true, isUserAdded: true }];
+    setItems(newItems);
+    persistItems(newItems);
   }
 
   function handleAgreeAndCopy() {
@@ -150,6 +183,7 @@ export function InterviewQuestionnairePage() {
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
         {error && <p className="error-banner">{error}</p>}
+        {limitMessage && <p className="error-banner">{limitMessage}</p>}
 
         {items && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -166,7 +200,6 @@ export function InterviewQuestionnairePage() {
                   </button>
                   <span className="checklist-text">{item.description}</span>
                 </div>
-                <p className="checklist-desc" style={{ marginLeft: 32 }}>Desc</p>
               </div>
             ))}
           </div>

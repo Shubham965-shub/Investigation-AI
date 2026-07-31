@@ -72,7 +72,7 @@ class OOSTrackwiseFields(BaseModel):
     stability_condition: str = Field(..., alias="Stability Condition")
     stability_protocol_number: str = Field(..., alias="Stability Protocol Number")
     labelled_storage_conditions: str = Field(..., alias="Labelled Storage Conditions")
-    failure_type: str = Field(..., alias="Failure type")
+    failure_type: Optional[str] = Field(None, alias="Failure type")
     observation_time: str = Field(..., alias="Observation Time")
     product_type: str = Field(..., alias="Product Type")
     stp_number: str = Field(..., alias="STP Number")

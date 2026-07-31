@@ -94,9 +94,9 @@ export function InvestigationPreviewPanel({
         onClick={onClose}
         style={{
           // Covers the full viewport, including the header's own strip —
-          // the header's z-index (70) still paints over it once settled, so
-          // it never looks dimmed; this just avoids a plain white gap behind
-          // the header while it's still sliding down into place.
+          // the header sits below this backdrop while the panel is open
+          // (see AppHeader.tsx's zIndex 30 < this 40), so it dims along
+          // with the rest of the page instead of staying fully bright.
           position: "fixed",
           top: 0,
           left: 0,

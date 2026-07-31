@@ -24,7 +24,11 @@ export function AppHeader() {
         padding: "20px 32px 21px",
         position: isPanelOpen ? "sticky" : "relative",
         top: isPanelOpen ? 0 : undefined,
-        zIndex: isPanelOpen ? 70 : "auto",
+        // Below the preview panel's backdrop (zIndex 40, see
+        // InvestigationPreviewPanel.tsx) rather than above it — the backdrop
+        // should dim the whole page, header strip included, while the panel
+        // is open, not just the content below it.
+        zIndex: isPanelOpen ? 30 : "auto",
         // position can't be transitioned by CSS, so becoming sticky is
         // instant — this keyframe animation (plays fresh every time
         // isPanelOpen flips to true, since animation-name only (re)starts

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 // Stacked bar chart for "Status Of Open Investigations". Plain SVG, no
 // charting library. Each bar is clipped to a single rounded-top-only shape
 // so the stacked segments read as one continuous column with flush color
@@ -16,10 +18,14 @@ const COLORS = {
   delayed: "#dc2626",
 };
 
-const CHART_HEIGHT = 200;
-const BAR_WIDTH = 66;
-const SLOT_WIDTH = 176;
+const CHART_HEIGHT = 160;
+const BAR_WIDTH = 48;
+const MIN_SLOT_WIDTH = 140;
 const CORNER_RADIUS = 4;
+// A label may be "\n"-joined (e.g. merged Problem Statement/Evidence
+// Collection/Interview Questionnaire bar) — each line renders as its own
+// <tspan>, stacked this many px apart.
+const LABEL_LINE_HEIGHT = 14;
 
 function roundedTopRectPath(x: number, y: number, width: number, height: number, radius: number): string {
   const r = Math.min(radius, height, width / 2);
@@ -54,20 +60,41 @@ function niceTicks(maxValue: number, targetCount = 5): number[] {
 }
 
 export function StatusChart({ data }: { data: StatusChartDatum[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Measures the actual rendered width so the chart can fill it edge to
+  // edge — per the user (2026-07-31): bars keep a fixed physical width
+  // (BAR_WIDTH) and only the gap between them grows to fill the panel,
+  // rather than the whole chart (bars included) scaling up via the SVG's
+  // viewBox, which is what made it look oversized after the module bars
+  // were merged from 7 down to 4.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const rawMax = Math.max(4, ...data.map((d) => d.onTrack + d.atRisk + d.delayed));
   const yTicks = niceTicks(rawMax);
   const maxTotal = yTicks[yTicks.length - 1];
-  const plotWidth = data.length * SLOT_WIDTH;
+  const slotWidth = Math.max(MIN_SLOT_WIDTH, containerWidth > 0 ? containerWidth / data.length : 0);
+  const plotWidth = data.length * slotWidth;
   const scaleY = (value: number) => (value / maxTotal) * CHART_HEIGHT;
+  const maxLabelLines = Math.max(1, ...data.map((d) => d.label.split("\n").length));
+  const bottomMargin = 40 + (maxLabelLines - 1) * LABEL_LINE_HEIGHT;
 
   return (
-    <div>
+    <div ref={containerRef} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
       <svg
         role="img"
         aria-label="Status of open investigations by stage"
-        width="100%"
-        viewBox={`0 0 ${plotWidth + 48} ${CHART_HEIGHT + 40}`}
-        style={{ overflow: "visible" }}
+        viewBox={`0 0 ${plotWidth + 48} ${CHART_HEIGHT + bottomMargin}`}
+        style={{ overflow: "visible", width: "100%" }}
       >
         {yTicks.map((tick) => {
           const y = CHART_HEIGHT - scaleY(tick) + 10;
@@ -82,7 +109,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
         })}
 
         {data.map((d, i) => {
-          const x = 48 + i * SLOT_WIDTH + (SLOT_WIDTH - BAR_WIDTH) / 2;
+          const x = 48 + i * slotWidth + (slotWidth - BAR_WIDTH) / 2;
           const baseline = CHART_HEIGHT + 10;
           const total = d.onTrack + d.atRisk + d.delayed;
           const totalHeight = scaleY(total);
@@ -119,7 +146,11 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
                 })}
               </g>
               <text x={x + BAR_WIDTH / 2} y={CHART_HEIGHT + 28} textAnchor="middle" fontSize={12} fill="var(--color-text-muted)">
-                {d.label}
+                {d.label.split("\n").map((line, li) => (
+                  <tspan key={li} x={x + BAR_WIDTH / 2} dy={li === 0 ? 0 : LABEL_LINE_HEIGHT}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
             </g>
           );

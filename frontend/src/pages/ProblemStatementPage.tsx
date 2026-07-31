@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   EVENT_TYPE_OPTIONS,
   getFieldSet,
+  nativeInputType,
   type EventType,
   type TrackwiseFields,
 } from "../constants/trackwiseFields";
@@ -306,7 +307,7 @@ export function ProblemStatementPage() {
                   ) : (
                     <input
                       className="field-value"
-                      type={field.kind === "date" ? "date" : field.kind === "time" ? "time" : "text"}
+                      type={nativeInputType(field.kind, values[field.key] ?? "")}
                       required={field.required}
                       value={values[field.key] ?? ""}
                       onChange={(e) => handleFieldChange(field.key, e.target.value)}

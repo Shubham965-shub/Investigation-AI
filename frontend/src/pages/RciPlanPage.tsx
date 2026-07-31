@@ -1,20 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateRciPlan, getProblemStatementRecord, getRciPlanRecord, type RciSectionItem } from "../api/dashboard";
+import {
+  generateRciPlan,
+  getProblemStatementRecord,
+  getRciPlanRecord,
+  updateRciPlanSections,
+  type RciSectionItem,
+} from "../api/dashboard";
 import { ApiError } from "../api/client";
-import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
+import { getAdditionalFieldsForModule, nativeInputType, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import personDefaultIcon from "../assets/icons/rci-person-default.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
-import documentUploadIcon from "../assets/icons/rci-document-upload.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
+import checkIcon from "../assets/icons/evidence-checkbox.svg";
 import "./RecordModulePage.css";
 
 export function RciPlanPage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
+  const persistTimerRef = useRef<number | null>(null);
 
   const [recordLoading, setRecordLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -27,6 +35,8 @@ export function RciPlanPage() {
   const [additionalValues, setAdditionalValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pushed, setPushed] = useState(false);
 
   // Everything comes from the DB — no localStorage. RCI Plan depends on the
   // Problem Statement record existing (fetched here directly rather than
@@ -147,6 +157,68 @@ export function RciPlanPage() {
     setOpenSections((prev) => ({ ...prev, [index]: !prev[index] }));
   }
 
+  // Persisted best-effort, debounced 600ms after the last edit — typing in
+  // the investigator field fired a full replace-all-sections PUT on every
+  // keystroke, which (combined with a since-fixed backend race — see
+  // replace_rci_sections) produced duplicated sections with different
+  // partially-typed substrings of "Unassigned" as the assignee. The backend
+  // fix alone prevents the corruption; debouncing here also cuts the sheer
+  // number of full-replace round-trips a fast typist fires.
+  function persistSections(list: RciSectionItem[]) {
+    if (!recordId) return;
+    if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = window.setTimeout(() => {
+      updateRciPlanSections(recordId, list).catch((err) => {
+        console.error("Failed to persist RCI plan sections", err);
+      });
+    }, 600);
+  }
+
+  function setSectionAssignee(index: number, assignee: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, assignee } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  // Plain-text placeholder export — the exact document template/format the
+  // real push-to-Trackwise flow should produce hasn't been provided yet, so
+  // this exists to give the button a real, working download in the meantime.
+  // Swap the body of this function out once the format spec arrives.
+  function buildRciPlanDocument(): string {
+    const lines: string[] = [`RCI Plan — Record ${recordId}`, ""];
+    if (problemStatement) {
+      lines.push("Problem Statement", problemStatement, "");
+    }
+    (sections ?? []).forEach((section, index) => {
+      lines.push(`${index + 1}. ${section.title}`);
+      if (section.correlation) lines.push(section.correlation);
+      lines.push(`TCD: ${section.due_date ?? "—"}    Assigned To: ${section.assignee ?? "Unassigned"}`);
+      section.tasks.forEach((task) => lines.push(`  - ${task.description}`));
+      lines.push("");
+    });
+    return lines.join("\n");
+  }
+
+  function downloadRciPlanDocument() {
+    const blob = new Blob([buildRciPlanDocument()], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `RCI_Plan_${recordId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleAcceptAndPush() {
+    setShowConfirm(false);
+    downloadRciPlanDocument();
+    setPushed(true);
+    setTimeout(() => setPushed(false), 1500);
+  }
+
   if (!sections) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -180,7 +252,7 @@ export function RciPlanPage() {
                   ) : (
                     <input
                       className="field-value"
-                      type={field.kind === "date" ? "date" : field.kind === "time" ? "time" : "text"}
+                      type={nativeInputType(field.kind, additionalValues[field.key] ?? "")}
                       required={field.required}
                       value={additionalValues[field.key] ?? ""}
                       onChange={(e) => setAdditionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
@@ -209,25 +281,6 @@ export function RciPlanPage() {
         <p className="card-title">Problem Statement</p>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
           <p style={{ margin: 0, fontWeight: 600, fontSize: 16, lineHeight: 1.9 }}>{problemStatement}</p>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <p className="card-title">RCI Plan Generated</p>
-          <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10, opacity: 0.5 }} disabled title="Export not wired up yet">
-            <img src={exportIcon} alt="" width={16} height={16} />
-            Accept and Push to TW
-          </button>
-        </div>
-        <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src={documentUploadIcon} alt="" width={24} height={24} />
-            <div>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>RCI Plan.docx</p>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Not exported yet</p>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -263,7 +316,14 @@ export function RciPlanPage() {
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
                   <img src={personDefaultIcon} alt="" width={16} height={16} />
-                  <span style={{ fontSize: 12 }}>{section.assignee ?? "Unassigned"}</span>
+                  <input
+                    type="text"
+                    placeholder="Unassigned"
+                    value={section.assignee ?? ""}
+                    onChange={(e) => setSectionAssignee(index, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ fontSize: 12, border: "none", background: "none", width: 90, padding: 0 }}
+                  />
                 </div>
                 <button
                   type="button"
@@ -275,18 +335,49 @@ export function RciPlanPage() {
                 </button>
               </div>
               {isOpen && (
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    <span style={{ width: 700 }}>Task</span>
+                    <span style={{ width: 160 }}>Description</span>
+                    <span style={{ width: 160 }}>Assigned To</span>
+                  </div>
                   {section.tasks.map((task, taskIndex) => (
-                    <li key={taskIndex} style={{ fontSize: 15, color: "var(--color-text)", marginBottom: 4 }}>
-                      {task.description}
-                    </li>
+                    <div
+                      key={taskIndex}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, width: 700 }}>
+                        <span style={{ background: "var(--color-primary)", border: "2px solid var(--color-primary)", borderRadius: 4, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <img src={checkIcon} alt="" width={12} height={12} />
+                        </span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{task.description}</span>
+                      </div>
+                      <span style={{ fontSize: 14, color: "#374151", width: 160 }}>Description goes here...</span>
+                      <span style={{ fontSize: 14, color: "#374151", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
           );
         })}
       </div>
+
+      <div className="footer-actions">
+        <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10 }} onClick={() => setShowConfirm(true)}>
+          <img src={exportIcon} alt="" width={16} height={16} />
+          {pushed ? "Pushed — downloading…" : "Accept and Push to TW"}
+        </button>
+      </div>
+
+      {showConfirm && (
+        <ConfirmDialog
+          title="Accept RCI Plan?"
+          message="Are you sure you want to accept the RCI Plan and push it to Trackwise? The generated document will be downloaded to your device."
+          onCancel={() => setShowConfirm(false)}
+          onConfirm={handleAcceptAndPush}
+        />
+      )}
     </div>
   );
 }

@@ -70,6 +70,29 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> RciTemplateUploa
     return RciTemplateUploadResponse(**response.json())
 
 
+@router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> None:
+    """Full replace of the persisted sections — used to save investigator-name
+    edits made directly on the RCI Plan page (see RciPlanPage.tsx)."""
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+    await replace_rci_sections(
+        deviation_id,
+        [
+            {
+                "title": section.title,
+                "correlation": section.correlation,
+                "due_date": section.due_date,
+                "assignee": section.assignee,
+                "tasks": [{"description": task.description} for task in section.tasks],
+            }
+            for section in sections
+        ],
+    )
+
+
 @router.get("/{record_id}", response_model=RciPlanRecord)
 async def get_rci_plan(record_id: str) -> RciPlanRecord:
     try:
