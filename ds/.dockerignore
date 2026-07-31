@@ -1,0 +1,26 @@
+# Secrets — supplied at runtime via environment/env_file, never baked into the image
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.pytest_cache
+
+# VCS / editor
+.git
+.gitignore
+**/.DS_Store
+.vscode
+.idea
+.claude
+
+# Tests / infra-as-code not needed inside the image
+tests
+infra
+*.tfstate
+*.tfstate.backup
