@@ -1,10 +1,8 @@
 # CD: backend → Azure Container App investigationai-be-qa (QA).
 #
 # Image build+push authenticates with ACR admin creds (ACR_USERNAME/PASSWORD
-# secrets). The container-app update authenticates via GitHub OIDC against the
-# user-assigned managed identity `investigationai-envinvestigationaiacrQA-LighthouseOidc`
-# (federated credential: this repo, main branch) — that identity must hold a
-# role on QA-Lighthouse (e.g. Contributor) for the update step to work.
+# secrets). The container-app update authenticates as a service principal with
+# Contributor on QA-Lighthouse (AZURE_CREDENTIALS secret, azure/login creds JSON).
 name: Deploy backend to QA
 
 on:
@@ -16,7 +14,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -46,12 +43,10 @@ jobs:
           docker build -t "$IMAGE" backend
           docker push "$IMAGE"
 
-      - name: Azure login (OIDC)
+      - name: Azure login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Update container app
         run: az containerapp update -n "$APP" -g "$RG" --image "$IMAGE"
