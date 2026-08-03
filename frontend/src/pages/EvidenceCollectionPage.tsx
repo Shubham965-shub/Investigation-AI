@@ -186,14 +186,14 @@ export function EvidenceCollectionPage() {
             <button
               type="button"
               onClick={() => setView("list")}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "list" ? "#fff" : "transparent", fontSize: 12, fontWeight: 500, color: view === "list" ? "var(--color-primary)" : "var(--color-text-muted)" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "list" ? "var(--color-surface)" : "transparent", fontSize: 12, fontWeight: 500, color: view === "list" ? "var(--color-primary)" : "var(--color-text-muted)" }}
             >
               <img src={viewListIcon} alt="" width={14} height={14} /> list
             </button>
             <button
               type="button"
               onClick={() => setView("grid")}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "grid" ? "#fff" : "transparent", fontSize: 12, fontWeight: 500, color: view === "grid" ? "var(--color-primary)" : "var(--color-text-muted)" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "grid" ? "var(--color-surface)" : "transparent", fontSize: 12, fontWeight: 500, color: view === "grid" ? "var(--color-primary)" : "var(--color-text-muted)" }}
             >
               <img src={viewGridIcon} alt="" width={14} height={14} /> grid
             </button>

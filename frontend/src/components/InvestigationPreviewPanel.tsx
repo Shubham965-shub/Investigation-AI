@@ -135,9 +135,9 @@ export function InvestigationPreviewPanel({
                   <button type="button" aria-label="Close" onClick={onClose} style={{ background: "none", border: "none", padding: 0, display: "flex", cursor: "pointer" }}>
                     <img src={backArrow} alt="" width={14} height={14} />
                   </button>
-                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "#444746" }}>{investigation.id}</span>
+                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "var(--color-text-muted)" }}>{investigation.id}</span>
                   <span style={{ color: "var(--color-text-muted)" }}>/</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "#444746" }}>{investigation.eventType}</span>
+                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "var(--color-text-muted)" }}>{investigation.eventType}</span>
                 </div>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 20, color: "var(--color-text)" }}>{investigation.title}</p>
               </div>
@@ -203,12 +203,12 @@ export function InvestigationPreviewPanel({
 
               {currentStepDef.path && (
                 <div style={{ padding: "0 16px" }}>
-                  <div style={{ background: "#eff6ff", border: "1px solid #2b7fff", borderRadius: 4, padding: "11.5px 15px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ background: "var(--color-info-bg)", border: "1px solid var(--color-info-text)", borderRadius: 4, padding: "11.5px 15px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <img src={inProgressBannerIcon} alt="" width={14} height={14} />
                       <div>
-                        <p style={{ margin: 0, fontSize: "10.5px", fontWeight: 600, color: "#2b7fff" }}>Currently in progress</p>
-                        <p style={{ margin: 0, fontSize: 11, color: "#2b7fff" }}>
+                        <p style={{ margin: 0, fontSize: "10.5px", fontWeight: 600, color: "var(--color-info-text)" }}>Currently in progress</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--color-info-text)" }}>
                           Step {investigation.step + 1}: {currentStepDef.label}
                         </p>
                       </div>
@@ -216,7 +216,7 @@ export function InvestigationPreviewPanel({
                     <button
                       type="button"
                       onClick={() => goToStep(currentStepDef.path)}
-                      style={{ background: "#dce2eb", border: "none", borderRadius: 4, padding: "5px 11px", display: "flex", alignItems: "center", gap: 4, color: "#2b7fff", fontSize: "10.5px", fontWeight: 600 }}
+                      style={{ background: "var(--color-open-bg)", border: "none", borderRadius: 4, padding: "5px 11px", display: "flex", alignItems: "center", gap: 4, color: "var(--color-info-text)", fontSize: "10.5px", fontWeight: 600 }}
                     >
                       Jump to step
                       <img src={jumpArrowIcon} alt="" width={10} height={10} />
@@ -235,11 +235,11 @@ export function InvestigationPreviewPanel({
                   const circleIcon = status === "completed" ? stepCompletedIcon : status === "in-progress" ? stepInProgressIcon : stepNotStartedIcon;
                   const circleStyle =
                     status === "completed"
-                      ? { background: "#ecfdf5", border: "2px solid #00d492" }
+                      ? { background: "var(--color-success-bg)", border: "2px solid var(--color-success-text)" }
                       : status === "in-progress"
-                      ? { background: "#fffbeb", border: "2px solid #ffb900" }
+                      ? { background: "var(--color-warning-bg)", border: "2px solid var(--color-warning-text)" }
                       : { background: "var(--color-open-bg)", border: "2px solid var(--color-card-border)" };
-                  const cardBorder = status === "completed" ? "#028662" : status === "in-progress" ? "#fe9a00" : "var(--color-open-bg)";
+                  const cardBorder = status === "completed" ? "var(--color-primary)" : status === "in-progress" ? "var(--color-warning-text)" : "var(--color-open-bg)";
 
                   return (
                     <div key={stepDef.label} style={{ display: "flex", gap: 14, opacity: status === "not-started" ? 0.6 : 1 }}>
@@ -247,7 +247,7 @@ export function InvestigationPreviewPanel({
                         <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, ...circleStyle }}>
                           <img src={circleIcon} alt="" width={14} height={14} />
                         </div>
-                        {!isLast && <div style={{ flex: 1, width: 1.75, background: status === "completed" ? "#00d492" : "var(--color-card-border)", opacity: status === "completed" ? 0.4 : 1 }} />}
+                        {!isLast && <div style={{ flex: 1, width: 1.75, background: status === "completed" ? "var(--color-success-text)" : "var(--color-card-border)", opacity: status === "completed" ? 0.4 : 1 }} />}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, paddingBottom: 16 }}>
                         <div
@@ -277,10 +277,10 @@ export function InvestigationPreviewPanel({
                               fontSize: 12,
                               fontWeight: 600,
                               ...(status === "completed"
-                                ? { background: "#f0fdfa", border: "1px solid #00786f", color: "#00786f" }
+                                ? { background: "var(--color-success-bg)", border: "1px solid var(--color-success-text)", color: "var(--color-success-text)" }
                                 : status === "in-progress"
-                                ? { background: "#fffbeb", border: "1px solid #fe9a00", color: "#fe9a00" }
-                                : { background: "#e6e6e6", border: "1px solid #4d4d4d", color: "#4d4d4d" }),
+                                ? { background: "var(--color-warning-bg)", border: "1px solid var(--color-warning-text)", color: "var(--color-warning-text)" }
+                                : { background: "var(--color-open-bg)", border: "1px solid var(--color-card-border)", color: "var(--color-text-muted)" }),
                             }}
                           >
                             <img src={status === "completed" ? badgeCompletedIcon : status === "in-progress" ? badgeInProgressIcon : badgeNotStartedIcon} alt="" width={16} height={16} />

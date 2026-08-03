@@ -26,8 +26,11 @@ class Settings(BaseSettings):
     # ── CORS (comma-separated origins) ───────────────────────
     CORS_ORIGINS: str = "http://localhost:5173"
 
-    # ── Auth placeholder ──────────────────────────────────────
-    AUTH_PLACEHOLDER_SECRET: str = "dev-placeholder-secret-change-me"
+    # ── Auth (JWT) — still no real credential store (see routers/auth.py),
+    # but tokens are now real signed/expiring JWTs, not an opaque placeholder.
+    JWT_SECRET: str = "dev-placeholder-secret-change-me"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
 
     # ── Database (same shared Postgres instance InvestigationAi_DS uses —
     # hosts this backend's auth tables (users/roles/api_call_trails) plus

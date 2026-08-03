@@ -11,7 +11,7 @@ import { usePanelState } from "./PanelStateContext";
 import { InvestigationStatusInfo } from "./InvestigationStatusInfo";
 
 export function AppHeader() {
-  const { theme, toggleTheme } = useTheme();
+  const { toggleTheme } = useTheme();
   const { username, logout } = useAuth();
   const { isPanelOpen } = usePanelState();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,7 +62,7 @@ export function AppHeader() {
               onClick={() => setInfoOpen((prev) => !prev)}
               style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <img src={headerIconInfo} alt="" width={20} height={20} style={{ filter: theme === "dark" ? "invert(1)" : "none" }} />
+              <img src={headerIconInfo} alt="" width={20} height={20} />
             </button>
 
             {infoOpen && (
@@ -99,7 +99,7 @@ export function AppHeader() {
           onClick={toggleTheme}
           style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          <img src={headerIcon1} alt="" width={20} height={20} style={{ filter: theme === "dark" ? "invert(1)" : "none" }} />
+          <img src={headerIcon1} alt="" width={20} height={20} />
         </button>
 
         <div style={{ position: "relative" }}>

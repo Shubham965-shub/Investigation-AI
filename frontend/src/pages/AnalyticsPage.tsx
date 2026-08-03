@@ -60,11 +60,11 @@ function EventSection() {
                 {Math.abs(c.trend)}% vs Last month
               </p>
               <div className="an-card-subrow" style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 9 }}>
-                <span className="label" style={{ fontWeight: 700, color: "#4a5565" }}>OVERDUE</span>
-                <span style={{ color: "#ef4444", fontWeight: 700, fontSize: 16 }}>{c.overdue}</span>
+                <span className="label" style={{ fontWeight: 700, color: "var(--color-text-muted)" }}>OVERDUE</span>
+                <span style={{ color: "var(--color-danger-text)", fontWeight: 700, fontSize: 16 }}>{c.overdue}</span>
               </div>
               <div className="an-progress-track">
-                <div className="an-progress-fill" style={{ width: `${c.overduePct}%`, background: "#ef4444" }} />
+                <div className="an-progress-fill" style={{ width: `${c.overduePct}%`, background: "var(--color-danger-text)" }} />
               </div>
             </div>
           );
@@ -124,7 +124,7 @@ function RootCauseStatusSection() {
               <div className="an-progress-track">
                 <div
                   className="an-progress-fill"
-                  style={{ width: `${c.pct}%`, background: c.key === "good" ? "#22c55e" : c.key === "warn" ? "#f59e0b" : "#ef4444" }}
+                  style={{ width: `${c.pct}%`, background: c.key === "good" ? "var(--color-success-text)" : c.key === "warn" ? "var(--color-warning-text)" : "var(--color-danger-text)" }}
                 />
               </div>
             </div>
@@ -199,7 +199,7 @@ function CapaStatusSection() {
               <span className="an-badge">↗6.2%</span>
             </div>
             <div className="an-progress-track">
-              <div className="an-progress-fill" style={{ width: "82%", background: "#22c55e" }} />
+              <div className="an-progress-fill" style={{ width: "82%", background: "var(--color-success-text)" }} />
             </div>
             <div className="an-card-subrow">
               <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>82% of total closed</span>
@@ -210,10 +210,10 @@ function CapaStatusSection() {
             <div className="an-status-card-header">WITHOUT CAPA</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <span className="an-status-card-number">46</span>
-              <span className="an-badge" style={{ background: "#fef2f2", color: "#dc2626" }}>↘5.4%</span>
+              <span className="an-badge" style={{ background: "var(--color-danger-bg)", color: "var(--color-danger-text)" }}>↘5.4%</span>
             </div>
             <div className="an-progress-track">
-              <div className="an-progress-fill" style={{ width: "18%", background: "#f59e0b" }} />
+              <div className="an-progress-fill" style={{ width: "18%", background: "var(--color-warning-text)" }} />
             </div>
             <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>18% of total closed</p>
           </div>
@@ -332,16 +332,16 @@ function InvestigationQualitySection() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
-        <div className="an-card" style={{ background: "#fffbeb", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", color: "#92400e" }}>PLANT IQ SCORE</p>
+        <div className="an-card" style={{ background: "var(--color-warning-bg)", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", color: "var(--color-warning-text)" }}>PLANT IQ SCORE</p>
           <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Gauge value={78} max={100} size={110} color="#f59e0b" trackColor="#fde68a" />
+            <Gauge value={78} max={100} size={110} color="var(--color-warning-text)" trackColor="var(--color-warning-border)" />
             <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <span style={{ fontSize: 32, fontWeight: 700, color: "#92400e" }}>78</span>
-              <span style={{ fontSize: 11, color: "#92400e" }}>out of 100</span>
+              <span style={{ fontSize: 32, fontWeight: 700, color: "var(--color-warning-text)" }}>78</span>
+              <span style={{ fontSize: 11, color: "var(--color-warning-text)" }}>out of 100</span>
             </div>
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>△ Near target</p>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--color-warning-text)" }}>△ Near target</p>
           <div style={{ display: "flex", gap: 12, width: "100%" }}>
             <div style={{ flex: 1, background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 10 }}>
               <p style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>6</p>
@@ -373,10 +373,10 @@ function InvestigationQualitySection() {
                     </span>
                   </div>
                   <div className="an-progress-track" style={{ marginTop: 4 }}>
-                    <div className="an-progress-fill" style={{ width: `${inv.score}%`, background: inv.score === Math.min(...INVESTIGATORS.map((i) => i.score)) ? "#f59e0b" : "#3b82f6" }} />
+                    <div className="an-progress-fill" style={{ width: `${inv.score}%`, background: inv.score === Math.min(...INVESTIGATORS.map((i) => i.score)) ? "var(--color-warning-text)" : "var(--color-info-text)" }} />
                   </div>
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
-                    {inv.events} Events · <span style={{ color: "#dc2626" }}>{inv.overdue} overdue</span> · {inv.assignable} Assignable RC
+                    {inv.events} Events · <span style={{ color: "var(--color-danger-text)" }}>{inv.overdue} overdue</span> · {inv.assignable} Assignable RC
                   </p>
                 </div>
               </div>
@@ -424,17 +424,17 @@ function InvestigationQualitySection() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="an-card" style={{ background: "#eefdf3", border: "1px solid #86efac" }}>
+          <div className="an-card" style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}>
             <div className="an-card-subrow">
-              <span style={{ fontWeight: 700, fontSize: 13, color: "#16a34a" }}>👑 TOP PERFORMER — OVERALL</span>
-              <span style={{ fontSize: 12, color: "#16a34a" }}>Highest IQ Score</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--color-success-text)" }}>👑 TOP PERFORMER — OVERALL</span>
+              <span style={{ fontSize: 12, color: "var(--color-success-text)" }}>Highest IQ Score</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span className="an-avatar" style={{ background: "#0d9488", width: 44, height: 44, fontSize: 16 }}>AV</span>
               <div>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>Rajesh Kurian</p>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>QA</p>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#16a34a" }}>93 <span style={{ fontSize: 13 }}>↗6.6%</span></p>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-success-text)" }}>93 <span style={{ fontSize: 13 }}>↗6.6%</span></p>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -445,26 +445,26 @@ function InvestigationQualitySection() {
                 </div>
               ))}
             </div>
-            <div className="an-note" style={{ background: "rgba(255,255,255,0.6)", border: "none", color: "#16a34a" }}>
+            <div className="an-note" style={{ background: "var(--color-surface)", border: "none", color: "var(--color-success-text)" }}>
               <strong>Strength:</strong> Consistently strong documentation, high RC identification rate (80%), and timely closures.
             </div>
           </div>
 
-          <div className="an-card" style={{ background: "#fef2f2", border: "1px solid #fca5a5" }}>
+          <div className="an-card" style={{ background: "var(--color-danger-bg)", border: "1px solid var(--color-danger-border)" }}>
             <div className="an-card-subrow">
-              <span style={{ fontWeight: 700, fontSize: 13, color: "#dc2626" }}>⬆ NEEDS IMPROVEMENT</span>
-              <span style={{ fontSize: 12, color: "#dc2626" }}>Lowest IQ Score</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--color-danger-text)" }}>⬆ NEEDS IMPROVEMENT</span>
+              <span style={{ fontSize: 12, color: "var(--color-danger-text)" }}>Lowest IQ Score</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span className="an-avatar" style={{ background: "#ef4444", width: 44, height: 44, fontSize: 16 }}>KR</span>
               <div>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>Visalachi</p>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>QC OOS</p>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#dc2626" }}>68 <span style={{ fontSize: 13 }}>↘1%</span></p>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-danger-text)" }}>68 <span style={{ fontSize: 13 }}>↘1%</span></p>
               </div>
             </div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#dc2626" }}>AREAS OF IMPROVEMENT</p>
-            <div className="an-note" style={{ background: "rgba(255,255,255,0.6)", border: "none", color: "var(--color-text)" }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "var(--color-danger-text)" }}>AREAS OF IMPROVEMENT</p>
+            <div className="an-note" style={{ background: "var(--color-surface)", border: "none", color: "var(--color-text)" }}>
               › Reduce overdue investigations — 6 of 22 cases past due date
             </div>
             <div className="an-note warn">

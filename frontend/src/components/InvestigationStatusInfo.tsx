@@ -8,9 +8,9 @@
 type StatusKey = "On Track" | "At Risk" | "Overdue" | "Closed";
 
 const STATUS_DOT_COLOR: Record<StatusKey, string> = {
-  "On Track": "#16a34a",
-  "At Risk": "#d97706",
-  Overdue: "#dc2626",
+  "On Track": "var(--color-success-text)",
+  "At Risk": "var(--color-warning-text)",
+  Overdue: "var(--color-danger-text)",
   Closed: "var(--color-text-muted)",
 };
 
@@ -24,8 +24,8 @@ interface CriticalityConfig {
 const CRITICALITY_CONFIG: CriticalityConfig[] = [
   {
     title: "Critical",
-    badgeBg: "#fef2f2",
-    badgeText: "#dc2626",
+    badgeBg: "var(--color-danger-bg)",
+    badgeText: "var(--color-danger-text)",
     thresholds: [
       { status: "On Track", label: "0 – 7 days open" },
       { status: "At Risk", label: "8 – 15 days open" },
@@ -35,8 +35,8 @@ const CRITICALITY_CONFIG: CriticalityConfig[] = [
   },
   {
     title: "Non-Critical",
-    badgeBg: "#e6f1fb",
-    badgeText: "#185fa5",
+    badgeBg: "var(--color-info-bg)",
+    badgeText: "var(--color-info-text)",
     thresholds: [
       { status: "On Track", label: "0 – 11 days open" },
       { status: "At Risk", label: "12 – 19 days open" },

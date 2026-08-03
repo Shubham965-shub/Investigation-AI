@@ -70,7 +70,7 @@ export function AddItemDialog({
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20, padding: 24 }}>
           <div>
             <p className="field-label">
-              {label} <span style={{ color: "#b91c1c" }}>*</span>
+              {label} <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </p>
             <input
               className="field-value"
