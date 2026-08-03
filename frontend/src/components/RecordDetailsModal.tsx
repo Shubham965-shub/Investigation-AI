@@ -7,10 +7,10 @@ import { ApiError } from "../api/client";
 import { getSimilarInvestigations, type SimilarInvestigation } from "../api/dashboard";
 
 const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; color: string }> = {
-  Open: { bg: "#eff6ff", color: "#1d4ed8" },
-  Closed: { bg: "#f0fdf4", color: "#15803d" },
-  Cancelled: { bg: "#f3f4f6", color: "#4b5563" },
-  Unknown: { bg: "#f3f4f6", color: "#4b5563" },
+  Open: { bg: "var(--color-info-bg)", color: "var(--color-info-text)" },
+  Closed: { bg: "var(--color-success-bg)", color: "var(--color-success-text)" },
+  Cancelled: { bg: "var(--color-open-bg)", color: "var(--color-text-muted)" },
+  Unknown: { bg: "var(--color-open-bg)", color: "var(--color-text-muted)" },
 };
 
 // Matches the approved Figma "Home<Problem_Statement_Generated" modal
@@ -188,7 +188,7 @@ export function RecordDetailsModal({
                 }}
               >
                 {historicLoading && <p style={{ margin: 0, color: "var(--color-text-muted)" }}>Loading similar investigations…</p>}
-                {historicError && <p style={{ margin: 0, color: "#b91c1c" }}>{historicError}</p>}
+                {historicError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{historicError}</p>}
                 {!historicLoading && !historicError && historicData !== null && historicData.length === 0 && (
                   <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No similar historic investigations found.</p>
                 )}

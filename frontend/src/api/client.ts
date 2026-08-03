@@ -16,6 +16,39 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** Sliding-expiry refresh — every request made with a still-valid token
+ * gets a freshly re-issued one back (new full expiry window) via this
+ * header, so an active session keeps extending instead of hard-expiring a
+ * fixed time after login regardless of activity. Must run on every
+ * request/response, ok or not. */
+function applyRefreshedToken(response: Response): void {
+  const refreshed = response.headers.get("X-Refreshed-Token");
+  if (refreshed) localStorage.setItem("auth_token", refreshed);
+}
+
+/** Shared by request<T>() and apiGetBlob() — on a 401 (missing/invalid/
+ * expired token), the session is unrecoverable, so clear it and force a
+ * fresh login instead of leaving the app stuck showing stale authenticated
+ * UI. A full reload (not SPA navigate()) is deliberate: this is a plain
+ * module with no router access, and a reload also clears any in-memory
+ * state that assumed a valid session. */
+async function handleErrorResponse(response: Response): Promise<never> {
+  if (response.status === 401) {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_username");
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }
+  let detail: unknown;
+  try {
+    detail = (await response.json()).detail;
+  } catch {
+    detail = response.statusText;
+  }
+  throw new ApiError(response.status, detail);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -25,15 +58,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+  applyRefreshedToken(response);
 
   if (!response.ok) {
-    let detail: unknown;
-    try {
-      detail = (await response.json()).detail;
-    } catch {
-      detail = response.statusText;
-    }
-    throw new ApiError(response.status, detail);
+    await handleErrorResponse(response);
   }
 
   // 204 No Content has no body — calling .json() on it throws.
@@ -67,14 +95,9 @@ export async function apiGetBlob(path: string): Promise<Blob> {
     method: "GET",
     headers: authHeaders(),
   });
+  applyRefreshedToken(response);
   if (!response.ok) {
-    let detail: unknown;
-    try {
-      detail = (await response.json()).detail;
-    } catch {
-      detail = response.statusText;
-    }
-    throw new ApiError(response.status, detail);
+    await handleErrorResponse(response);
   }
   return response.blob();
 }

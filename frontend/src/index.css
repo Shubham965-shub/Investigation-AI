@@ -28,6 +28,25 @@
   --radius-btn: 4px;
   --font-heading: Arial, Helvetica, sans-serif;
   --font-body: Inter, system-ui, sans-serif;
+
+  /* Semantic status tones (success/warning/danger/info) — shared by status
+     cards, badges, banners and notes across the app so each one doesn't
+     have to hand-roll its own dark-mode variant. Light values are plain
+     pastel bg + saturated text/border (matching the existing design);
+     dark values follow the same low-opacity-tint-over-saturated-text
+     technique already used correctly by AnalyticsPage.css's .an-section. */
+  --color-success-bg: #eefdf3;
+  --color-success-border: #86efac;
+  --color-success-text: #16a34a;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #b45309;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fca5a5;
+  --color-danger-text: #dc2626;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1d4ed8;
 }
 
 :root[data-theme="dark"] {
@@ -47,6 +66,88 @@
   --color-text: #f3f4f6;
   --color-text-muted: #9aa4b2;
   --color-text-faint: #b6bec8;
+
+  --color-success-bg: rgba(16, 185, 129, 0.12);
+  --color-success-border: rgba(16, 185, 129, 0.35);
+  --color-success-text: #34d399;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-border: rgba(245, 158, 11, 0.35);
+  --color-warning-text: #fbbf24;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-danger-border: rgba(239, 68, 68, 0.35);
+  --color-danger-text: #f87171;
+  --color-info-bg: rgba(59, 130, 246, 0.12);
+  --color-info-border: rgba(59, 130, 246, 0.35);
+  --color-info-text: #60a5fa;
+}
+
+/* @strides-pharma-science-ltd/feedback-widget (AppFeedbackButton.tsx) colors
+ * itself entirely from its own .fb-root[data-fb-theme=light|dark] rule
+ * (confirmed by inspecting its shipped CSS directly) — it sets that
+ * attribute on the inline launcher button but NOT on the separate root it
+ * portals its modal/star-rating into, so the modal was always stuck on the
+ * widget's light fallback in dark mode regardless of the theme="..." prop.
+ * Overriding the same custom properties here, scoped under our own dark
+ * selector, wins on specificity ((0,3,0) vs. the widget's (0,2,0)) and
+ * applies to every .fb-root in the document — inline or portaled — with no
+ * dependency on the widget actually setting its attribute correctly.
+ *
+ * Two layers, both set: the bare names (--background, --foreground, ...)
+ * are what the widget's own [data-fb-theme] rule defines, but its compiled
+ * Tailwind utility classes actually consume a --color-*-prefixed alias
+ * layer (--color-background, --color-foreground, ...) generated from those
+ * at build time — confirmed by grepping the shipped CSS for var(--color-*)
+ * usages. Overriding only the bare names left text/accent colors
+ * unaffected (background happened to still work), so both are set here to
+ * bypass any uncertainty about how that alias layer resolves the bare ones
+ * through inheritance. Property names/values otherwise copied 1:1 from the
+ * widget's own dark rule. */
+:root[data-theme="dark"] .fb-root {
+  --background: var(--color-bg);
+  --color-background: var(--color-bg);
+  --foreground: var(--color-text);
+  --color-foreground: var(--color-text);
+  --card: var(--color-surface);
+  --color-card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --color-card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --color-popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --color-popover-foreground: var(--color-text);
+  --primary: var(--color-primary);
+  /* Hardcoded, not aliased — --color-primary is also OUR OWN token's exact
+     name (see :root[data-theme="dark"] above), so `var(--color-primary)`
+     here would self-reference this same declaration (a cycle), which the
+     CSS spec resolves as an invalid value rather than "read the other
+     one" — avoid relying on that by just inlining the value directly. */
+  --color-primary: #10b981;
+  --primary-foreground: #ffffff;
+  --color-primary-foreground: #ffffff;
+  --secondary: var(--color-open-bg);
+  --color-secondary: var(--color-open-bg);
+  --secondary-foreground: var(--color-text);
+  --color-secondary-foreground: var(--color-text);
+  --muted: var(--color-open-bg);
+  --color-muted: var(--color-open-bg);
+  --muted-foreground: var(--color-text-muted);
+  --color-muted-foreground: var(--color-text-muted);
+  --accent: var(--color-rail-active-bg);
+  --color-accent: var(--color-rail-active-bg);
+  --accent-foreground: var(--color-text);
+  --color-accent-foreground: var(--color-text);
+  --destructive: var(--color-danger-text);
+  --color-destructive: var(--color-danger-text);
+  --destructive-foreground: #ffffff;
+  --color-destructive-foreground: #ffffff;
+  --border: var(--color-card-border);
+  --color-border: var(--color-card-border);
+  --input: var(--color-card-border);
+  --color-input: var(--color-card-border);
+  --input-background: var(--color-surface);
+  --color-input-background: var(--color-surface);
+  --ring: var(--color-primary);
+  --color-ring: var(--color-primary);
 }
 
 * {

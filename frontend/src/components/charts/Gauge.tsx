@@ -1,5 +1,5 @@
 // Circular progress gauge (e.g. Plant IQ Score). Plain SVG, no library.
-export function Gauge({ value, max = 100, size = 96, color = "#f59e0b", trackColor = "#f3f4f6" }: { value: number; max?: number; size?: number; color?: string; trackColor?: string }) {
+export function Gauge({ value, max = 100, size = 96, color = "#f59e0b", trackColor = "var(--color-open-bg)" }: { value: number; max?: number; size?: number; color?: string; trackColor?: string }) {
   const strokeWidth = size * 0.09;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;

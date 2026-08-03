@@ -143,7 +143,7 @@ textarea.field-value {
 .checklist-desc {
   font-weight: 500;
   font-size: 14px;
-  color: #595a5c;
+  color: var(--color-text-muted);
   margin: 4px 0 0;
 }
 
@@ -167,9 +167,9 @@ textarea.field-value {
 }
 
 .error-banner {
-  background: #fef2f2;
-  border: 1px solid #fca5a5;
-  color: #b91c1c;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger-text);
   border-radius: var(--radius-btn);
   padding: 10px 14px;
   font-size: 14px;

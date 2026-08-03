@@ -102,9 +102,9 @@
 }
 
 .ac-status-card.unassigned { border-color: var(--color-card-border); background: var(--color-surface); }
-.ac-status-card.on-track { border-color: #86efac; background: #eefdf3; }
-.ac-status-card.delay { border-color: #fcd34d; background: #fffaf0; }
-.ac-status-card.overdue { border-color: #fca5a5; background: #fef2f2; }
+.ac-status-card.on-track { border-color: var(--color-success-border); background: var(--color-success-bg); }
+.ac-status-card.delay { border-color: var(--color-warning-border); background: var(--color-warning-bg); }
+.ac-status-card.overdue { border-color: var(--color-danger-border); background: var(--color-danger-bg); }
 
 .ac-status-card-header {
   display: flex;
@@ -119,10 +119,10 @@
   font-size: 22px;
 }
 
-.ac-status-card.unassigned .ac-status-count { color: #4A5565; }
-.ac-status-card.on-track .ac-status-count { color: #16a34a; }
-.ac-status-card.delay .ac-status-count { color: #d97706; }
-.ac-status-card.overdue .ac-status-count { color: #dc2626; }
+.ac-status-card.unassigned .ac-status-count { color: var(--color-text-muted); }
+.ac-status-card.on-track .ac-status-count { color: var(--color-success-text); }
+.ac-status-card.delay .ac-status-count { color: var(--color-warning-text); }
+.ac-status-card.overdue .ac-status-count { color: var(--color-danger-text); }
 
 .ac-status-subrow {
   display: flex;
@@ -130,7 +130,7 @@
   padding: 8px 16px;
   font-size: 14px;
   color: var(--color-text-muted);
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: 1px solid var(--color-card-border);
 }
 
 .ac-status-subrow span:last-child {
@@ -184,7 +184,7 @@
 }
 
 .ac-badge.gray { background: var(--color-open-bg); color: var(--color-text-muted); }
-.ac-badge.critical { border: 1px solid #dc2626; color: #dc2626; }
+.ac-badge.critical { border: 1px solid var(--color-danger-text); color: var(--color-danger-text); }
 .ac-badge.due { border: 1px solid var(--color-card-border); color: var(--color-text-muted); }
 
 .ac-pending-action-row {
@@ -365,11 +365,11 @@
   border: 1px solid;
 }
 
-.status-pill.in-progress { color: #16a34a; border-color: #16a34a; }
-.status-pill.due-soon { color: #2563eb; border-color: #2563eb; }
-.status-pill.overdue { color: #dc2626; border-color: #dc2626; }
-.status-pill.unassigned { color: #374151; border-color: #374151; }
-.status-pill.cancelled { color: #dc2626; border-color: #dc2626; }
+.status-pill.in-progress { color: var(--color-success-text); border-color: var(--color-success-text); }
+.status-pill.due-soon { color: var(--color-info-text); border-color: var(--color-info-text); }
+.status-pill.overdue { color: var(--color-danger-text); border-color: var(--color-danger-text); }
+.status-pill.unassigned { color: var(--color-text-muted); border-color: var(--color-text-muted); }
+.status-pill.cancelled { color: var(--color-danger-text); border-color: var(--color-danger-text); }
 
 .ac-inv-card-header {
   display: flex;

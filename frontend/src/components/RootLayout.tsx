@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { AppHeader } from "./AppHeader";
 import { IconRail } from "./IconRail";
+import { AppFeedbackButton } from "./AppFeedbackButton";
 
 export function RootLayout() {
   return (
@@ -12,6 +13,7 @@ export function RootLayout() {
           <Outlet />
         </main>
       </div>
+      <AppFeedbackButton />
     </div>
   );
 }

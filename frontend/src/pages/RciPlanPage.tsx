@@ -339,10 +339,10 @@ export function RciPlanPage() {
                     <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>({section.tasks.length} tasks)</span>
                   </div>
                   {section.correlation && (
-                    <p style={{ margin: "2px 0 0", fontSize: 15, color: "#585858" }}>{section.correlation}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 15, color: "var(--color-text-faint)" }}>{section.correlation}</p>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: 16, color: "#585858" }}>
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: 16, color: "var(--color-text-faint)" }}>
                   <span>TCD:</span>
                   <input
                     type="date"
@@ -350,7 +350,7 @@ export function RciPlanPage() {
                     value={section.due_date ?? ""}
                     onChange={(e) => setSectionDueDate(index, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ border: "none", background: "none", fontSize: 16, color: "#585858", padding: 0 }}
+                    style={{ border: "none", background: "none", fontSize: 16, color: "var(--color-text-faint)", padding: 0 }}
                   />
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -401,11 +401,11 @@ export function RciPlanPage() {
                             type="text"
                             value={task.description}
                             onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
-                            style={{ fontSize: 14, fontWeight: 600, color: "#374151", border: "none", background: "none", flex: 1, padding: 0 }}
+                            style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
                           />
                         </div>
-                        <span style={{ fontSize: 14, color: "#374151", width: 160 }}>Description goes here...</span>
-                        <span style={{ fontSize: 14, color: "#374151", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
+                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>Description goes here...</span>
+                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
                       </div>
                     );
                   })}

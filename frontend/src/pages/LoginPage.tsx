@@ -68,7 +68,7 @@ export function LoginPage() {
           />
         </label>
 
-        {error && <p style={{ color: "#b91c1c", fontSize: 14, margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: "var(--color-danger-text)", fontSize: 14, margin: 0 }}>{error}</p>}
 
         <button
           type="submit"
