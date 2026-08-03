@@ -156,7 +156,7 @@ export function LoginPage() {
         </header>
 
         {/* Main split */}
-        <main style={{ position: "relative", zIndex: 1, margin: "0 auto", display: "grid", width: "100%", maxWidth: 1400, flex: 1, gap: 32, padding: "16px 32px 32px", gridTemplateColumns: "1fr" }}>
+        <main style={{ position: "relative", zIndex: 1, display: "grid", width: "100%", flex: 1, gap: 32, padding: "16px 32px 32px", gridTemplateColumns: "1fr" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 32, alignItems: "center" }} className="login-split">
             {/* Left: brand narrative */}
             <section className="login-brand-panel" style={{ flexDirection: "column", justifyContent: "center", animation: "login-rise 700ms ease both" }}>
@@ -315,8 +315,9 @@ export function LoginPage() {
       <style>{`
         @media (min-width: 1024px) {
           .login-split {
-            grid-template-columns: 1fr 1fr !important;
+            grid-template-columns: 1fr minmax(360px, 440px) !important;
             gap: 64px !important;
+            padding-right: 200px !important;
           }
         }
       `}</style>
