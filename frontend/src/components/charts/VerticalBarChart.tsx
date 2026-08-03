@@ -22,14 +22,14 @@ export function VerticalBarChart({ data, color = "#00786f", yLabel }: { data: Ve
         return (
           <g key={tick}>
             <line x1={40} x2={plotWidth + 40} y1={y} y2={y} stroke="var(--color-card-border)" strokeDasharray="2 3" />
-            <text x={30} y={y + 4} textAnchor="end" fontSize={11} fill="var(--color-text-muted)">
+            <text x={30} y={y + 4} textAnchor="end" fontSize="var(--font-size-xs)" fill="var(--color-text-muted)">
               {Math.round(tick)}
             </text>
           </g>
         );
       })}
       {yLabel && (
-        <text x={5} y={0} fontSize={10} fill="var(--color-text-muted)">
+        <text x={5} y={0} fontSize="var(--font-size-xs)" fill="var(--color-text-muted)">
           {yLabel}
         </text>
       )}
@@ -42,7 +42,7 @@ export function VerticalBarChart({ data, color = "#00786f", yLabel }: { data: Ve
             <rect x={x} y={y} width={BAR_WIDTH} height={barHeight} fill={color} rx={3}>
               <title>{`${d.label}: ${d.value}`}</title>
             </rect>
-            <text x={x + BAR_WIDTH / 2} y={CHART_HEIGHT + 28} textAnchor="middle" fontSize={12} fill="var(--color-text-muted)">
+            <text x={x + BAR_WIDTH / 2} y={CHART_HEIGHT + 28} textAnchor="middle" fontSize="var(--font-size-sm)" fill="var(--color-text-muted)">
               {d.label}
             </text>
           </g>

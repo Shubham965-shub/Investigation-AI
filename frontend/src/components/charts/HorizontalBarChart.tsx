@@ -1,6 +1,14 @@
 // Generic horizontal bar chart — supports a single value per row (with an
 // optional per-row color) or a two-segment stacked row (e.g. "With RC" /
 // "Probable RC"). Plain SVG, no charting library.
+//
+// Row labels wrap onto multiple lines instead of spilling past the label
+// column — SVG <text> doesn't wrap on its own, so long labels (product/
+// equipment names) used to just render past LABEL_WIDTH. wrapLabel() below
+// measures against an offscreen canvas so line breaks land where the text
+// actually is too wide, not a rough character-count guess; each row's
+// height then grows to fit however many lines its own label needs (the bar
+// itself stays a fixed BAR_HEIGHT, vertically centered in that row).
 
 export interface HorizontalBarRow {
   label: string;
@@ -9,10 +17,49 @@ export interface HorizontalBarRow {
   color?: string;
 }
 
-const ROW_HEIGHT = 28;
+const BAR_HEIGHT = 28;
 const ROW_GAP = 8;
-const LABEL_WIDTH = 110;
+const LABEL_WIDTH = 130;
 const CHART_WIDTH = 660;
+const LABEL_FONT_SIZE = 12;
+const LABEL_LINE_HEIGHT = 14;
+// Measured with a generic sans-serif rather than the app's actual --font-
+// body — canvas 2d context can't resolve CSS custom properties, and a
+// slightly wider reference font just makes wrapping a bit conservative
+// (never causes overflow) rather than pixel-perfect.
+const MEASURE_FONT = `${LABEL_FONT_SIZE}px Arial, Helvetica, sans-serif`;
+
+let measureCanvasCtx: CanvasRenderingContext2D | null = null;
+function measureTextWidth(text: string): number {
+  if (!measureCanvasCtx) {
+    measureCanvasCtx = document.createElement("canvas").getContext("2d");
+  }
+  if (!measureCanvasCtx) return text.length * LABEL_FONT_SIZE * 0.6; // no canvas support — rough fallback
+  measureCanvasCtx.font = MEASURE_FONT;
+  return measureCanvasCtx.measureText(text).width;
+}
+
+// Greedy word-wrap: keeps adding words to the current line while it still
+// fits maxWidth, starting a new line once it doesn't. A single word wider
+// than maxWidth on its own is left as its own (overflowing) line rather
+// than broken mid-word.
+function wrapLabel(label: string, maxWidth: number): string[] {
+  const words = label.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [label];
+  const lines: string[] = [];
+  let current = words[0];
+  for (const word of words.slice(1)) {
+    const candidate = `${current} ${word}`;
+    if (measureTextWidth(candidate) <= maxWidth) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  lines.push(current);
+  return lines;
+}
 
 export function HorizontalBarChart({
   rows,
@@ -28,10 +75,19 @@ export function HorizontalBarChart({
   legend?: { primary: string; secondary: string };
 }) {
   const max = maxValue ?? Math.max(...rows.map((r) => r.value + (r.secondaryValue ?? 0)), 1);
-  const totalHeight = rows.length * (ROW_HEIGHT + ROW_GAP);
   const scaleX = (v: number) => (v / max) * CHART_WIDTH;
   const tickCount = 4;
   const ticks = Array.from({ length: tickCount + 1 }, (_, i) => Math.round((max / tickCount) * i));
+
+  const wrappedLabels = rows.map((row) => wrapLabel(row.label, LABEL_WIDTH - 8));
+  const rowHeights = wrappedLabels.map((lines) => Math.max(BAR_HEIGHT, lines.length * LABEL_LINE_HEIGHT));
+  const rowTops: number[] = [];
+  let cursor = 0;
+  for (const h of rowHeights) {
+    rowTops.push(cursor);
+    cursor += h + ROW_GAP;
+  }
+  const totalHeight = cursor - ROW_GAP;
 
   return (
     <div>
@@ -41,35 +97,44 @@ export function HorizontalBarChart({
           return (
             <g key={tick}>
               <line x1={x} x2={x} y1={0} y2={totalHeight} stroke="var(--color-card-border)" strokeDasharray="2 3" />
-              <text x={x} y={totalHeight + 18} fontSize={11} textAnchor="middle" fill="var(--color-text-muted)">
+              <text x={x} y={totalHeight + 18} fontSize="var(--font-size-xs)" textAnchor="middle" fill="var(--color-text-muted)">
                 {tick}
               </text>
             </g>
           );
         })}
         {rows.map((row, i) => {
-          const y = i * (ROW_HEIGHT + ROW_GAP);
+          const y = rowTops[i];
+          const rowHeight = rowHeights[i];
+          const lines = wrappedLabels[i];
           const primaryWidth = scaleX(row.value);
           const secondaryWidth = row.secondaryValue ? scaleX(row.secondaryValue) : 0;
+          const barY = y + (rowHeight - BAR_HEIGHT) / 2;
+          const textBlockHeight = lines.length * LABEL_LINE_HEIGHT;
+          const firstLineY = y + rowHeight / 2 - textBlockHeight / 2 + LABEL_LINE_HEIGHT * 0.78;
           return (
             <g key={row.label}>
-              <text x={LABEL_WIDTH - 8} y={y + ROW_HEIGHT / 2 + 4} fontSize={12} textAnchor="end" fill="var(--color-text)">
-                {row.label}
+              <text x={LABEL_WIDTH - 8} fontSize="var(--font-size-sm)" textAnchor="end" fill="var(--color-text)">
+                {lines.map((line, li) => (
+                  <tspan key={li} x={LABEL_WIDTH - 8} y={firstLineY + li * LABEL_LINE_HEIGHT}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
               {row.secondaryValue !== undefined ? (
                 <>
-                  <rect x={LABEL_WIDTH} y={y} width={secondaryWidth} height={ROW_HEIGHT} fill={secondaryColor} rx={2} />
-                  <rect x={LABEL_WIDTH + secondaryWidth} y={y} width={primaryWidth} height={ROW_HEIGHT} fill={primaryColor} rx={2} />
+                  <rect x={LABEL_WIDTH} y={barY} width={secondaryWidth} height={BAR_HEIGHT} fill={secondaryColor} rx={2} />
+                  <rect x={LABEL_WIDTH + secondaryWidth} y={barY} width={primaryWidth} height={BAR_HEIGHT} fill={primaryColor} rx={2} />
                 </>
               ) : (
-                <rect x={LABEL_WIDTH} y={y} width={primaryWidth} height={ROW_HEIGHT} fill={row.color ?? primaryColor} rx={2} />
+                <rect x={LABEL_WIDTH} y={barY} width={primaryWidth} height={BAR_HEIGHT} fill={row.color ?? primaryColor} rx={2} />
               )}
             </g>
           );
         })}
       </svg>
       {legend && (
-        <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 13, color: "var(--color-text-muted)" }}>
+        <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
           <Legend swatch={primaryColor} label={legend.primary} />
           <Legend swatch={secondaryColor} label={legend.secondary} />
         </div>

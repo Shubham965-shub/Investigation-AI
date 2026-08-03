@@ -161,6 +161,7 @@ export function ProblemStatementPage() {
       step,
       totalSteps: RECORD_STEPS.length,
       dueDate: "—",
+      lastUpdated: "—",
     };
   }
 
@@ -177,7 +178,7 @@ export function ProblemStatementPage() {
             </button>
           </div>
           <div style={{ background: "var(--color-bg)", borderRadius: 4, padding: 12 }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 20, lineHeight: 1.8 }}>{problemStatement}</p>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.8 }}>{problemStatement}</p>
           </div>
         </div>
 

@@ -89,7 +89,7 @@ export function RecordDetailsModal({
         }}
       >
         <div style={{ borderBottom: "1px solid var(--color-card-border)", padding: "16px 16px 17px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 20, color: "var(--color-text)" }}>Record Details - REC - {recordId}</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Record Details - REC - {recordId}</p>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             <img src={modalClose} alt="" width={32} height={32} />
           </button>
@@ -116,8 +116,8 @@ export function RecordDetailsModal({
                 <img src={recordDocIcon} alt="" width={16} height={16} />
               </span>
               <div>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 20, color: "var(--color-text)" }}>View Record Details</p>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>See all information for REC - {recordId}</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>View Record Details</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>See all information for REC - {recordId}</p>
               </div>
             </div>
             <img src={chevronRight} alt="" width={20} height={20} />
@@ -125,7 +125,7 @@ export function RecordDetailsModal({
 
           <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 28 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: 20, color: "var(--color-text)" }}>Problem Statement</p>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Problem Statement</p>
               <button type="button" onClick={handleCopy} className="btn-outline">
                 <img src={copyIcon} alt="" width={18} height={18} />
                 Copy
@@ -139,10 +139,10 @@ export function RecordDetailsModal({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={5}
-                  style={{ fontWeight: 600, fontSize: 20, lineHeight: 1.6 }}
+                  style={{ fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.6 }}
                 />
               ) : (
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 24, lineHeight: 1.8, color: "var(--color-text)" }}>{problemStatement}</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-xl)", lineHeight: 1.8, color: "var(--color-text)" }}>{problemStatement}</p>
               )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
                 {isEditing ? (
@@ -210,13 +210,13 @@ export function RecordDetailsModal({
                         }}
                       >
                         <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>REC - {item.deviation_id}</span>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>{item.title}</span>
+                          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>REC - {item.deviation_id}</span>
+                          <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text)" }}>{item.title}</span>
                         </div>
                         <span
                           style={{
                             flexShrink: 0,
-                            fontSize: 12,
+                            fontSize: "var(--font-size-sm)",
                             fontWeight: 600,
                             padding: "3px 10px",
                             borderRadius: 999,

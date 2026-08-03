@@ -252,6 +252,7 @@ export interface InvestigationRowResponse {
   investigator: string | null;
   start_date: string | null;
   due_date: string | null;
+  updated_at: string | null;
   stage: number;
   total_stages: number;
   bucket: "unassigned" | "on_track" | "delay" | "overdue";
@@ -307,4 +308,90 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.startDateTo) params.set("start_date_to", filters.startDateTo);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+// Only the data-groundable sections are real (see backend/routers/analytics.py
+// module docstring) — Investigation Quality (IQ Score) and the CAPA L1-L5
+// hierarchy ranking have no backing data anywhere in the star schema and stay
+// mock in AnalyticsPage.tsx until a real formula/mapping is defined.
+
+export interface EventTypeCardResponse {
+  key: string;
+  label: string;
+  total: number;
+  in_progress: number;
+  closed: number;
+  overdue: number;
+  overdue_pct: number;
+  trend_pct: number | null;
+}
+
+export interface RootCauseStatusResponse {
+  identified: number;
+  not_identified: number;
+  total: number;
+}
+
+export interface CategoryCountResponse {
+  label: string;
+  count: number;
+}
+
+export interface MonthCountResponse {
+  label: string;
+  value: number;
+}
+
+export interface CapaStatusResponse {
+  with_capa: number;
+  without_capa: number;
+  total: number;
+  monthly_trend: MonthCountResponse[];
+  by_root_cause_category: CategoryCountResponse[];
+}
+
+export interface FrequencyRowResponse {
+  label: string;
+  value: number;
+}
+
+export interface FailurePatternsResponse {
+  products: FrequencyRowResponse[];
+  equipment: FrequencyRowResponse[];
+}
+
+export interface AnalyticsFilterOptions {
+  sites: string[];
+  departments: string[];
+  products: string[];
+  equipment: string[];
+}
+
+export interface AnalyticsSummaryResponse {
+  events: EventTypeCardResponse[];
+  root_cause_status: RootCauseStatusResponse;
+  root_cause_categories: CategoryCountResponse[];
+  capa: CapaStatusResponse;
+  failure_patterns: FailurePatternsResponse;
+  filter_options: AnalyticsFilterOptions;
+}
+
+export interface AnalyticsFilters {
+  site?: string;
+  department?: string;
+  product?: string;
+  equipment?: string;
+  startDateFrom?: string;
+}
+
+export function getAnalyticsSummary(filters?: AnalyticsFilters): Promise<AnalyticsSummaryResponse> {
+  const params = new URLSearchParams();
+  if (filters?.site) params.set("site", filters.site);
+  if (filters?.department) params.set("department", filters.department);
+  if (filters?.product) params.set("product", filters.product);
+  if (filters?.equipment) params.set("equipment", filters.equipment);
+  if (filters?.startDateFrom) params.set("start_date_from", filters.startDateFrom);
+  const qs = params.toString();
+  return apiGet<AnalyticsSummaryResponse>(`/analytics/summary${qs ? `?${qs}` : ""}`);
 }

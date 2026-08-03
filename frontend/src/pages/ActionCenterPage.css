@@ -18,7 +18,7 @@
 
 .ac-title {
   font-family: var(--font-heading);
-  font-size: 26px;
+  font-size: var(--font-size-hero);
   font-weight: 700;
   margin: 0;
 }
@@ -38,13 +38,13 @@
 }
 
 .ac-total-header h2 {
-  font-size: 16px;
+  font-size: var(--font-size-md);
   font-weight: 700;
   margin: 0;
 }
 
 .ac-total-header .ac-total-count {
-  font-size: 30px;
+  font-size: var(--font-size-hero);
   font-weight: 700;
 }
 
@@ -80,7 +80,7 @@
   color: var(--color-text-muted);
   font-weight: 400;
   margin-left: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .ac-stat-pill.active .ac-stat-percent {
@@ -112,11 +112,11 @@
   justify-content: space-between;
   padding: 14px 16px 10px;
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--font-size-md);
 }
 
 .ac-status-card-header .ac-status-count {
-  font-size: 22px;
+  font-size: var(--font-size-xl);
 }
 
 .ac-status-card.unassigned .ac-status-count { color: var(--color-text-muted); }
@@ -128,7 +128,7 @@
   display: flex;
   justify-content: space-between;
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-card-border);
 }
@@ -140,7 +140,7 @@
 
 .ac-section-title {
   font-family: var(--font-heading);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
   margin: 0;
 }
@@ -160,12 +160,12 @@
 
 .ac-pending-card-id {
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .ac-pending-card-investigator {
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
@@ -179,7 +179,7 @@
   align-items: center;
   border-radius: var(--radius-btn);
   padding: 3px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
@@ -194,7 +194,7 @@
 }
 
 .ac-pending-action-label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
@@ -202,7 +202,7 @@
 }
 
 .ac-pending-action-desc {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
   margin: 0;
 }
@@ -218,13 +218,13 @@
 
 .ac-details-title-group h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   font-weight: 700;
 }
 
 .ac-details-title-group p {
   margin: 2px 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 
@@ -238,7 +238,7 @@
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
   padding: 7px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   background: var(--color-surface);
   display: flex;
@@ -269,7 +269,7 @@
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
   padding: 10px 14px 10px 38px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .ac-search-btn {
@@ -305,12 +305,12 @@
 .ac-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .ac-table thead th {
   text-align: left;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
   font-weight: 700;
@@ -326,7 +326,7 @@
 
 .ac-inv-id {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .ac-inv-title {
@@ -340,7 +340,7 @@
 .ac-progress-top {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   margin-bottom: 4px;
 }
 
@@ -360,7 +360,7 @@
   display: inline-flex;
   border-radius: var(--radius-btn);
   padding: 3px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   border: 1px solid;
 }
@@ -389,7 +389,7 @@
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
   padding: 4px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 
@@ -413,18 +413,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   flex-shrink: 0;
 }
 
 .ac-inv-investigator-name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .ac-inv-investigator-role {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -433,7 +433,7 @@
 .ac-inv-progress-label {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--color-text-muted);
@@ -441,7 +441,7 @@
 }
 
 .ac-inv-progress-caption {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   margin-top: 6px;
 }
@@ -471,7 +471,7 @@
   border-radius: 50%;
   border: 1px solid var(--color-card-border);
   background: var(--color-surface);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .ac-page-btn.active {

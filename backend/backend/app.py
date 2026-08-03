@@ -13,6 +13,7 @@ from backend.clients.ds_client import close_client, create_client
 from backend.config.settings import settings
 from backend.db.auth_queries import record_api_call
 from backend.routers.action_center import router as action_center_router
+from backend.routers.analytics import router as analytics_router
 from backend.routers.auth import get_current_username, issue_token, try_decode_payload
 from backend.routers.auth import router as auth_router
 from backend.routers.evidence import router as evidence_router
@@ -82,7 +83,17 @@ def create_app() -> FastAPI:
             if payload:
                 user_id = payload.get("uid")
                 if user_id is not None:
-                    response.headers[_REFRESHED_TOKEN_HEADER] = issue_token(payload["sub"], user_id)
+                    # payload["username"], NOT payload["sub"] — sub is now a
+                    # UUID derived from uid (see routers/auth.py's module
+                    # docstring), not the username. Also carry roles/name
+                    # forward — without this, every sliding refresh would
+                    # silently drop them (issue_token's params default to
+                    # none/derived), regressing the feedback service's
+                    # attribution back to a guessed name the moment a token
+                    # first refreshes after login.
+                    response.headers[_REFRESHED_TOKEN_HEADER] = issue_token(
+                        payload["username"], user_id, payload.get("roles"), payload.get("name")
+                    )
 
         try:
             await record_api_call(
@@ -110,5 +121,6 @@ def create_app() -> FastAPI:
     app.include_router(questionnaire_router, prefix=api_prefix, **protected)
     app.include_router(rci_plan_router, prefix=api_prefix, **protected)
     app.include_router(action_center_router, prefix=api_prefix, **protected)
+    app.include_router(analytics_router, prefix=api_prefix, **protected)
 
     return app

@@ -101,7 +101,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
           return (
             <g key={tick}>
               <line x1={40} x2={plotWidth + 40} y1={y} y2={y} stroke="var(--color-card-border)" strokeDasharray="2 3" />
-              <text x={30} y={y + 4} textAnchor="end" fontSize={12} fill="var(--color-text-muted)">
+              <text x={30} y={y + 4} textAnchor="end" fontSize="var(--font-size-sm)" fill="var(--color-text-muted)">
                 {tick}
               </text>
             </g>
@@ -145,7 +145,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
                   );
                 })}
               </g>
-              <text x={x + BAR_WIDTH / 2} y={CHART_HEIGHT + 28} textAnchor="middle" fontSize={12} fill="var(--color-text-muted)">
+              <text x={x + BAR_WIDTH / 2} y={CHART_HEIGHT + 28} textAnchor="middle" fontSize="var(--font-size-sm)" fill="var(--color-text-muted)">
                 {d.label.split("\n").map((line, li) => (
                   <tspan key={li} x={x + BAR_WIDTH / 2} dy={li === 0 ? 0 : LABEL_LINE_HEIGHT}>
                     {line}
@@ -157,7 +157,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
         })}
       </svg>
 
-      <div style={{ display: "flex", gap: 20, marginTop: 12, fontSize: 13, color: "var(--color-text-muted)" }}>
+      <div style={{ display: "flex", gap: 20, marginTop: 12, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
         <Legend swatch={COLORS.onTrack} label="On track" />
         <Legend swatch={COLORS.atRisk} label="At Risk" />
         <Legend swatch={COLORS.delayed} label="Delayed" />

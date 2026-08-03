@@ -28,6 +28,17 @@ class Settings(BaseSettings):
 
     # ── Auth (JWT) — still no real credential store (see routers/auth.py),
     # but tokens are now real signed/expiring JWTs, not an opaque placeholder.
+    #
+    # JWT_SECRET is a PLATFORM-WIDE shared secret, not just this backend's own
+    # — confirmed 2026-08-03 by checking the reference ARGUS Lighthouse repo
+    # (Strides-Pharma-Science-Ltd/Lab-Error-Platform): its Java/Quarkus
+    # JwtService docstring says "set a >=256-bit JWT_SECRET in deployment for
+    # interoperability with the FastAPI tokens" — i.e. one secret across every
+    # app AND the separate feedback service, so any app's own regular session
+    # token is already valid everywhere. There is no separate per-service
+    # token to mint (an earlier attempt at that here was wrong — see git
+    # history). See issue_token()'s `roles` claim for the other half of that
+    # interoperability contract.
     JWT_SECRET: str = "dev-placeholder-secret-change-me"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60

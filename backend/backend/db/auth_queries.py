@@ -12,7 +12,7 @@ async def fetch_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT u.id, u.username, u.password_hash, u.is_active, r.name AS role
+            SELECT u.id, u.username, u.password_hash, u.is_active, u.full_name, r.name AS role
             FROM athena_users u
             LEFT JOIN athena_roles r ON r.id = u.role_id
             WHERE u.username = $1

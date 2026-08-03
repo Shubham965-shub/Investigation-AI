@@ -43,14 +43,14 @@
 }
 
 .an-section-title {
-  font-size: 20px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text);
   margin: 0;
 }
 
 .an-section-subtitle {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
   margin-left: 8px;
 }
@@ -66,7 +66,7 @@
   border-radius: 10px;
   background: var(--color-surface);
   padding: 9px 13px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--color-text);
   display: flex;
   align-items: center;
@@ -89,7 +89,7 @@
 }
 
 .an-card-eyebrow {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -97,7 +97,7 @@
 }
 
 .an-card-big-number {
-  font-size: 36px;
+  font-size: var(--font-size-hero);
   font-weight: 700;
   color: var(--color-text);
   margin: 4px 0;
@@ -110,20 +110,20 @@
 }
 
 .an-card-subrow .label {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   color: var(--color-text-muted);
   letter-spacing: 0.03em;
 }
 
 .an-card-subrow .value {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-text);
 }
 
 .an-trend {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   margin: 0;
 }
@@ -167,7 +167,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -177,7 +177,7 @@
 .an-status-card.bad .an-status-card-header { color: var(--color-danger-text); }
 
 .an-status-card-number {
-  font-size: 30px;
+  font-size: var(--font-size-hero);
   font-weight: 700;
   color: var(--color-text);
 }
@@ -187,7 +187,7 @@
   align-items: center;
   padding: 2px 8px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   background: var(--color-success-bg);
   color: var(--color-success-text);
@@ -196,7 +196,7 @@
 .an-note {
   border-radius: 8px;
   padding: 10px 14px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .an-note.info { background: var(--color-info-bg); border: 1px solid var(--color-info-border); color: var(--color-info-text); }
@@ -214,7 +214,7 @@
   background: var(--color-surface);
   border-radius: 8px;
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   display: flex;
   align-items: center;
@@ -254,7 +254,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -262,7 +262,7 @@
 .an-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .an-table td {

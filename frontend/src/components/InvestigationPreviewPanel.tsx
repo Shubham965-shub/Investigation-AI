@@ -34,6 +34,7 @@ export interface PreviewInvestigation {
   step: number;
   totalSteps: number;
   dueDate: string;
+  lastUpdated: string;
 }
 
 function initialsFor(name: string): string {
@@ -135,11 +136,11 @@ export function InvestigationPreviewPanel({
                   <button type="button" aria-label="Close" onClick={onClose} style={{ background: "none", border: "none", padding: 0, display: "flex", cursor: "pointer" }}>
                     <img src={backArrow} alt="" width={14} height={14} />
                   </button>
-                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "var(--color-text-muted)" }}>{investigation.id}</span>
+                  <span style={{ fontFamily: "monospace", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{investigation.id}</span>
                   <span style={{ color: "var(--color-text-muted)" }}>/</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 14, color: "var(--color-text-muted)" }}>{investigation.eventType}</span>
+                  <span style={{ fontFamily: "monospace", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{investigation.eventType}</span>
                 </div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 20, color: "var(--color-text)" }}>{investigation.title}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>{investigation.title}</p>
               </div>
               <button type="button" aria-label="Close panel" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 5 }}>
                 <img src={closeIcon} alt="" width={18} height={18} />
@@ -148,15 +149,15 @@ export function InvestigationPreviewPanel({
 
             <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ background: "var(--color-rail-active-bg)", borderBottom: "1px solid var(--color-card-border)", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-muted)" }}>
+                <p style={{ margin: 0, fontSize: "var(--font-size-base)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-muted)" }}>
                   Investigation Summary
                 </p>
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1, background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Overall Progress</p>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Overall Progress</p>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                      <span style={{ fontSize: 20, fontWeight: 700 }}>{percent}%</span>
-                      <span style={{ fontSize: 14, color: "var(--color-text-muted)" }}>
+                      <span style={{ fontSize: "var(--font-size-lg)", fontWeight: 700 }}>{percent}%</span>
+                      <span style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
                         {investigation.step} of {investigation.totalSteps} steps complete
                       </span>
                     </div>
@@ -167,13 +168,13 @@ export function InvestigationPreviewPanel({
                   <div style={{ flex: 1, background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12, display: "flex", justifyContent: "space-between" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <img src={calendarIcon} alt="" width={14} height={14} />
-                      <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Due Date</p>
-                      <p style={{ margin: 0, fontSize: 16 }}>{investigation.dueDate}</p>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Due Date</p>
+                      <p style={{ margin: 0, fontSize: "var(--font-size-md)" }}>{investigation.dueDate}</p>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <img src={calendarIcon} alt="" width={14} height={14} />
-                      <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Last Updated</p>
-                      <p style={{ margin: 0, fontSize: 16 }}>{investigation.dueDate}</p>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Last Updated</p>
+                      <p style={{ margin: 0, fontSize: "var(--font-size-md)" }}>{investigation.lastUpdated}</p>
                     </div>
                   </div>
                 </div>
@@ -181,21 +182,21 @@ export function InvestigationPreviewPanel({
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <img src={teamIcon} alt="" width={16} height={16} />
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Investigation Team</p>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Investigation Team</p>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {investigation.investigator ? (
                       <div style={{ background: "var(--color-rail-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "5px 9px", display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ background: "#4a5565", color: "#fff", borderRadius: "50%", width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700 }}>
+                        <span style={{ background: "#4a5565", color: "#fff", borderRadius: "50%", width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-xs)", fontWeight: 700 }}>
                           {initialsFor(investigation.investigator)}
                         </span>
                         <div>
-                          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--color-text)" }}>{investigation.investigator}</p>
-                          <p style={{ margin: 0, fontSize: 10, color: "var(--color-text-muted)" }}>Investigator</p>
+                          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text)" }}>{investigation.investigator}</p>
+                          <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>Investigator</p>
                         </div>
                       </div>
                     ) : (
-                      <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>Unassigned</p>
+                      <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Unassigned</p>
                     )}
                   </div>
                 </div>
@@ -207,8 +208,8 @@ export function InvestigationPreviewPanel({
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <img src={inProgressBannerIcon} alt="" width={14} height={14} />
                       <div>
-                        <p style={{ margin: 0, fontSize: "10.5px", fontWeight: 600, color: "var(--color-info-text)" }}>Currently in progress</p>
-                        <p style={{ margin: 0, fontSize: 11, color: "var(--color-info-text)" }}>
+                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--color-info-text)" }}>Currently in progress</p>
+                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-info-text)" }}>
                           Step {investigation.step + 1}: {currentStepDef.label}
                         </p>
                       </div>
@@ -216,7 +217,7 @@ export function InvestigationPreviewPanel({
                     <button
                       type="button"
                       onClick={() => goToStep(currentStepDef.path)}
-                      style={{ background: "var(--color-open-bg)", border: "none", borderRadius: 4, padding: "5px 11px", display: "flex", alignItems: "center", gap: 4, color: "var(--color-info-text)", fontSize: "10.5px", fontWeight: 600 }}
+                      style={{ background: "var(--color-open-bg)", border: "none", borderRadius: 4, padding: "5px 11px", display: "flex", alignItems: "center", gap: 4, color: "var(--color-info-text)", fontSize: "var(--font-size-xs)", fontWeight: 600 }}
                     >
                       Jump to step
                       <img src={jumpArrowIcon} alt="" width={10} height={10} />
@@ -226,7 +227,7 @@ export function InvestigationPreviewPanel({
               )}
 
               <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-muted)" }}>
+                <p style={{ margin: 0, fontSize: "var(--font-size-base)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-muted)" }}>
                   Investigation Steps
                 </p>
                 {STEP_DEFS.map((stepDef, index) => {
@@ -274,7 +275,7 @@ export function InvestigationPreviewPanel({
                               alignSelf: "flex-start",
                               padding: "8px",
                               borderRadius: 4,
-                              fontSize: 12,
+                              fontSize: "var(--font-size-sm)",
                               fontWeight: 600,
                               ...(status === "completed"
                                 ? { background: "var(--color-success-bg)", border: "1px solid var(--color-success-text)", color: "var(--color-success-text)" }
@@ -286,17 +287,17 @@ export function InvestigationPreviewPanel({
                             <img src={status === "completed" ? badgeCompletedIcon : status === "in-progress" ? badgeInProgressIcon : badgeNotStartedIcon} alt="" width={16} height={16} />
                             {status === "completed" ? "Completed" : status === "in-progress" ? "In Progress" : "Not Started"}
                           </span>
-                          <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "var(--color-text)" }}>{stepDef.label}</p>
-                          <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>{stepDef.description}</p>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--color-text)" }}>{stepDef.label}</p>
+                          <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{stepDef.description}</p>
                           <div style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 8, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             {status !== "not-started" && investigation.investigator ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{ background: "#4a5565", color: "#fff", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
+                                <span style={{ background: "#4a5565", color: "#fff", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-xs)", fontWeight: 700 }}>
                                   {initialsFor(investigation.investigator)}
                                 </span>
                                 <div>
-                                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>{investigation.investigator}</p>
-                                  <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Investigator</p>
+                                  <p style={{ margin: 0, fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text)" }}>{investigation.investigator}</p>
+                                  <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Investigator</p>
                                 </div>
                               </div>
                             ) : (
@@ -304,11 +305,11 @@ export function InvestigationPreviewPanel({
                                 <span style={{ width: 30, height: 30, borderRadius: "50%", border: "1.4px dashed var(--color-open-border)", background: "var(--color-open-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                   <img src={unassignedIcon} alt="" width={15} height={15} />
                                 </span>
-                                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text)" }}>Unassigned</span>
+                                <span style={{ fontSize: "var(--font-size-base)", fontWeight: 700, color: "var(--color-text)" }}>Unassigned</span>
                               </div>
                             )}
                             {status === "in-progress" && stepDef.path && (
-                              <button type="button" onClick={() => goToStep(stepDef.path)} style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 4, padding: "4px 16px", fontSize: 14, fontWeight: 700 }}>
+                              <button type="button" onClick={() => goToStep(stepDef.path)} style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 4, padding: "4px 16px", fontSize: "var(--font-size-base)", fontWeight: 700 }}>
                                 Continue
                               </button>
                             )}

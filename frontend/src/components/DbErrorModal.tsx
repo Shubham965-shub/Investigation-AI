@@ -28,10 +28,10 @@ export function DbErrorModal({ message, onRetry }: { message: string; onRetry: (
           gap: 16,
         }}
       >
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 20, color: "var(--color-text)" }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>
           Unable to load this investigation
         </p>
-        <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>{message}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{message}</p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
           <button type="button" className="btn-outline" onClick={() => navigate("/")}>
             Back to Investigations

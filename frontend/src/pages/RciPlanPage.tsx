@@ -14,7 +14,6 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
-import personDefaultIcon from "../assets/icons/rci-person-default.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkIcon from "../assets/icons/evidence-checkbox.svg";
@@ -256,14 +255,14 @@ export function RciPlanPage() {
         <div className="card">
           <p className="card-title">Problem Statement</p>
           <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 16, lineHeight: 1.9 }}>{problemStatement}</p>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
           </div>
         </div>
 
         {additionalFields.length > 0 && (
           <div className="card">
             <p className="card-title">Additional Details for RCI Plan</p>
-            <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>
+            <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
               RCI Plan generation needs a few more details beyond the Problem Statement step.
             </p>
             <div className="field-grid" style={{ flexWrap: "wrap" }}>
@@ -311,7 +310,7 @@ export function RciPlanPage() {
       <div className="card">
         <p className="card-title">Problem Statement</p>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: 16, lineHeight: 1.9 }}>{problemStatement}</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
         </div>
       </div>
 
@@ -333,16 +332,16 @@ export function RciPlanPage() {
                 </button>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
                     </span>
-                    <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>({section.tasks.length} tasks)</span>
+                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} tasks)</span>
                   </div>
                   {section.correlation && (
-                    <p style={{ margin: "2px 0 0", fontSize: 15, color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: 16, color: "var(--color-text-faint)" }}>
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>
                   <span>TCD:</span>
                   <input
                     type="date"
@@ -350,18 +349,17 @@ export function RciPlanPage() {
                     value={section.due_date ?? ""}
                     onChange={(e) => setSectionDueDate(index, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ border: "none", background: "none", fontSize: 16, color: "var(--color-text-faint)", padding: 0 }}
+                    style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
                   />
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <img src={personDefaultIcon} alt="" width={16} height={16} />
                   <input
                     type="text"
                     placeholder="Unassigned"
                     value={section.assignee ?? ""}
                     onChange={(e) => setSectionAssignee(index, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ fontSize: 12, border: "none", background: "none", width: 90, padding: 0 }}
+                    style={{ fontSize: "var(--font-size-sm)", border: "none", background: "none", width: 90, padding: 0 }}
                   />
                 </div>
                 <button
@@ -375,10 +373,8 @@ export function RciPlanPage() {
               </div>
               {isOpen && (
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
                     <span style={{ width: 700 }}>Task</span>
-                    <span style={{ width: 160 }}>Description</span>
-                    <span style={{ width: 160 }}>Assigned To</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;
@@ -401,11 +397,9 @@ export function RciPlanPage() {
                             type="text"
                             value={task.description}
                             onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
-                            style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
+                            style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
                           />
                         </div>
-                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>Description goes here...</span>
-                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
                       </div>
                     );
                   })}

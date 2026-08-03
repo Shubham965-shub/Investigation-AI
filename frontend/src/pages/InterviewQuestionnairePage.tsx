@@ -172,7 +172,7 @@ export function InterviewQuestionnairePage() {
       <div className="card">
         <p className="card-title">Problem Statement</p>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: 16, lineHeight: 1.9 }}>{problemStatement}</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
         </div>
       </div>
 

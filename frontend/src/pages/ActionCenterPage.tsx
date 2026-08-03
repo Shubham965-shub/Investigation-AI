@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { StatusChart } from "../components/StatusChart";
 import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { FilterSelect } from "../components/FilterSelect";
+import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
@@ -11,7 +13,6 @@ import iconOverdue from "../assets/icons/status-overdue.svg";
 import iconSearch from "../assets/icons/search.svg";
 import iconViewGrid from "../assets/icons/view-grid.png";
 import iconViewList from "../assets/icons/view-list.png";
-import iconChevron from "../assets/icons/filter-chevron.svg";
 import iconRowArrow from "../assets/icons/row-arrow.svg";
 import "./ActionCenterPage.css";
 
@@ -39,19 +40,6 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   overdue: { status: "overdue", label: "Overdue" },
 };
 
-// Display-only relabeling for the Sites filter dropdown — per the user
-// (2026-07-31), dim_location's real value "Oral Dosage Form" should show as
-// "KRSG" in the filter, without changing the underlying value sent to the
-// backend (site filtering still matches against the real DB text) or
-// anything else that reads it (e.g. the Investigation Details table's own
-// site column, if it's ever shown there).
-const SITE_FILTER_LABEL_OVERRIDES: Record<string, string> = {
-  "Oral Dosage Form": "KRSG",
-};
-
-function formatSiteLabel(site: string): string {
-  return SITE_FILTER_LABEL_OVERRIDES[site] ?? site;
-}
 
 // Matches the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly —
 // sent/received as a plain investigator= value, same as a real name, just
@@ -139,50 +127,6 @@ function renderStatusCard(card: StatusCardResponse) {
           <span>{count}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-// Real filter dropdown backed by the STAR schema dimensions
-// (dim_location/dim_department/dim_product/dim_investigator, via
-// GET /action-center/summary's filter_options — see
-// src/routers/action_center.py). Styled to match the original decorative
-// ac-filter-pill look, just backed by a real <select>.
-function FilterSelect({
-  value,
-  onChange,
-  defaultLabel,
-  options,
-  formatOption,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  defaultLabel: string;
-  options: string[];
-  formatOption?: (value: string) => string;
-}) {
-  return (
-    <div style={{ position: "relative", display: "inline-flex" }}>
-      <select
-        className="ac-filter-pill"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ appearance: "none", paddingRight: 28, cursor: "pointer", maxWidth: 200 }}
-      >
-        <option value="">{defaultLabel}</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {formatOption ? formatOption(opt) : opt}
-          </option>
-        ))}
-      </select>
-      <img
-        src={iconChevron}
-        alt=""
-        width={12}
-        height={12}
-        style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-      />
     </div>
   );
 }
@@ -320,6 +264,7 @@ export function ActionCenterPage() {
       step: inv.stage,
       totalSteps: inv.total_stages,
       dueDate: inv.due_date ?? "—",
+      lastUpdated: inv.updated_at ?? "—",
     };
   }
 
@@ -413,6 +358,7 @@ export function ActionCenterPage() {
           </div>
           <div className="ac-filters">
             <FilterSelect
+              className="ac-filter-pill"
               value={siteFilter}
               onChange={(v) => {
                 setSiteFilter(v);
@@ -423,6 +369,7 @@ export function ActionCenterPage() {
               formatOption={formatSiteLabel}
             />
             <FilterSelect
+              className="ac-filter-pill"
               value={deptFilter}
               onChange={(v) => {
                 setDeptFilter(v);
@@ -432,6 +379,7 @@ export function ActionCenterPage() {
               options={summary.filter_options.departments}
             />
             <FilterSelect
+              className="ac-filter-pill"
               value={productFilter}
               onChange={(v) => {
                 setProductFilter(v);
@@ -441,6 +389,7 @@ export function ActionCenterPage() {
               options={summary.filter_options.products}
             />
             <FilterSelect
+              className="ac-filter-pill"
               value={investigatorFilter}
               onChange={(v) => {
                 setInvestigatorFilter(v);
@@ -451,6 +400,7 @@ export function ActionCenterPage() {
               formatOption={formatInvestigatorLabel}
             />
             <FilterSelect
+              className="ac-filter-pill"
               value={startPreset}
               onChange={(v) => {
                 setStartPreset(v);
@@ -510,7 +460,7 @@ export function ActionCenterPage() {
                   >
                     {col.label}
                     {sortColumn === col.key && (
-                      <span style={{ marginLeft: 4, fontSize: 10 }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                      <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
                     )}
                   </th>
                 ))}
@@ -631,7 +581,7 @@ export function ActionCenterPage() {
           </button>
           {pageNumbers(currentPage, totalPages).map((p, idx) =>
             p === "…" ? (
-              <span key={`ellipsis-${idx}`} style={{ fontSize: 14, color: "var(--color-text-muted)", padding: "0 4px" }}>
+              <span key={`ellipsis-${idx}`} style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", padding: "0 4px" }}>
                 …
               </span>
             ) : (

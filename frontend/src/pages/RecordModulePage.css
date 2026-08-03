@@ -18,14 +18,14 @@
 .card-title {
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 20px;
+  font-size: var(--font-size-lg);
   color: var(--color-text);
   margin: 0;
 }
 
 .field-label {
   font-weight: 600;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   color: var(--color-text-muted);
   margin: 0 0 4px;
 }
@@ -36,22 +36,37 @@
   border-radius: var(--radius-btn);
   padding: 9px 13px;
   font-weight: 500;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
+  /* Fixed cap so a long field (e.g. Description, hundreds of characters)
+     scrolls internally instead of growing the box to fit all of it — short
+     fields never reach this height so they're unaffected. */
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 textarea.field-value {
   resize: vertical;
   min-height: 90px;
   font-family: inherit;
+  /* Overrides .field-value's max-height — the editable textarea already
+     lets the user resize/scroll manually, capping it would just fight
+     their own resize handle. */
+  max-height: none;
 }
 
 .field-grid {
   display: flex;
   gap: 12px;
   width: 100%;
+  /* Without this, flexbox's default align-items:stretch makes every field
+     box in a row match the tallest sibling's height — a short field (e.g.
+     Observation Date) next to a long one (e.g. Description, hundreds of
+     characters) gets stretched into a mostly-empty oversized box instead of
+     sizing to its own content. */
+  align-items: flex-start;
 }
 
 .field-grid > div {
@@ -75,7 +90,7 @@ textarea.field-value {
   padding: 8px 24px;
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--font-size-md);
 }
 
 .btn-secondary {
@@ -86,7 +101,7 @@ textarea.field-value {
   padding: 8px 16px;
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -99,7 +114,7 @@ textarea.field-value {
   border-radius: var(--radius-btn);
   padding: 7px 12px;
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -135,14 +150,14 @@ textarea.field-value {
 
 .checklist-text {
   font-weight: 600;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   color: var(--color-text);
   flex: 1;
 }
 
 .checklist-desc {
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
   margin: 4px 0 0;
 }
@@ -172,5 +187,5 @@ textarea.field-value {
   color: var(--color-danger-text);
   border-radius: var(--radius-btn);
   padding: 10px 14px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }

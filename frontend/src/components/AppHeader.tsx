@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import logo from "../assets/icons/logo.png";
-import badge from "../assets/icons/badge.png";
+import athenaLogo from "../assets/icons/athena-logo.svg";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
 import headerIcon2 from "../assets/icons/header-icon-2.svg";
 import headerIconInfo from "../assets/icons/header-icon-info.svg";
@@ -9,6 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
 import { InvestigationStatusInfo } from "./InvestigationStatusInfo";
+import { AppFeedbackButton } from "./AppFeedbackButton";
 
 export function AppHeader() {
   const { toggleTheme } = useTheme();
@@ -47,11 +48,11 @@ export function AppHeader() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <img src={logo} alt="Strides" style={{ height: 42 }} />
-        <span style={{ fontSize: 24, color: "var(--color-primary)" }}>|</span>
-        <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 24, color: "#fafafa" }}>
+        <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
+        <img src={athenaLogo} alt="" style={{ height: 36 }} />
+        <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "#fafafa" }}>
           Athena
         </span>
-        <img src={badge} alt="" style={{ height: 42 }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {isActionCenter && (
@@ -92,6 +93,8 @@ export function AppHeader() {
             )}
           </div>
         )}
+
+        <AppFeedbackButton />
 
         <button
           type="button"
@@ -136,7 +139,7 @@ export function AppHeader() {
                 }}
               >
                 <div>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Signed in as</p>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Signed in as</p>
                   <p style={{ margin: 0, fontWeight: 700, color: "var(--color-text)" }}>{username}</p>
                 </div>
                 <button

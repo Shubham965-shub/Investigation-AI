@@ -60,10 +60,10 @@ function CriticalityCard({ title, badgeBg, badgeText, thresholds }: CriticalityC
   return (
     <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 8, overflow: "hidden", flex: 1, minWidth: 200 }}>
       <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--color-card-border)", display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ background: badgeBg, color: badgeText, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20 }}>
+        <span style={{ background: badgeBg, color: badgeText, fontSize: "var(--font-size-xs)", fontWeight: 600, padding: "3px 10px", borderRadius: 20 }}>
           {title}
         </span>
-        <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>investigations</span>
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>investigations</span>
       </div>
       <div>
         {thresholds.map(({ status, label }, i) => (
@@ -71,8 +71,8 @@ function CriticalityCard({ title, badgeBg, badgeText, thresholds }: CriticalityC
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px" }}>
               <StatusDot status={status} />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>{status}</div>
-                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 1 }}>{label}</div>
+                <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text)" }}>{status}</div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", marginTop: 1 }}>{label}</div>
               </div>
             </div>
             {i < thresholds.length - 1 && (
@@ -89,7 +89,7 @@ function Legend() {
   return (
     <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
       {LEGEND_ORDER.map((status) => (
-        <span key={status} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-muted)" }}>
+        <span key={status} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
           <span style={{ width: 9, height: 9, borderRadius: 2, background: STATUS_DOT_COLOR[status], display: "inline-block" }} />
           {status}
         </span>
@@ -101,8 +101,8 @@ function Legend() {
 export function InvestigationStatusInfo() {
   return (
     <div style={{ width: 460, maxWidth: "80vw" }}>
-      <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14, color: "var(--color-text)" }}>Investigation Status Thresholds</p>
-      <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--color-text-muted)" }}>
+      <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "var(--font-size-base)", color: "var(--color-text)" }}>Investigation Status Thresholds</p>
+      <p style={{ margin: "0 0 12px", fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
         How an investigation's status is determined, based on days open and criticality.
       </p>
       <Legend />

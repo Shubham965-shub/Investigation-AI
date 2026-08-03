@@ -1,0 +1,93 @@
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes login-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes login-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes login-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+}
+
+.login-radar {
+  display: none;
+}
+
+.login-brand-panel {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .login-radar {
+    display: block;
+  }
+  .login-brand-panel {
+    display: flex;
+  }
+}
+
+.login-submit {
+  position: relative;
+  overflow: hidden;
+}
+
+.login-submit-shimmer {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateX(-100%);
+}
+
+.login-submit:hover:not(:disabled) .login-submit-shimmer {
+  animation: login-shimmer 700ms ease;
+}
+
+.login-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fafafa;
+  animation: login-spin 700ms linear infinite;
+}
