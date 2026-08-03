@@ -21,8 +21,18 @@ CREATE TABLE IF NOT EXISTS athena_users (
     password_hash TEXT NOT NULL,
     role_id INTEGER REFERENCES athena_roles(id),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Real display name, not derived from username — added 2026-08-03 so the
+    -- feedback service (a separate ARGUS Lighthouse app that reads this
+    -- token's "name" claim to attribute submissions) shows a real name
+    -- instead of a heuristic guess. NULL falls back to
+    -- routers/auth.py's display_name_for_username() until backfilled.
+    full_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Idempotent for the already-applied live table (2026-07-31) — ALTER, not
+-- just the CREATE above, since that only fires on a fresh table.
+ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS full_name TEXT;
 
 CREATE TABLE IF NOT EXISTS athena_api_call_trails (
     id BIGSERIAL PRIMARY KEY,

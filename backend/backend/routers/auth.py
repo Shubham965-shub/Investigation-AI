@@ -4,9 +4,25 @@ Real credential store as of 2026-07-31: schema.sql's athena_users/
 athena_roles tables have been applied to the shared DB, and login verifies
 the submitted password against the stored bcrypt hash (bcrypt was already a
 declared dependency, previously unused). Tokens are signed, expiring JWTs
-(HS256) — not an opaque placeholder — carrying the user's id ("uid") alongside
-their username ("sub") so the audit-trail middleware (see app.py) can resolve
-who made a request without an extra DB round-trip per request.
+(HS256) — not an opaque placeholder.
+
+JWT_SECRET is a platform-wide shared secret (see settings.py) — this app's
+own regular session token IS the token other ARGUS Lighthouse services (e.g.
+the feedback widget's service, AppFeedbackButton.tsx) accept too, no separate
+per-service token needed. That service's own AuthFilter (confirmed
+2026-08-03 by reading Strides-Pharma-Science-Ltd/feedback-platform directly)
+does `UUID.fromString(claims.getSubject())` — `sub` MUST be a UUID string, a
+generic RuntimeException there (e.g. from a non-UUID sub) is caught and
+reported back as the exact opaque "Invalid bearer token" this app hit before
+this was found. This app's athena_users has no real UUID column, so `sub`
+here is `uuid_for_user_id()` — a deterministic UUID derived from the
+integer id (stable per user, no schema change needed; the feedback service
+never looks it up against anything, it's opaque to them). The ACTUAL
+username now travels as a separate `username` claim instead — every internal
+reader of this token (get_current_username(), the audit-trail middleware)
+was updated to read that claim, not `sub`, accordingly. `roles`/`email` are
+the other half of the interop contract, read by the feedback service to
+attribute a submission without a DB lookup back to this app.
 
 get_current_username() is the shared dependency both /auth/me and every
 other (non-auth) router use to require a valid token — see app.py's
@@ -15,6 +31,8 @@ include_router(..., dependencies=[Depends(get_current_username)]) calls.
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -35,11 +53,42 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 _INVALID_CREDENTIALS_DETAIL = "Invalid username or password"
 
 
-def issue_token(username: str, user_id: int) -> str:
+def uuid_for_user_id(user_id: int) -> str:
+    """A stable, deterministic UUID string for a given athena_users.id — see
+    this module's docstring for why `sub` needs to be UUID-shaped at all."""
+    return str(uuid.UUID(int=user_id))
+
+
+def display_name_for_username(username: str) -> str:
+    """Fallback only — used when athena_users.full_name is unset for an
+    account. Derives a best-effort display name from the email-shaped
+    username, e.g. "Saksham.Shankar@strides.com" -> "Saksham Shankar",
+    "kaberi_nath@mckinsey.com" -> "Kaberi Nath". Known to get concatenated
+    names wrong (e.g. "SatyanarayanSingh.Rajput" -> "SatyanarayanSingh
+    Rajput", not the real "Satyanarayan Singh Rajput") — real full_name
+    values take priority (see issue_token) precisely because of cases like
+    that. A part already containing a capital letter is left as-is rather
+    than forced to lowercase-then-capitalize, since it may already be an
+    intentional concatenation."""
+    local_part = username.split("@", 1)[0]
+    parts = [p for p in re.split(r"[._]+", local_part) if p]
+    if not parts:
+        return username
+    return " ".join(p.capitalize() if p.islower() else p for p in parts)
+
+
+def issue_token(username: str, user_id: int, roles: Optional[list[str]] = None, full_name: Optional[str] = None) -> str:
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": username,
+        "sub": uuid_for_user_id(user_id),
+        "username": username,
         "uid": user_id,
+        # username IS an email address in this app's data (see the 7 seeded
+        # accounts), so it doubles as the "email" identity claim the
+        # reference platform's own tokens carry — no separate field needed.
+        "email": username,
+        "name": full_name or display_name_for_username(username),
+        "roles": roles or [],
         "iat": now,
         "exp": now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES),
     }
@@ -55,7 +104,9 @@ def _decode_token(token: str) -> str:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
-    username = payload.get("sub")
+    # NOT "sub" — see module docstring (sub is now a UUID derived from uid,
+    # not the username).
+    username = payload.get("username")
     if not username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return username
@@ -90,7 +141,9 @@ async def login(request: LoginRequest) -> LoginResponse:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
     if not bcrypt.checkpw(request.password.encode("utf-8"), user["password_hash"].encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
-    return LoginResponse(access_token=issue_token(user["username"], user["id"]), username=user["username"])
+    roles = [user["role"]] if user["role"] else []
+    token = issue_token(user["username"], user["id"], roles, user["full_name"])
+    return LoginResponse(access_token=token, username=user["username"])
 
 
 @router.get("/me", response_model=CurrentUser)

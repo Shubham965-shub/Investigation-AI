@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import logo from "../assets/icons/logo.png";
-import badge from "../assets/icons/badge.png";
+import athenaLogo from "../assets/icons/athena-logo.svg";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
 import headerIcon2 from "../assets/icons/header-icon-2.svg";
 import headerIconInfo from "../assets/icons/header-icon-info.svg";
@@ -51,7 +51,12 @@ export function AppHeader() {
         <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 24, color: "#fafafa" }}>
           Athena
         </span>
-        <img src={badge} alt="" style={{ height: 42 }} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <img src={athenaLogo} alt="" style={{ height: 36 }} />
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 10, fontWeight: 700, color: "#fafafa", letterSpacing: 0.5 }}>
+            Athena
+          </span>
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {isActionCenter && (

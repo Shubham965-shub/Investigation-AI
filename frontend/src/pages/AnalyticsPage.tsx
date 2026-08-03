@@ -1,15 +1,34 @@
+import { useEffect, useState } from "react";
 import { HorizontalBarChart } from "../components/charts/HorizontalBarChart";
 import { VerticalBarChart } from "../components/charts/VerticalBarChart";
 import { LineChart } from "../components/charts/LineChart";
 import { Gauge } from "../components/charts/Gauge";
+import { FilterSelect } from "../components/FilterSelect";
+import { ApiError } from "../api/client";
+import {
+  getAnalyticsSummary,
+  type AnalyticsSummaryResponse,
+  type CapaStatusResponse,
+  type CategoryCountResponse,
+  type EventTypeCardResponse,
+  type FailurePatternsResponse,
+  type RootCauseStatusResponse,
+} from "../api/dashboard";
 import "./AnalyticsPage.css";
 
 // Matches the approved Figma "Analytics" dashboard (rail icon 3, node
 // 1229:41868 — sub-sections: Event 1229:41892, Root Cause Status 1252:25454,
 // CAPA Status 1229:42279, Investigation Quality 1229:42536, Failure Pattern
-// Analysis 1229:43167). MOCK DATA throughout — this reporting dashboard has
-// no backend yet; numbers mirror the approved Figma content exactly so the
-// layout can be reviewed.
+// Analysis 1229:43167).
+//
+// Real-data pass (2026-08-03), per the user — only sections that map
+// cleanly onto real star-schema columns are wired: Event, CAPA presence,
+// Root Cause presence, and Failure Pattern product/equipment frequency (see
+// backend/routers/analytics.py's module docstring). Investigation Quality
+// (IQ Score), the CAPA L1-L5 hierarchy ranking, and the Failure Pattern
+// "Recurring Failure" narrative cards + monthly trend line chart have no
+// backing data/formula anywhere in the star schema and are STILL MOCK DATA
+// — clearly commented at each remaining mock block below.
 
 const FilterPill = ({ label }: { label: string }) => (
   <span className="an-filter-pill">
@@ -17,54 +36,43 @@ const FilterPill = ({ label }: { label: string }) => (
   </span>
 );
 
+function fmtTrend(trend: number | null): { text: string; isGood: boolean } {
+  if (trend === null) return { text: "No data last month", isGood: true };
+  return { text: `${Math.abs(trend)}% vs Last month`, isGood: trend > 0 };
+}
+
 // ── Event section ──────────────────────────────────────────────────────────
 
-const EVENT_CARDS = [
-  { eyebrow: "OVERALL LOGGED", total: 342, inProgress: 87, closed: 255, trend: -12.3, overdue: 18, overduePct: 23 },
-  { eyebrow: "DEVIATION", total: 156, inProgress: 42, closed: 114, trend: -8.4, overdue: 6, overduePct: 15 },
-  { eyebrow: "OOS", total: 89, inProgress: 23, closed: 66, trend: 5.2, overdue: 5, overduePct: 24 },
-  { eyebrow: "OOT", total: 64, inProgress: 15, closed: 49, trend: 3.1, overdue: 4, overduePct: 27 },
-  { eyebrow: "MARKET COMPLAINT", total: 33, inProgress: 7, closed: 26, trend: -15.6, overdue: 3, overduePct: 46 },
-];
-
-function EventSection() {
+function EventSection({ events }: { events: EventTypeCardResponse[] }) {
   return (
     <section className="an-section">
       <div className="an-section-header">
         <p className="an-section-title">Event</p>
-        <div className="an-filters">
-          <FilterPill label="All Sites" />
-          <FilterPill label="Dept" />
-          <FilterPill label="Product" />
-          <FilterPill label="Last 30 days" />
-        </div>
       </div>
       <div className="an-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
-        {EVENT_CARDS.map((c) => {
-          const isGood = c.trend > 0;
+        {events.map((c) => {
+          const trend = fmtTrend(c.trend_pct);
           return (
-            <div className="an-card" key={c.eyebrow}>
-              <p className="an-card-eyebrow">{c.eyebrow}</p>
+            <div className="an-card" key={c.key}>
+              <p className="an-card-eyebrow">{c.label}</p>
               <p className="an-card-big-number">{c.total}</p>
               <div className="an-card-subrow">
                 <div>
                   <p className="label">In Progress</p>
-                  <p className="value">{c.inProgress}</p>
+                  <p className="value">{c.in_progress}</p>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <p className="label">Closed</p>
                   <p className="value">{c.closed}</p>
                 </div>
               </div>
-              <p className={`an-trend ${isGood ? "up-good" : "up-bad"}`}>
-                {Math.abs(c.trend)}% vs Last month
-              </p>
+              <p className={`an-trend ${trend.isGood ? "up-good" : "up-bad"}`}>{trend.text}</p>
               <div className="an-card-subrow" style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 9 }}>
                 <span className="label" style={{ fontWeight: 700, color: "var(--color-text-muted)" }}>OVERDUE</span>
                 <span style={{ color: "var(--color-danger-text)", fontWeight: 700, fontSize: 16 }}>{c.overdue}</span>
               </div>
               <div className="an-progress-track">
-                <div className="an-progress-fill" style={{ width: `${c.overduePct}%`, background: "var(--color-danger-text)" }} />
+                <div className="an-progress-fill" style={{ width: `${c.overdue_pct}%`, background: "var(--color-danger-text)" }} />
               </div>
             </div>
           );
@@ -76,55 +84,49 @@ function EventSection() {
 
 // ── Root Cause Status section ──────────────────────────────────────────────
 
-const RC_STATUS_CARDS = [
-  { key: "good", label: "ROOT CAUSE IDENTIFIED", value: 133, total: 255, trend: 2.4, pct: 52 },
-  { key: "warn", label: "PROBABLE ROOT CAUSE", value: 78, total: 255, trend: 5.6, pct: 31 },
-  { key: "bad", label: "NO ROOT CAUSE", value: 44, total: 255, trend: -9.1, pct: 17 },
-] as const;
+function RootCauseStatusSection({
+  status,
+  categories,
+}: {
+  status: RootCauseStatusResponse;
+  categories: CategoryCountResponse[];
+}) {
+  // Only a 2-way split (Identified / Not Identified) — real data has no
+  // column distinguishing "confirmed" from "probable" root cause, so the
+  // original Figma mock's 3-tier split isn't reproducible with real data.
+  const identifiedPct = status.total ? Math.round((status.identified / status.total) * 100) : 0;
+  const cards = [
+    { key: "good", label: "ROOT CAUSE IDENTIFIED", value: status.identified, pct: identifiedPct },
+    { key: "bad", label: "NO ROOT CAUSE", value: status.not_identified, pct: 100 - identifiedPct },
+  ] as const;
 
-const RC_CATEGORY_ROWS = [
-  { label: "Method", value: 30, secondaryValue: 28 },
-  { label: "Material", value: 24, secondaryValue: 26 },
-  { label: "Measurement", value: 13, secondaryValue: 13 },
-  { label: "Mother Nature", value: 13, secondaryValue: 20 },
-  { label: "Man", value: 15, secondaryValue: 15 },
-  { label: "Machine", value: 18, secondaryValue: 15 },
-];
+  const maxCategory = Math.max(...categories.map((c) => c.count), 1);
 
-function RootCauseStatusSection() {
   return (
     <section className="an-section">
       <div className="an-section-header">
         <div>
           <span className="an-section-title">Root Cause Status</span>
-          <span className="an-section-subtitle">— 255 closed events</span>
-        </div>
-        <div className="an-filters">
-          <FilterPill label="All Dept" />
-          <FilterPill label="All Product" />
-          <FilterPill label="June 2026" />
-          <span className="an-tab">Monthly Trends</span>
-          <span className="an-tab active">6M Analysis</span>
+          <span className="an-section-subtitle">— {status.total} events</span>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12, alignItems: "stretch" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {RC_STATUS_CARDS.map((c) => (
+          {cards.map((c) => (
             <div className={`an-status-card ${c.key}`} key={c.label}>
               <div className="an-status-card-header">{c.label}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                 <span className="an-status-card-number">
                   {c.value}
-                  <span style={{ fontSize: 16, fontWeight: 500, color: "var(--color-text-muted)" }}>/{c.total}</span>
+                  <span style={{ fontSize: 16, fontWeight: 500, color: "var(--color-text-muted)" }}>/{status.total}</span>
                 </span>
-                <span className="an-badge">{c.trend > 0 ? "↗" : "↘"}{Math.abs(c.trend)}%</span>
               </div>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{c.pct}% of total closed</p>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{c.pct}% of total</p>
               <div className="an-progress-track">
                 <div
                   className="an-progress-fill"
-                  style={{ width: `${c.pct}%`, background: c.key === "good" ? "var(--color-success-text)" : c.key === "warn" ? "var(--color-warning-text)" : "var(--color-danger-text)" }}
+                  style={{ width: `${c.pct}%`, background: c.key === "good" ? "var(--color-success-text)" : "var(--color-danger-text)" }}
                 />
               </div>
             </div>
@@ -134,21 +136,17 @@ function RootCauseStatusSection() {
         <div className="an-card" style={{ gap: 12 }}>
           <div className="an-card-subrow">
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-text-muted)" }}>
-              6M ANALYSIS — ROOT CAUSE BY CAUSE CATEGORY
+              ROOT CAUSE BY CAUSE CATEGORY
             </p>
           </div>
-          <div className="an-tabs">
-            <span className="an-tab active">All</span>
-            <span className="an-tab">Deviation</span>
-            <span className="an-tab">OOS</span>
-            <span className="an-tab">OOT</span>
-            <span className="an-tab">Market Complaint</span>
-          </div>
+          {/* Best-effort mapping of real root_cause_category values onto the
+              Man/Machine/Material/Method/Measurement/Mother Nature scheme —
+              real data doesn't actually follow a 6M taxonomy (see
+              backend/routers/analytics.py's _ROOT_CAUSE_TO_6M for the exact
+              mapping and its limits); events with no clear-fit category are
+              excluded from this chart rather than forced into a bucket. */}
           <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Man · Machine · Material · Method · Measurement · Mother Nature</p>
-          <HorizontalBarChart rows={RC_CATEGORY_ROWS} maxValue={80} primaryColor="#22c55e" secondaryColor="#f59e0b" legend={{ primary: "With RC", secondary: "Probable RC" }} />
-          <div className="an-note info">
-            <strong>Observation:</strong> Method is the most frequent root cause category with 78 events. Root cause identification rate is strong in this category.
-          </div>
+          <HorizontalBarChart rows={categories.map((c) => ({ label: c.label, value: c.count }))} maxValue={maxCategory} primaryColor="#22c55e" />
         </div>
       </div>
     </section>
@@ -157,36 +155,17 @@ function RootCauseStatusSection() {
 
 // ── CAPA Status section ─────────────────────────────────────────────────────
 
-const CAPA_MONTHLY_TREND = [
-  { label: "Jan", value: 270 },
-  { label: "Feb", value: 140 },
-  { label: "Mar", value: 205 },
-  { label: "Apr", value: 120 },
-  { label: "May", value: 250 },
-  { label: "Jun", value: 205 },
-];
+function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
+  const withPct = capa.total ? Math.round((capa.with_capa / capa.total) * 100) : 0;
+  const withoutPct = 100 - withPct;
+  const maxCategory = Math.max(...capa.by_root_cause_category.map((c) => c.count), 1);
 
-const CAPA_RANKING_ROWS = [
-  { tier: "L5", color: "#a855f7", label: "Error Proofing", description: "Poka-yoke / design change prevents error", hierarchy: "Highest Hierarchy", value: 29 },
-  { tier: "L4", color: "#3b82f6", label: "Error Prevention", description: "Process / system redesign prevents recurrence", hierarchy: "High Hierarchy", value: 55 },
-  { tier: "L3", color: "#14b8a6", label: "Detection by Technology", description: "Automated detection system catches error", hierarchy: "Medium Hierarchy", value: 27 },
-  { tier: "L2", color: "#f97316", label: "Detection by Human", description: "Human intervention detects the error", hierarchy: "Low Hierarchy", value: 63 },
-  { tier: "L1", color: "#ef4444", label: "Not Mandatory", description: "CAPA not required for this event type", hierarchy: "Lowest Hierarchy", value: 34 },
-];
-
-function CapaStatusSection() {
-  const maxRanking = Math.max(...CAPA_RANKING_ROWS.map((r) => r.value));
   return (
     <section className="an-section">
       <div className="an-section-header">
         <div>
           <span className="an-section-title">CAPA Status</span>
-          <span className="an-section-subtitle">— 255 closed events</span>
-        </div>
-        <div className="an-filters">
-          <FilterPill label="All Dept" />
-          <FilterPill label="All Product" />
-          <FilterPill label="June 2026" />
+          <span className="an-section-subtitle">— {capa.total} events</span>
         </div>
       </div>
 
@@ -195,74 +174,53 @@ function CapaStatusSection() {
           <div className="an-status-card good">
             <div className="an-status-card-header">WITH CAPA</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span className="an-status-card-number">209</span>
-              <span className="an-badge">↗6.2%</span>
+              <span className="an-status-card-number">{capa.with_capa}</span>
             </div>
             <div className="an-progress-track">
-              <div className="an-progress-fill" style={{ width: "82%", background: "var(--color-success-text)" }} />
+              <div className="an-progress-fill" style={{ width: `${withPct}%`, background: "var(--color-success-text)" }} />
             </div>
-            <div className="an-card-subrow">
-              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>82% of total closed</span>
-              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>15% CAPA reused</span>
-            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{withPct}% of total events</p>
           </div>
           <div className="an-status-card warn">
             <div className="an-status-card-header">WITHOUT CAPA</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span className="an-status-card-number">46</span>
-              <span className="an-badge" style={{ background: "var(--color-danger-bg)", color: "var(--color-danger-text)" }}>↘5.4%</span>
+              <span className="an-status-card-number">{capa.without_capa}</span>
             </div>
             <div className="an-progress-track">
-              <div className="an-progress-fill" style={{ width: "18%", background: "var(--color-warning-text)" }} />
+              <div className="an-progress-fill" style={{ width: `${withoutPct}%`, background: "var(--color-warning-text)" }} />
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>18% of total closed</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{withoutPct}% of total events</p>
           </div>
           <div className="an-card">
             <div className="an-card-subrow">
               <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>MONTHLY TREND</p>
               <span className="an-badge">✓ WITH CAPA</span>
             </div>
-            <VerticalBarChart data={CAPA_MONTHLY_TREND} color="#00786f" />
+            <VerticalBarChart data={capa.monthly_trend.map((m) => ({ label: m.label, value: m.value }))} color="#00786f" />
           </div>
         </div>
 
         <div className="an-card" style={{ gap: 16 }}>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-muted)" }}>CAPA RANKING BREAKDOWN</p>
-          {CAPA_RANKING_ROWS.map((row) => (
-            <div key={row.tier} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span
-                style={{
-                  background: row.color,
-                  color: "#fff",
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {row.tier}
-              </span>
+          {/* Replaces the mock's L1-L5 hierarchy ranking (Error Proofing /
+              Error Prevention / ...) — capa_effectiveness is 100% NULL on the
+              live DB and no other column encodes a CAPA hierarchy tier
+              anywhere in the star schema. This shows which root-cause
+              categories the CAPA'd events actually fall under instead — a
+              real, groundable substitute (see backend/routers/analytics.py). */}
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-muted)" }}>CAPA'D EVENTS BY ROOT CAUSE CATEGORY</p>
+          {capa.by_root_cause_category.map((row) => (
+            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="an-card-subrow">
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{row.label}</span>
-                  <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{row.hierarchy}</span>
                 </div>
-                <p style={{ margin: "2px 0 6px", fontSize: 12, color: "var(--color-text-muted)" }}>{row.description}</p>
-                <div className="an-progress-track">
-                  <div className="an-progress-fill" style={{ width: `${(row.value / maxRanking) * 100}%`, background: row.color }} />
+                <div className="an-progress-track" style={{ marginTop: 6 }}>
+                  <div className="an-progress-fill" style={{ width: `${(row.count / maxCategory) * 100}%`, background: "#00786f" }} />
                 </div>
               </div>
-              <span style={{ fontWeight: 700, fontSize: 16, width: 24, textAlign: "right" }}>{row.value}</span>
+              <span style={{ fontWeight: 700, fontSize: 16, width: 40, textAlign: "right" }}>{row.count}</span>
             </div>
           ))}
-          <div className="an-note warn">
-            <strong>Observation:</strong> 30% of CAPAs are Level 2 (Detection by Human). Majority CAPAs rely on human detection. Invest in process redesign to reduce recurrence risk.
-          </div>
         </div>
       </div>
     </section>
@@ -270,6 +228,10 @@ function CapaStatusSection() {
 }
 
 // ── Investigation Quality (IQ Score) section ────────────────────────────────
+// STILL MOCK DATA — no IQ Score formula exists anywhere in this codebase or
+// the star schema; computing a real one is a product/business-logic decision
+// deferred per the user (2026-08-03), not a data-availability gap like the
+// sections above. Revisit once that formula is defined.
 
 const INVESTIGATORS = [
   { initials: "RK", color: "#0d9488", name: "Rajesh Kurian", tag: "TOP", score: 93, trend: 6.6, events: 35, overdue: 3, assignable: 28 },
@@ -495,28 +457,11 @@ function InvestigationQualitySection() {
 }
 
 // ── Failure Pattern Analysis section ────────────────────────────────────────
-
-const PRODUCT_FREQUENCY = [
-  { label: "Metformin", value: 47 },
-  { label: "Paracetamol", value: 28 },
-  { label: "Cetirizine", value: 21 },
-  { label: "Azithromycin", value: 26 },
-  { label: "Omeprazole", value: 23 },
-  { label: "Ibuprofen", value: 15 },
-  { label: "Amoxicillin", value: 14 },
-  { label: "Atorvastatin", value: 6 },
-];
-
-const EQUIPMENT_FREQUENCY = [
-  { label: "Blender BLD-01", value: 34 },
-  { label: "Dissolution DS-06", value: 30 },
-  { label: "Autoclave AC-07", value: 26 },
-  { label: "Tablet Press 03", value: 28 },
-  { label: "Granulator GRN-02", value: 22 },
-  { label: "Coating Pan CP-04", value: 14 },
-  { label: "Filling Line FL-08", value: 13 },
-  { label: "HPLC Unit 05", value: 12 },
-];
+// Product/equipment frequency below is real (failure_patterns prop). The
+// "Recurring Failure" cards and "Monthly Trends" line chart are STILL MOCK
+// DATA — they need narrative descriptions and time-series granularity this
+// pass deliberately didn't build (out of the agreed data-groundable scope,
+// see AnalyticsPage's top-of-file comment).
 
 const RECURRING_FAILURES = [
   { category: "Equipment", color: "#ef4444", count: 29, description: "Process parameters not validated for current equipment state" },
@@ -532,7 +477,9 @@ const FAILURE_TREND_SERIES = [
   { name: "Patterns", color: "#a855f7", values: [20, 21, 34, 28, 27, 29] },
 ];
 
-function FailurePatternSection() {
+function FailurePatternSection({ patterns }: { patterns: FailurePatternsResponse }) {
+  const maxProduct = Math.max(...patterns.products.map((p) => p.value), 1);
+  const maxEquipment = Math.max(...patterns.equipment.map((e) => e.value), 1);
   return (
     <section className="an-section alert">
       <div className="an-section-header">
@@ -540,28 +487,26 @@ function FailurePatternSection() {
           <span className="an-section-title">Failure Pattern Analysis</span>
           <span className="an-section-subtitle">— recurring patterns and grey areas</span>
         </div>
-        <div className="an-filters">
-          <FilterPill label="All Dept" />
-          <FilterPill label="All Product" />
-          <FilterPill label="All Equipment" />
-          <FilterPill label="June 2026" />
-        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="an-card">
           <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>PRODUCTS — DEVIATION FREQUENCY</p>
-          <HorizontalBarChart rows={PRODUCT_FREQUENCY} maxValue={80} primaryColor="#0d9488" />
-          <div className="an-note bad">
-            <strong>Grey Area:</strong> Metformin 1000mg has highest deviation count (47). Prioritise process review for this product line.
-          </div>
+          <HorizontalBarChart rows={patterns.products.map((p) => ({ label: p.label, value: p.value }))} maxValue={maxProduct} primaryColor="#0d9488" />
+          {patterns.products[0] && (
+            <div className="an-note bad">
+              <strong>Grey Area:</strong> {patterns.products[0].label} has the highest event count ({patterns.products[0].value}). Prioritise process review for this product line.
+            </div>
+          )}
         </div>
         <div className="an-card">
           <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>EQUIPMENT — ERROR &amp; BREAKDOWN FREQUENCY</p>
-          <HorizontalBarChart rows={EQUIPMENT_FREQUENCY} maxValue={60} primaryColor="#0d9488" />
-          <div className="an-note warn">
-            <strong>Grey Area:</strong> Blender BLD-01 leads with 34 errors. Schedule preventive maintenance and calibration review.
-          </div>
+          <HorizontalBarChart rows={patterns.equipment.map((e) => ({ label: e.label, value: e.value }))} maxValue={maxEquipment} primaryColor="#0d9488" />
+          {patterns.equipment[0] && (
+            <div className="an-note warn">
+              <strong>Grey Area:</strong> {patterns.equipment[0].label} leads with {patterns.equipment[0].value} events. Schedule preventive maintenance and calibration review.
+            </div>
+          )}
         </div>
       </div>
 
@@ -577,7 +522,7 @@ function FailurePatternSection() {
                   <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>💡 {row.description}</p>
                 </div>
               </div>
-              <span className="an-badge" style={{ background: "#fef2f2", color: "#dc2626", flexShrink: 0 }}>{row.count} events</span>
+              <span className="an-badge" style={{ background: "var(--color-danger-bg)", color: "var(--color-danger-text)", flexShrink: 0 }}>{row.count} events</span>
             </div>
           ))}
         </div>
@@ -593,14 +538,137 @@ function FailurePatternSection() {
   );
 }
 
-export function AnalyticsPage() {
+const DATE_PRESET_OPTIONS = ["30", "90", "180", "365"];
+function formatDatePreset(v: string): string {
+  return v === "30" ? "Last 30 days" : v === "90" ? "Last 90 days" : v === "180" ? "Last 6 months" : "Last 12 months";
+}
+
+// Single filter bar for the whole page (per the user, 2026-08-03) — all 4
+// real sections (Event, Root Cause, CAPA, Failure Pattern) share one query
+// and re-fetch together rather than each keeping an independent filter
+// state. Investigation Quality stays mock and keeps its own decorative
+// pills (see InvestigationQualitySection) since it isn't wired to this.
+function AnalyticsFilterBar({
+  siteFilter,
+  setSiteFilter,
+  deptFilter,
+  setDeptFilter,
+  productFilter,
+  setProductFilter,
+  equipmentFilter,
+  setEquipmentFilter,
+  datePreset,
+  setDatePreset,
+  options,
+}: {
+  siteFilter: string;
+  setSiteFilter: (v: string) => void;
+  deptFilter: string;
+  setDeptFilter: (v: string) => void;
+  productFilter: string;
+  setProductFilter: (v: string) => void;
+  equipmentFilter: string;
+  setEquipmentFilter: (v: string) => void;
+  datePreset: string;
+  setDatePreset: (v: string) => void;
+  options: AnalyticsSummaryResponse["filter_options"];
+}) {
   return (
-    <div className="an-page">
-      <EventSection />
-      <RootCauseStatusSection />
-      <CapaStatusSection />
+    <div className="an-filters" style={{ marginBottom: 4 }}>
+      <FilterSelect className="an-filter-pill" value={siteFilter} onChange={setSiteFilter} defaultLabel="All Sites" options={options.sites} />
+      <FilterSelect className="an-filter-pill" value={deptFilter} onChange={setDeptFilter} defaultLabel="All Dept" options={options.departments} />
+      <FilterSelect className="an-filter-pill" value={productFilter} onChange={setProductFilter} defaultLabel="All Product" options={options.products} />
+      <FilterSelect className="an-filter-pill" value={equipmentFilter} onChange={setEquipmentFilter} defaultLabel="All Equipment" options={options.equipment} />
+      <FilterSelect className="an-filter-pill" value={datePreset} onChange={setDatePreset} defaultLabel="All Time" options={DATE_PRESET_OPTIONS} formatOption={formatDatePreset} />
+    </div>
+  );
+}
+
+const EMPTY_FILTER_OPTIONS: AnalyticsSummaryResponse["filter_options"] = { sites: [], departments: [], products: [], equipment: [] };
+
+export function AnalyticsPage() {
+  const [summary, setSummary] = useState<AnalyticsSummaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+
+  const [siteFilter, setSiteFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+  const [equipmentFilter, setEquipmentFilter] = useState("");
+  const [datePreset, setDatePreset] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const startDateFrom = datePreset
+      ? new Date(Date.now() - Number(datePreset) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      : undefined;
+    getAnalyticsSummary({
+      site: siteFilter || undefined,
+      department: deptFilter || undefined,
+      product: productFilter || undefined,
+      equipment: equipmentFilter || undefined,
+      startDateFrom,
+    })
+      .then((data) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [retryKey, siteFilter, deptFilter, productFilter, equipmentFilter, datePreset]);
+
+  // Only the full-page skeleton on first load — a filter-driven refetch
+  // just dims the existing content in place (matches ActionCenterPage).
+  if (loading && !summary) {
+    return (
+      <div className="an-page">
+        <div className="an-card">
+          <p style={{ margin: 0 }}>Loading analytics…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !summary) {
+    return (
+      <div className="an-page">
+        <div className="an-card">
+          <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{error ?? "No analytics data available."}</p>
+          <button type="button" className="btn-outline" onClick={() => setRetryKey((k) => k + 1)}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="an-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
+      <AnalyticsFilterBar
+        siteFilter={siteFilter}
+        setSiteFilter={setSiteFilter}
+        deptFilter={deptFilter}
+        setDeptFilter={setDeptFilter}
+        productFilter={productFilter}
+        setProductFilter={setProductFilter}
+        equipmentFilter={equipmentFilter}
+        setEquipmentFilter={setEquipmentFilter}
+        datePreset={datePreset}
+        setDatePreset={setDatePreset}
+        options={summary.filter_options ?? EMPTY_FILTER_OPTIONS}
+      />
+      <EventSection events={summary.events} />
+      <RootCauseStatusSection status={summary.root_cause_status} categories={summary.root_cause_categories} />
+      <CapaStatusSection capa={summary.capa} />
       <InvestigationQualitySection />
-      <FailurePatternSection />
+      <FailurePatternSection patterns={summary.failure_patterns} />
     </div>
   );
 }
