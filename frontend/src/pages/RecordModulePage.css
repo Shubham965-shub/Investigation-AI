@@ -40,18 +40,33 @@
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
+  /* Fixed cap so a long field (e.g. Description, hundreds of characters)
+     scrolls internally instead of growing the box to fit all of it — short
+     fields never reach this height so they're unaffected. */
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 textarea.field-value {
   resize: vertical;
   min-height: 90px;
   font-family: inherit;
+  /* Overrides .field-value's max-height — the editable textarea already
+     lets the user resize/scroll manually, capping it would just fight
+     their own resize handle. */
+  max-height: none;
 }
 
 .field-grid {
   display: flex;
   gap: 12px;
   width: 100%;
+  /* Without this, flexbox's default align-items:stretch makes every field
+     box in a row match the tallest sibling's height — a short field (e.g.
+     Observation Date) next to a long one (e.g. Description, hundreds of
+     characters) gets stretched into a mostly-empty oversized box instead of
+     sizing to its own content. */
+  align-items: flex-start;
 }
 
 .field-grid > div {

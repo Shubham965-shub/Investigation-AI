@@ -14,7 +14,6 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
-import personDefaultIcon from "../assets/icons/rci-person-default.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkIcon from "../assets/icons/evidence-checkbox.svg";
@@ -354,7 +353,6 @@ export function RciPlanPage() {
                   />
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <img src={personDefaultIcon} alt="" width={16} height={16} />
                   <input
                     type="text"
                     placeholder="Unassigned"
@@ -377,8 +375,6 @@ export function RciPlanPage() {
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
                     <span style={{ width: 700 }}>Task</span>
-                    <span style={{ width: 160 }}>Description</span>
-                    <span style={{ width: 160 }}>Assigned To</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;
@@ -404,8 +400,6 @@ export function RciPlanPage() {
                             style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
                           />
                         </div>
-                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>Description goes here...</span>
-                        <span style={{ fontSize: 14, color: "var(--color-text-muted)", width: 160 }}>{section.assignee ?? "Unassigned"}</span>
                       </div>
                     );
                   })}
