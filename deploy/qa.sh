@@ -67,7 +67,7 @@ DS_REQUIRED_VARS=(DB_HOST DB_NAME DB_USER DB_PASSWORD DB_PORT
                   DB_POOL_MIN_SIZE DB_POOL_MAX_SIZE OPENAI_API_KEY
                   SEARCH_AGENT_HOST SEARCH_AGENT_PORT)
 BE_REQUIRED_VARS=(DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
-                  DB_POOL_MIN_SIZE DB_POOL_MAX_SIZE AUTH_PLACEHOLDER_SECRET)
+                  DB_POOL_MIN_SIZE DB_POOL_MAX_SIZE JWT_SECRET)
 
 # ── .env parsing ──────────────────────────────────────────────
 # Whitelist parser: only NAME=VALUE lines, no `source` of arbitrary
@@ -245,12 +245,12 @@ phase_backend() {
             db-name="$BEENV_DB_NAME" \
             db-user="$BEENV_DB_USER" \
             db-password="$BEENV_DB_PASSWORD" \
-            auth-placeholder-secret="$BEENV_AUTH_PLACEHOLDER_SECRET" \
+            jwt-secret="$BEENV_JWT_SECRET" \
         --env-vars \
             DS_SERVICE_BASE_URL="https://$ds_internal_fqdn" \
             DS_SERVICE_TIMEOUT_SECONDS="${BEENV_DS_SERVICE_TIMEOUT_SECONDS:-230}" \
             CORS_ORIGINS="https://placeholder.invalid" \
-            AUTH_PLACEHOLDER_SECRET=secretref:auth-placeholder-secret \
+            JWT_SECRET=secretref:jwt-secret \
             DB_HOST=secretref:db-host \
             DB_PORT=secretref:db-port \
             DB_NAME=secretref:db-name \
@@ -353,15 +353,28 @@ phase_cors() {
 
 phase_frontend() {
     header "Frontend: build + deploy to SWA"
-    local be_fqdn swa_host swa_token api_url
+    local be_fqdn swa_host swa_token api_url npm_userconfig
     be_fqdn=$(get_fqdn "$BE_APP")
     swa_host=$(az staticwebapp show -n "$SWA_NAME" -g "$RG" --query defaultHostname -o tsv)
     swa_token=$(az staticwebapp secrets list -n "$SWA_NAME" -g "$RG" \
         --query properties.apiKey -o tsv)
     api_url="${VITE_API_BASE_URL:-https://$be_fqdn/api}"
 
-    info "Building with VITE_API_BASE_URL=$api_url (process env beats frontend/.env)"
-    ( cd "$REPO_ROOT/frontend" && npm ci && VITE_API_BASE_URL="$api_url" npm run build )
+    # Private @strides-pharma-science-ltd packages come from GitHub Packages;
+    # npm ci needs NODE_AUTH_TOKEN (PAT with read:packages) from frontend/.env.
+    # The temp userconfig holds only the ${NODE_AUTH_TOKEN} reference — the
+    # secret itself is passed via the environment, never written to disk.
+    load_env_file "$REPO_ROOT/frontend/.env" FEENV_
+    [[ -n "${FEENV_NODE_AUTH_TOKEN:-}" ]] \
+        || { error "NODE_AUTH_TOKEN missing from frontend/.env (needed for npm ci)"; exit 1; }
+    npm_userconfig=$(mktemp)
+    printf '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' > "$npm_userconfig"
+
+    info "Building with VITE_API_BASE_URL=$api_url (other VITE_* values come from frontend/.env)"
+    ( cd "$REPO_ROOT/frontend" \
+        && NODE_AUTH_TOKEN="$FEENV_NODE_AUTH_TOKEN" NPM_CONFIG_USERCONFIG="$npm_userconfig" npm ci \
+        && VITE_API_BASE_URL="$api_url" npm run build )
+    rm -f "$npm_userconfig"
 
     # Assert the QA URL got baked in and localhost did not leak.
     grep -rql "$be_fqdn" "$REPO_ROOT/frontend/dist/assets" \
