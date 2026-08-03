@@ -12,8 +12,14 @@ const FEEDBACK_API_BASE_URL = import.meta.env.VITE_FEEDBACK_API_BASE_URL;
 // inline where you place <FeedbackButton />"), dropping just the
 // positioning classes (fixed/bottom-6/right-6/z-40) keeps its own default
 // icon+label look but renders it inline in the header instead of floating.
+//
+// bg-emerald-600/hover:bg-emerald-700/shadow-lg are dropped entirely (not
+// overridden) since they're the widget's own bundled Tailwind utilities —
+// this app has no Tailwind of its own to generate a matching arbitrary-value
+// class, so `app-feedback-btn` (see index.css) supplies the header-matching
+// background/border/no-shadow via a plain CSS rule instead.
 const HEADER_INLINE_CLASSNAME =
-  "flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-emerald-700";
+  "app-feedback-btn flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition-colors";
 
 // The feedback service is a separate ARGUS Lighthouse app, but shares this
 // backend's own JWT_SECRET (platform-wide, see backend/config/settings.py)
