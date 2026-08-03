@@ -59,7 +59,7 @@ export function AddItemDialog({
             borderBottom: "1px solid var(--color-card-border)",
           }}
         >
-          <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 20, color: "var(--color-text)" }}>
+          <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>
             {title}
           </p>
           <button type="button" aria-label="Close" onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>

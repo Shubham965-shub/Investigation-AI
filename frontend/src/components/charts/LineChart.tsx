@@ -38,14 +38,14 @@ export function LineChart({
           return (
             <g key={tick}>
               <line x1={35} x2={CHART_WIDTH + 35} y1={y} y2={y} stroke="var(--color-card-border)" strokeDasharray="2 3" />
-              <text x={28} y={y + 4} textAnchor="end" fontSize={11} fill="var(--color-text-muted)">
+              <text x={28} y={y + 4} textAnchor="end" fontSize="var(--font-size-xs)" fill="var(--color-text-muted)">
                 {Math.round(tick)}
               </text>
             </g>
           );
         })}
         {categories.map((c, i) => (
-          <text key={c} x={35 + scaleX(i)} y={CHART_HEIGHT + 26} textAnchor="middle" fontSize={11} fill="var(--color-text-muted)">
+          <text key={c} x={35 + scaleX(i)} y={CHART_HEIGHT + 26} textAnchor="middle" fontSize="var(--font-size-xs)" fill="var(--color-text-muted)">
             {c}
           </text>
         ))}
@@ -63,7 +63,7 @@ export function LineChart({
           );
         })}
       </svg>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, fontSize: 12, color: "var(--color-text-muted)" }}>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
         {series.map((s) => (
           <span key={s.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, display: "inline-block" }} />

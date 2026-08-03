@@ -75,7 +75,7 @@ export function IconRail() {
               style={{ flexShrink: 0, transform: isToggle && expanded ? "rotate(180deg)" : "none" }}
             />
             {expanded && (
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text)", whiteSpace: "nowrap" }}>
                 {item.label}
               </span>
             )}

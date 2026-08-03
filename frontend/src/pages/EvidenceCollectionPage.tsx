@@ -175,7 +175,7 @@ export function EvidenceCollectionPage() {
       <div className="card">
         <p className="card-title">Problem Statement</p>
         <div style={{ background: "var(--color-bg)", borderRadius: 4, padding: 12 }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: 16, lineHeight: 1.9 }}>{problemStatement}</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
         </div>
       </div>
 
@@ -186,20 +186,20 @@ export function EvidenceCollectionPage() {
             <button
               type="button"
               onClick={() => setView("list")}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "list" ? "var(--color-surface)" : "transparent", fontSize: 12, fontWeight: 500, color: view === "list" ? "var(--color-primary)" : "var(--color-text-muted)" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "list" ? "var(--color-surface)" : "transparent", fontSize: "var(--font-size-sm)", fontWeight: 500, color: view === "list" ? "var(--color-primary)" : "var(--color-text-muted)" }}
             >
               <img src={viewListIcon} alt="" width={14} height={14} /> list
             </button>
             <button
               type="button"
               onClick={() => setView("grid")}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "grid" ? "var(--color-surface)" : "transparent", fontSize: 12, fontWeight: 500, color: view === "grid" ? "var(--color-primary)" : "var(--color-text-muted)" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: view === "grid" ? "var(--color-surface)" : "transparent", fontSize: "var(--font-size-sm)", fontWeight: 500, color: view === "grid" ? "var(--color-primary)" : "var(--color-text-muted)" }}
             >
               <img src={viewGridIcon} alt="" width={14} height={14} /> grid
             </button>
           </div>
         </div>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: 16 }}>Note: You may uncheck if any of the evidence is not required in this investigation.</p>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any of the evidence is not required in this investigation.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating recommended evidence…</p>}
         {error && <p className="error-banner">{error}</p>}

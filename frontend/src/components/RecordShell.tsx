@@ -32,8 +32,8 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
           <img src={backArrow} alt="" width={20} height={20} />
         </button>
         <div>
-          <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>Investigation AI Assistant</p>
-          <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 20 }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Investigation AI Assistant</p>
+          <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)" }}>
             Record Details - REC - {recordId}
           </p>
         </div>

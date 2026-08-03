@@ -47,13 +47,13 @@ export function AppHeader() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <img src={logo} alt="Strides" style={{ height: 42 }} />
-        <span style={{ fontSize: 24, color: "var(--color-primary)" }}>|</span>
-        <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 24, color: "#fafafa" }}>
+        <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
+        <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "#fafafa" }}>
           Athena
         </span>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
           <img src={athenaLogo} alt="" style={{ height: 36 }} />
-          <span style={{ fontFamily: "var(--font-heading)", fontSize: 10, fontWeight: 700, color: "#fafafa", letterSpacing: 0.5 }}>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: "var(--font-size-xs)", fontWeight: 700, color: "#fafafa", letterSpacing: 0.5 }}>
             Athena
           </span>
         </div>
@@ -141,7 +141,7 @@ export function AppHeader() {
                 }}
               >
                 <div>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Signed in as</p>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Signed in as</p>
                   <p style={{ margin: 0, fontWeight: 700, color: "var(--color-text)" }}>{username}</p>
                 </div>
                 <button

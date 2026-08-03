@@ -66,7 +66,7 @@ export function Stepper({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 16,
+                  fontSize: "var(--font-size-md)",
                   fontWeight: step.key === currentStep ? 700 : 400,
                   ...circleStyle(status),
                 }}
@@ -76,7 +76,7 @@ export function Stepper({
               <div
                 style={{
                   marginTop: 12,
-                  fontSize: 14,
+                  fontSize: "var(--font-size-base)",
                   fontWeight: 600,
                   color: labelColor(status),
                   whiteSpace: "nowrap",

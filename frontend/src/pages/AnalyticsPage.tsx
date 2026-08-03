@@ -4,6 +4,7 @@ import { VerticalBarChart } from "../components/charts/VerticalBarChart";
 import { LineChart } from "../components/charts/LineChart";
 import { Gauge } from "../components/charts/Gauge";
 import { FilterSelect } from "../components/FilterSelect";
+import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import {
   getAnalyticsSummary,
@@ -69,7 +70,7 @@ function EventSection({ events }: { events: EventTypeCardResponse[] }) {
               <p className={`an-trend ${trend.isGood ? "up-good" : "up-bad"}`}>{trend.text}</p>
               <div className="an-card-subrow" style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 9 }}>
                 <span className="label" style={{ fontWeight: 700, color: "var(--color-text-muted)" }}>OVERDUE</span>
-                <span style={{ color: "var(--color-danger-text)", fontWeight: 700, fontSize: 16 }}>{c.overdue}</span>
+                <span style={{ color: "var(--color-danger-text)", fontWeight: 700, fontSize: "var(--font-size-md)" }}>{c.overdue}</span>
               </div>
               <div className="an-progress-track">
                 <div className="an-progress-fill" style={{ width: `${c.overdue_pct}%`, background: "var(--color-danger-text)" }} />
@@ -119,10 +120,10 @@ function RootCauseStatusSection({
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                 <span className="an-status-card-number">
                   {c.value}
-                  <span style={{ fontSize: 16, fontWeight: 500, color: "var(--color-text-muted)" }}>/{status.total}</span>
+                  <span style={{ fontSize: "var(--font-size-md)", fontWeight: 500, color: "var(--color-text-muted)" }}>/{status.total}</span>
                 </span>
               </div>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{c.pct}% of total</p>
+              <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>{c.pct}% of total</p>
               <div className="an-progress-track">
                 <div
                   className="an-progress-fill"
@@ -135,7 +136,7 @@ function RootCauseStatusSection({
 
         <div className="an-card" style={{ gap: 12 }}>
           <div className="an-card-subrow">
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-text-muted)" }}>
+            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-text-muted)" }}>
               ROOT CAUSE BY CAUSE CATEGORY
             </p>
           </div>
@@ -145,7 +146,7 @@ function RootCauseStatusSection({
               backend/routers/analytics.py's _ROOT_CAUSE_TO_6M for the exact
               mapping and its limits); events with no clear-fit category are
               excluded from this chart rather than forced into a bucket. */}
-          <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>Man · Machine · Material · Method · Measurement · Mother Nature</p>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Man · Machine · Material · Method · Measurement · Mother Nature</p>
           <HorizontalBarChart rows={categories.map((c) => ({ label: c.label, value: c.count }))} maxValue={maxCategory} primaryColor="#22c55e" />
         </div>
       </div>
@@ -179,7 +180,7 @@ function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
             <div className="an-progress-track">
               <div className="an-progress-fill" style={{ width: `${withPct}%`, background: "var(--color-success-text)" }} />
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{withPct}% of total events</p>
+            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>{withPct}% of total events</p>
           </div>
           <div className="an-status-card warn">
             <div className="an-status-card-header">WITHOUT CAPA</div>
@@ -189,11 +190,11 @@ function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
             <div className="an-progress-track">
               <div className="an-progress-fill" style={{ width: `${withoutPct}%`, background: "var(--color-warning-text)" }} />
             </div>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>{withoutPct}% of total events</p>
+            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>{withoutPct}% of total events</p>
           </div>
           <div className="an-card">
             <div className="an-card-subrow">
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>MONTHLY TREND</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>MONTHLY TREND</p>
               <span className="an-badge">✓ WITH CAPA</span>
             </div>
             <VerticalBarChart data={capa.monthly_trend.map((m) => ({ label: m.label, value: m.value }))} color="#00786f" />
@@ -207,18 +208,18 @@ function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
               anywhere in the star schema. This shows which root-cause
               categories the CAPA'd events actually fall under instead — a
               real, groundable substitute (see backend/routers/analytics.py). */}
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-muted)" }}>CAPA'D EVENTS BY ROOT CAUSE CATEGORY</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>CAPA'D EVENTS BY ROOT CAUSE CATEGORY</p>
           {capa.by_root_cause_category.map((row) => (
             <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="an-card-subrow">
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{row.label}</span>
+                  <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>{row.label}</span>
                 </div>
                 <div className="an-progress-track" style={{ marginTop: 6 }}>
                   <div className="an-progress-fill" style={{ width: `${(row.count / maxCategory) * 100}%`, background: "#00786f" }} />
                 </div>
               </div>
-              <span style={{ fontWeight: 700, fontSize: 16, width: 40, textAlign: "right" }}>{row.count}</span>
+              <span style={{ fontWeight: 700, fontSize: "var(--font-size-md)", width: 40, textAlign: "right" }}>{row.count}</span>
             </div>
           ))}
         </div>
@@ -295,29 +296,29 @@ function InvestigationQualitySection() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
         <div className="an-card" style={{ background: "var(--color-warning-bg)", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", color: "var(--color-warning-text)" }}>PLANT IQ SCORE</p>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontWeight: 700, letterSpacing: "0.05em", color: "var(--color-warning-text)" }}>PLANT IQ SCORE</p>
           <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Gauge value={78} max={100} size={110} color="var(--color-warning-text)" trackColor="var(--color-warning-border)" />
             <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <span style={{ fontSize: 32, fontWeight: 700, color: "var(--color-warning-text)" }}>78</span>
-              <span style={{ fontSize: 11, color: "var(--color-warning-text)" }}>out of 100</span>
+              <span style={{ fontSize: "var(--font-size-hero)", fontWeight: 700, color: "var(--color-warning-text)" }}>78</span>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-warning-text)" }}>out of 100</span>
             </div>
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: "var(--color-warning-text)" }}>△ Near target</p>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning-text)" }}>△ Near target</p>
           <div style={{ display: "flex", gap: 12, width: "100%" }}>
             <div style={{ flex: 1, background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 10 }}>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>6</p>
-              <p style={{ margin: 0, fontSize: 10, color: "var(--color-text-muted)", textTransform: "uppercase" }}>Investigators</p>
+              <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>6</p>
+              <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", textTransform: "uppercase" }}>Investigators</p>
             </div>
             <div style={{ flex: 1, background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 10 }}>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>136</p>
-              <p style={{ margin: 0, fontSize: 10, color: "var(--color-text-muted)", textTransform: "uppercase" }}>Total Cases</p>
+              <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>136</p>
+              <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", textTransform: "uppercase" }}>Total Cases</p>
             </div>
           </div>
         </div>
 
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--color-text-muted)" }}>ALL INVESTIGATORS</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>ALL INVESTIGATORS</p>
           {INVESTIGATORS.map((inv) => {
             const isGood = inv.trend > 0;
             return (
@@ -325,7 +326,7 @@ function InvestigationQualitySection() {
                 <span className="an-avatar" style={{ background: inv.color }}>{inv.initials}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="an-card-subrow">
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {inv.name} <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(QC)</span>
                       {inv.tag && <span className="an-badge" style={{ marginLeft: 6 }}>{inv.tag}</span>}
                     </span>
@@ -337,7 +338,7 @@ function InvestigationQualitySection() {
                   <div className="an-progress-track" style={{ marginTop: 4 }}>
                     <div className="an-progress-fill" style={{ width: `${inv.score}%`, background: inv.score === Math.min(...INVESTIGATORS.map((i) => i.score)) ? "var(--color-warning-text)" : "var(--color-info-text)" }} />
                   </div>
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                  <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
                     {inv.events} Events · <span style={{ color: "var(--color-danger-text)" }}>{inv.overdue} overdue</span> · {inv.assignable} Assignable RC
                   </p>
                 </div>
@@ -350,14 +351,14 @@ function InvestigationQualitySection() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="an-card">
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>TOP PERFORMANCE HISTORY</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>TOP PERFORMANCE HISTORY</p>
             <table className="an-table">
               <tbody>
                 {TOP_PERFORMANCE_HISTORY.map((row) => (
                   <tr key={row.month + row.name}>
                     <td style={{ color: "var(--color-text-muted)", width: 32 }}>{row.month}</td>
                     <td style={{ width: 32 }}>
-                      <span className="an-avatar" style={{ background: row.color, width: 24, height: 24, fontSize: 10 }}>{row.initials}</span>
+                      <span className="an-avatar" style={{ background: row.color, width: 24, height: 24, fontSize: "var(--font-size-xs)" }}>{row.initials}</span>
                     </td>
                     <td>{row.name}</td>
                     <td style={{ textAlign: "right", fontWeight: 700 }}>{row.score}</td>
@@ -367,14 +368,14 @@ function InvestigationQualitySection() {
             </table>
           </div>
           <div className="an-card">
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>BOTTOM 5</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>BOTTOM 5</p>
             <table className="an-table">
               <tbody>
                 {BOTTOM_5.map((row) => (
                   <tr key={row.month + row.name}>
                     <td style={{ color: "var(--color-text-muted)", width: 32 }}>{row.month}</td>
                     <td style={{ width: 32 }}>
-                      <span className="an-avatar" style={{ background: row.color, width: 24, height: 24, fontSize: 10 }}>{row.initials}</span>
+                      <span className="an-avatar" style={{ background: row.color, width: 24, height: 24, fontSize: "var(--font-size-xs)" }}>{row.initials}</span>
                     </td>
                     <td>{row.name}</td>
                     <td style={{ textAlign: "right", fontWeight: 700 }}>{row.score}</td>
@@ -388,22 +389,22 @@ function InvestigationQualitySection() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="an-card" style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}>
             <div className="an-card-subrow">
-              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--color-success-text)" }}>👑 TOP PERFORMER — OVERALL</span>
-              <span style={{ fontSize: 12, color: "var(--color-success-text)" }}>Highest IQ Score</span>
+              <span style={{ fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-success-text)" }}>👑 TOP PERFORMER — OVERALL</span>
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-success-text)" }}>Highest IQ Score</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span className="an-avatar" style={{ background: "#0d9488", width: 44, height: 44, fontSize: 16 }}>AV</span>
+              <span className="an-avatar" style={{ background: "#0d9488", width: 44, height: 44, fontSize: "var(--font-size-md)" }}>AV</span>
               <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>Rajesh Kurian</p>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>QA</p>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-success-text)" }}>93 <span style={{ fontSize: 13 }}>↗6.6%</span></p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-md)" }}>Rajesh Kurian</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>QA</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700, color: "var(--color-success-text)" }}>93 <span style={{ fontSize: "var(--font-size-sm)" }}>↗6.6%</span></p>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {[["35", "CASES"], ["15", "ACTIVE"], ["30", "CAPA CLOSED"], ["28", "RC IDENTIFIED"], ["2d 20h", "AVG CLOSE TIME"]].map(([n, l]) => (
                 <div key={l} style={{ flex: 1, background: "var(--color-surface)", borderRadius: 8, padding: 8, textAlign: "center" }}>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{n}</p>
-                  <p style={{ margin: 0, fontSize: 9, color: "var(--color-text-muted)" }}>{l}</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>{n}</p>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>{l}</p>
                 </div>
               ))}
             </div>
@@ -414,18 +415,18 @@ function InvestigationQualitySection() {
 
           <div className="an-card" style={{ background: "var(--color-danger-bg)", border: "1px solid var(--color-danger-border)" }}>
             <div className="an-card-subrow">
-              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--color-danger-text)" }}>⬆ NEEDS IMPROVEMENT</span>
-              <span style={{ fontSize: 12, color: "var(--color-danger-text)" }}>Lowest IQ Score</span>
+              <span style={{ fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-danger-text)" }}>⬆ NEEDS IMPROVEMENT</span>
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-danger-text)" }}>Lowest IQ Score</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span className="an-avatar" style={{ background: "#ef4444", width: 44, height: 44, fontSize: 16 }}>KR</span>
+              <span className="an-avatar" style={{ background: "#ef4444", width: 44, height: 44, fontSize: "var(--font-size-md)" }}>KR</span>
               <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>Visalachi</p>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>QC OOS</p>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-danger-text)" }}>68 <span style={{ fontSize: 13 }}>↘1%</span></p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-md)" }}>Visalachi</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>QC OOS</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700, color: "var(--color-danger-text)" }}>68 <span style={{ fontSize: "var(--font-size-sm)" }}>↘1%</span></p>
               </div>
             </div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "var(--color-danger-text)" }}>AREAS OF IMPROVEMENT</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-danger-text)" }}>AREAS OF IMPROVEMENT</p>
             <div className="an-note" style={{ background: "var(--color-surface)", border: "none", color: "var(--color-text)" }}>
               › Reduce overdue investigations — 6 of 22 cases past due date
             </div>
@@ -438,14 +439,14 @@ function InvestigationQualitySection() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>MONTHLY IQ SCORE TRENDS — ALL INVESTIGATORS</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>MONTHLY IQ SCORE TRENDS — ALL INVESTIGATORS</p>
           <LineChart categories={["Jan", "Feb", "Mar", "Apr", "May", "Jun"]} series={IQ_TREND_SERIES} yMin={40} yMax={100} />
           <div className="an-note warn">
             <strong>Observation:</strong> Plant IQ at 78. Gap between top (Rajesh Kurian: 93) and bottom (Aniruddha: 68) is 25 points. Significant spread — structured knowledge transfer recommended.
           </div>
         </div>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>AVG. INVESTIGATION CLOSURE RATE</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>AVG. INVESTIGATION CLOSURE RATE</p>
           <VerticalBarChart data={CLOSURE_RATE} color="#00786f" yLabel="Days" />
           <div className="an-note warn">
             <strong>Observation:</strong> Most number of investigation has been closed in Jan 2026 where Rajesh Kurian has closed 35 investigations and Kavita has closed 12.
@@ -491,7 +492,7 @@ function FailurePatternSection({ patterns }: { patterns: FailurePatternsResponse
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>PRODUCTS — DEVIATION FREQUENCY</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>PRODUCTS — DEVIATION FREQUENCY</p>
           <HorizontalBarChart rows={patterns.products.map((p) => ({ label: p.label, value: p.value }))} maxValue={maxProduct} primaryColor="#0d9488" />
           {patterns.products[0] && (
             <div className="an-note bad">
@@ -500,7 +501,7 @@ function FailurePatternSection({ patterns }: { patterns: FailurePatternsResponse
           )}
         </div>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>EQUIPMENT — ERROR &amp; BREAKDOWN FREQUENCY</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>EQUIPMENT — ERROR &amp; BREAKDOWN FREQUENCY</p>
           <HorizontalBarChart rows={patterns.equipment.map((e) => ({ label: e.label, value: e.value }))} maxValue={maxEquipment} primaryColor="#0d9488" />
           {patterns.equipment[0] && (
             <div className="an-note warn">
@@ -512,14 +513,14 @@ function FailurePatternSection({ patterns }: { patterns: FailurePatternsResponse
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>RECURRING FAILURE</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>RECURRING FAILURE</p>
           {RECURRING_FAILURES.map((row, i) => (
             <div className="an-recurring-row" key={i}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, marginTop: 6, flexShrink: 0 }} />
                 <div>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{row.category}</p>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>💡 {row.description}</p>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>{row.category}</p>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)", fontStyle: "italic" }}>💡 {row.description}</p>
                 </div>
               </div>
               <span className="an-badge" style={{ background: "var(--color-danger-bg)", color: "var(--color-danger-text)", flexShrink: 0 }}>{row.count} events</span>
@@ -527,7 +528,7 @@ function FailurePatternSection({ patterns }: { patterns: FailurePatternsResponse
           ))}
         </div>
         <div className="an-card">
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--color-text-muted)" }}>MONTHLY TRENDS — TOP FAILURES</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>MONTHLY TRENDS — TOP FAILURES</p>
           <LineChart categories={["Jan", "Feb", "Mar", "Apr", "May", "Jun"]} series={FAILURE_TREND_SERIES} yMin={0} yMax={60} />
           <div className="an-note warn">
             <strong>Pattern:</strong> Metformin failures and Blender errors show correlated spikes — investigate shared process parameters.
@@ -575,7 +576,7 @@ function AnalyticsFilterBar({
 }) {
   return (
     <div className="an-filters" style={{ marginBottom: 4 }}>
-      <FilterSelect className="an-filter-pill" value={siteFilter} onChange={setSiteFilter} defaultLabel="All Sites" options={options.sites} />
+      <FilterSelect className="an-filter-pill" value={siteFilter} onChange={setSiteFilter} defaultLabel="All Sites" options={options.sites} formatOption={formatSiteLabel} />
       <FilterSelect className="an-filter-pill" value={deptFilter} onChange={setDeptFilter} defaultLabel="All Dept" options={options.departments} />
       <FilterSelect className="an-filter-pill" value={productFilter} onChange={setProductFilter} defaultLabel="All Product" options={options.products} />
       <FilterSelect className="an-filter-pill" value={equipmentFilter} onChange={setEquipmentFilter} defaultLabel="All Equipment" options={options.equipment} />

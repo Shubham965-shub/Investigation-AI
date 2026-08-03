@@ -40,14 +40,14 @@ export function LoginPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 22, color: "var(--color-header-bg)" }}>
+          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "var(--color-header-bg)" }}>
             Strides
           </span>
           <span style={{ color: "var(--color-primary)" }}>|</span>
-          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: 22 }}>Athena</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)" }}>Athena</span>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)" }}>
           Username
           <input
             value={username}
@@ -57,7 +57,7 @@ export function LoginPage() {
           />
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)" }}>
           Password
           <input
             type="password"
@@ -68,7 +68,7 @@ export function LoginPage() {
           />
         </label>
 
-        {error && <p style={{ color: "var(--color-danger-text)", fontSize: 14, margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: "var(--color-danger-text)", fontSize: "var(--font-size-base)", margin: 0 }}>{error}</p>}
 
         <button
           type="submit"

@@ -39,6 +39,7 @@ class InvestigationRow(BaseModel):
     investigator: Optional[str] = None
     start_date: Optional[str] = None
     due_date: Optional[str] = None
+    updated_at: Optional[str] = None
     stage: int
     total_stages: int = 7
     bucket: str  # unassigned | on_track | delay | overdue

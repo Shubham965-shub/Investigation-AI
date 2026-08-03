@@ -29,6 +29,22 @@
   --font-heading: Arial, Helvetica, sans-serif;
   --font-body: Inter, system-ui, sans-serif;
 
+  /* Standardized type scale (2026-08-03) — collapses the ~13 ad-hoc pixel
+     values previously scattered across inline styles/CSS into 7 tiers, each
+     set to the most-common existing value in its cluster (e.g. --font-
+     size-sm absorbs both the old 12px and 13px usages) so the migration
+     shifted as few elements as possible while still being a real scale.
+     --font-size-hero is the exception — the old 26/28/30/32/36px usages
+     were all rare, bespoke "big stat number" sizes with no dominant value,
+     so they're squeezed into one tier rather than preserving their spread. */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 24px;
+  --font-size-hero: 32px;
+
   /* Semantic status tones (success/warning/danger/info) — shared by status
      cards, badges, banners and notes across the app so each one doesn't
      have to hand-roll its own dark-mode variant. Light values are plain

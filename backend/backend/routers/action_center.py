@@ -127,6 +127,7 @@ async def get_action_center_summary(
     for r in rows:
         due_date = r["due_date"].date() if r["due_date"] else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
+        updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
         days_until_due = (due_date - today).days if due_date else None
         days_since_opened = (today - date_opened).days if date_opened else 0
         # Table progress bar is driven by Trackwise's own module/state (via
@@ -149,6 +150,7 @@ async def get_action_center_summary(
                 "criticality": r["criticality"],
                 "due_date": due_date,
                 "date_opened": date_opened,
+                "updated_at": updated_at,
                 "days_until_due": days_until_due,
                 "days_since_opened": days_since_opened,
                 "stage": stage,
@@ -169,6 +171,7 @@ async def get_action_center_summary(
     for r in cancelled_rows:
         due_date = r["due_date"].date() if r["due_date"] else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
+        updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
         cancelled_enriched.append(
             {
                 "deviation_id": r["deviation_id"],
@@ -182,6 +185,7 @@ async def get_action_center_summary(
                 "criticality": r["criticality"],
                 "due_date": due_date,
                 "date_opened": date_opened,
+                "updated_at": updated_at,
                 "bucket": _bucket_for(r["open_investigation_status"]),
             }
         )
@@ -424,6 +428,7 @@ async def get_action_center_summary(
             investigator=i["investigator"],
             start_date=_fmt_date(i["date_opened"]),
             due_date=_fmt_date(i["due_date"]),
+            updated_at=_fmt_date(i["updated_at"]),
             stage=i["stage"],
             total_stages=len(MODULE_LABELS),
             bucket=i["bucket"],
@@ -448,6 +453,7 @@ async def get_action_center_summary(
             investigator=i["investigator"],
             start_date=_fmt_date(i["date_opened"]),
             due_date=_fmt_date(i["due_date"]),
+            updated_at=_fmt_date(i["updated_at"]),
             stage=0,
             total_stages=len(MODULE_LABELS),
             bucket=i["bucket"],

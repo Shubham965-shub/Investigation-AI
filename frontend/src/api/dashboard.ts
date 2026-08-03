@@ -252,6 +252,7 @@ export interface InvestigationRowResponse {
   investigator: string | null;
   start_date: string | null;
   due_date: string | null;
+  updated_at: string | null;
   stage: number;
   total_stages: number;
   bucket: "unassigned" | "on_track" | "delay" | "overdue";
