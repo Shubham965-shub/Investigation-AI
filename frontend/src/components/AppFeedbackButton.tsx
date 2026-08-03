@@ -4,6 +4,17 @@ import { useTheme } from "../theme/ThemeContext";
 
 const FEEDBACK_API_BASE_URL = import.meta.env.VITE_FEEDBACK_API_BASE_URL;
 
+// The widget's own default button className (see its compiled bundle) is
+// "fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full
+// bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg
+// transition-colors hover:bg-emerald-700" — a floating pill. Per its README
+// ("Restyle the default button — className... drop `fixed …` to render it
+// inline where you place <FeedbackButton />"), dropping just the
+// positioning classes (fixed/bottom-6/right-6/z-40) keeps its own default
+// icon+label look but renders it inline in the header instead of floating.
+const HEADER_INLINE_CLASSNAME =
+  "flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-emerald-700";
+
 // The feedback service is a separate ARGUS Lighthouse app, but shares this
 // backend's own JWT_SECRET (platform-wide, see backend/config/settings.py)
 // — so this app's own regular session token IS a valid feedback-service
@@ -22,6 +33,7 @@ export function AppFeedbackButton() {
       getToken={() => localStorage.getItem("auth_token")}
       user={username ? { full_name: username } : undefined}
       theme={theme}
+      className={HEADER_INLINE_CLASSNAME}
     />
   );
 }

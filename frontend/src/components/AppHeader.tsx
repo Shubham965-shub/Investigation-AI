@@ -9,6 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
 import { InvestigationStatusInfo } from "./InvestigationStatusInfo";
+import { AppFeedbackButton } from "./AppFeedbackButton";
 
 export function AppHeader() {
   const { toggleTheme } = useTheme();
@@ -48,15 +49,10 @@ export function AppHeader() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <img src={logo} alt="Strides" style={{ height: 42 }} />
         <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
+        <img src={athenaLogo} alt="" style={{ height: 36 }} />
         <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "#fafafa" }}>
           Athena
         </span>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-          <img src={athenaLogo} alt="" style={{ height: 36 }} />
-          <span style={{ fontFamily: "var(--font-heading)", fontSize: "var(--font-size-xs)", fontWeight: 700, color: "#fafafa", letterSpacing: 0.5 }}>
-            Athena
-          </span>
-        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {isActionCenter && (
@@ -97,6 +93,8 @@ export function AppHeader() {
             )}
           </div>
         )}
+
+        <AppFeedbackButton />
 
         <button
           type="button"

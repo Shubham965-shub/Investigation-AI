@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import stridesLogo from "../assets/icons/logo.png";
+import athenaLogo from "../assets/icons/athena-logo.svg";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -39,11 +41,10 @@ export function LoginPage() {
           gap: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "var(--color-header-bg)" }}>
-            Strides
-          </span>
-          <span style={{ color: "var(--color-primary)" }}>|</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <img src={stridesLogo} alt="Strides" style={{ height: 42 }} />
+          <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
+          <img src={athenaLogo} alt="" style={{ height: 36 }} />
           <span style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)" }}>Athena</span>
         </div>
 

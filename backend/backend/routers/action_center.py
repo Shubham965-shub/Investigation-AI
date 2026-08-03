@@ -127,6 +127,15 @@ async def get_action_center_summary(
     for r in rows:
         due_date = r["due_date"].date() if r["due_date"] else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
+        # CAVEAT (2026-08-03, unresolved): pg_updated_at_timestamp is a single
+        # flat bulk-load stamp — every row in fact_qms_event (7,246/7,246,
+        # including cancelled/closed ones) shares the exact same value, so
+        # this is NOT a genuine per-investigation "last updated" signal, just
+        # whenever this table was last reloaded. dim_event.module_start_date/
+        # module_end_date have real per-row variation and look like better
+        # candidates, but their exact semantics need confirming with the data
+        # engineer before switching — don't trust this field's UI meaning
+        # until that's resolved.
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
         days_until_due = (due_date - today).days if due_date else None
         days_since_opened = (today - date_opened).days if date_opened else 0
@@ -171,7 +180,7 @@ async def get_action_center_summary(
     for r in cancelled_rows:
         due_date = r["due_date"].date() if r["due_date"] else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
-        updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
+        updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None  # see caveat above
         cancelled_enriched.append(
             {
                 "deviation_id": r["deviation_id"],

@@ -39,6 +39,12 @@ class InvestigationRow(BaseModel):
     investigator: Optional[str] = None
     start_date: Optional[str] = None
     due_date: Optional[str] = None
+    # CAVEAT (2026-08-03, unresolved) — sourced from fact_qms_event.pg_updated_at_timestamp,
+    # confirmed to be a single flat bulk-load stamp (1 distinct value across
+    # all 7,246 rows, cancelled included), NOT a real per-investigation
+    # update time. See routers/action_center.py for the fuller note and the
+    # dim_event.module_start_date/module_end_date candidates being checked
+    # with the data engineer as a replacement.
     updated_at: Optional[str] = None
     stage: int
     total_stages: int = 7
