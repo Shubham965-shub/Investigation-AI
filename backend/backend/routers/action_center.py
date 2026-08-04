@@ -357,9 +357,14 @@ async def get_action_center_summary(
     # _PENDING_ACTIONS_PER_ROW of those exist for that event type (per the
     # user, 2026-07-31), the remaining slots are filled with other Critical
     # rows of the same type that aren't overdue (soonest due first) rather
-    # than leaving the row sparse. Supersedes the prior unified
-    # unassigned-or-overdue/criticality-first sort — this panel is now
-    # scoped to exactly these two event types.
+    # than leaving the row sparse. If slots are STILL empty after both
+    # Critical tiers (2026-08-03, per the user) — i.e. there's neither an
+    # overdue-Critical nor a non-overdue-Critical row left to show — the rest
+    # of the row falls back to Non-Critical overdue rows of the same type
+    # (most overdue first, same sort as the first tier), rather than leaving
+    # the row sparse just because nothing Critical is left. Supersedes the
+    # prior unified unassigned-or-overdue/criticality-first sort — this
+    # panel is now scoped to exactly these two event types.
     def _urgent_critical_overdue(qe_type: str) -> List[Dict[str, Any]]:
         same_type_critical = [
             i for i in enriched if i["qe_type"] == qe_type and i["criticality"] == "Critical"
@@ -371,7 +376,17 @@ async def get_action_center_summary(
             return overdue_first[:_PENDING_ACTIONS_PER_ROW]
         fallback = [i for i in same_type_critical if i["bucket"] != "overdue"]
         fallback.sort(key=lambda i: i["days_until_due"] if i["days_until_due"] is not None else 9999)
-        return overdue_first + fallback[:remaining]
+        combined = overdue_first + fallback[:remaining]
+
+        still_remaining = _PENDING_ACTIONS_PER_ROW - len(combined)
+        if still_remaining <= 0:
+            return combined
+        non_critical_overdue = [
+            i for i in enriched
+            if i["qe_type"] == qe_type and i["criticality"] != "Critical" and i["bucket"] == "overdue"
+        ]
+        non_critical_overdue.sort(key=lambda i: i["days_until_due"] if i["days_until_due"] is not None else 9999)
+        return combined + non_critical_overdue[:still_remaining]
 
     row_1_oos = _urgent_critical_overdue("Out Of Specification")
     row_2_deviation = _urgent_critical_overdue("Deviation")
