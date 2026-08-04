@@ -1,12 +1,14 @@
-# CD: ds → Azure Container App investigationai-search-agent (QA, internal-only).
+# CD: ds → Azure Container Apps (internal-only ingress). Branch picks the stack:
+#   main  → investigationai-search-agent (UAT)
+#   stage → investigationai-ds-stage     (dev-test; ACA names cap at 32 chars)
 #
-# Same auth model as deploy-qa-backend.yml: ACR admin creds for image
+# Same auth model as the backend workflow: ACR admin creds for image
 # build+push, service principal (AZURE_CREDENTIALS) for the container-app update.
-name: Deploy DS to QA
+name: Deploy DS (main→UAT, stage→dev)
 
 on:
   push:
-    branches: [main]
+    branches: [main, stage]
     paths:
       - "ds/**"
       - ".github/workflows/deploy-qa-ds.yml"
@@ -16,13 +18,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-qa-ds
+  group: deploy-ds-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
   IMAGE: investigationaiacr.azurecr.io/investigationai-search-agent:${{ github.sha }}
   RG: QA-Lighthouse
-  APP: investigationai-search-agent
+  APP: ${{ github.ref_name == 'main' && 'investigationai-search-agent' || 'investigationai-ds-stage' }}
 
 jobs:
   build-and-deploy:

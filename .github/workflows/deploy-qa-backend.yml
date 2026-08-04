@@ -1,13 +1,15 @@
-# CD: backend → Azure Container App investigationai-be-qa (QA).
+# CD: backend → Azure Container Apps. Branch picks the stack:
+#   main  → investigationai-be-qa    (UAT)
+#   stage → investigationai-be-stage (dev-test)
 #
 # Image build+push authenticates with ACR admin creds (ACR_USERNAME/PASSWORD
 # secrets). The container-app update authenticates as a service principal with
 # Contributor on QA-Lighthouse (AZURE_CREDENTIALS secret, azure/login creds JSON).
-name: Deploy backend to QA
+name: Deploy backend (main→UAT, stage→dev)
 
 on:
   push:
-    branches: [main]
+    branches: [main, stage]
     paths:
       - "backend/**"
       - ".github/workflows/deploy-qa-backend.yml"
@@ -17,13 +19,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-qa-backend
+  group: deploy-backend-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
   IMAGE: investigationaiacr.azurecr.io/investigationai-backend:${{ github.sha }}
   RG: QA-Lighthouse
-  APP: investigationai-be-qa
+  APP: ${{ github.ref_name == 'main' && 'investigationai-be-qa' || 'investigationai-be-stage' }}
 
 jobs:
   build-and-deploy:

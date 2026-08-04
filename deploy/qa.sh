@@ -51,10 +51,28 @@ RG="${RG:-QA-Lighthouse}"
 ACR="${ACR:-investigationaiacr}"
 ACR_SERVER="$ACR.azurecr.io"
 ENV_NAME="${ENV_NAME:-investigationai-ds-env}"
+
+# Stack preset: qa (UAT, deployed from main) | stage (dev-test, from stage
+# branch). Both share the CAE, DB, and ACR image repos — only app/SWA names
+# differ. Individual names can still be overridden via env.
+STACK="${STACK:-qa}"
+case "$STACK" in
+    qa) ;;
+    stage)
+        # (ACA names are capped at 32 chars — hence -ds- not -search-agent-)
+        DS_APP="${DS_APP:-investigationai-ds-stage}"
+        BE_APP="${BE_APP:-investigationai-be-stage}"
+        SWA_NAME="${SWA_NAME:-investigationai-fe-stage-v2}"
+        ;;
+    *) echo "Unknown STACK: '$STACK' (expected qa|stage)"; exit 1 ;;
+esac
 DS_APP="${DS_APP:-investigationai-search-agent}"
 BE_APP="${BE_APP:-investigationai-be-qa}"
 SWA_NAME="${SWA_NAME:-investigationai-fe-qa-v2}"
 SWA_LOCATION="${SWA_LOCATION:-eastasia}"
+# Free tier is capped at 10 SWAs per subscription — this sub is at the cap,
+# so new SWAs may need SWA_SKU=Standard.
+SWA_SKU="${SWA_SKU:-Free}"
 TAG="${TAG:-$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)}"
 DS_IMAGE="$ACR_SERVER/investigationai-search-agent:$TAG"
 BE_IMAGE="$ACR_SERVER/investigationai-backend:$TAG"
@@ -135,6 +153,10 @@ phase_preflight() {
 
 phase_snapshot() {
     header "Snapshot (rollback state)"
+    if ! az containerapp show -n "$DS_APP" -g "$RG" -o none 2>/dev/null; then
+        warn "DS app $DS_APP does not exist yet — nothing to snapshot"
+        return 0
+    fi
     az containerapp show -n "$DS_APP" -g "$RG" --query "{
         image: properties.template.containers[0].image,
         cpu: properties.template.containers[0].resources.cpu,
@@ -162,45 +184,106 @@ phase_build() {
 }
 
 phase_ds_update() {
-    header "DS: sync ds/.env + new image (ingress still external)"
+    header "DS ($STACK): sync ds/.env + image"
     load_env_file "$DS_ENV_FILE" DSENV_
 
-    info "Syncing secrets from ds/.env → $DS_APP"
-    az containerapp secret set -n "$DS_APP" -g "$RG" --secrets \
-        db-host="$DSENV_DB_HOST" \
-        db-port="$DSENV_DB_PORT" \
-        db-name="$DSENV_DB_NAME" \
-        db-user="$DSENV_DB_USER" \
-        db-password="$DSENV_DB_PASSWORD" \
-        db-pool-min-size="$DSENV_DB_POOL_MIN_SIZE" \
-        db-pool-max-size="$DSENV_DB_POOL_MAX_SIZE" \
-        openai-api-key="$DSENV_OPENAI_API_KEY" \
-        >/dev/null
-    success "Secrets synced"
+    if ! az containerapp show -n "$DS_APP" -g "$RG" -o none 2>/dev/null; then
+        info "DS app $DS_APP not found — creating with INTERNAL ingress"
+        local acr_pwd
+        acr_pwd=$(az acr credential show -n "$ACR" --query 'passwords[0].value' -o tsv)
+        az containerapp create -n "$DS_APP" -g "$RG" \
+            --environment "$ENV_NAME" \
+            --image "$DS_IMAGE" \
+            --registry-server "$ACR_SERVER" \
+            --registry-username "$ACR" \
+            --registry-password "$acr_pwd" \
+            --ingress internal --target-port 8001 \
+            --cpu 1.0 --memory 2.0Gi \
+            --min-replicas 1 --max-replicas 3 \
+            --secrets \
+                db-host="$DSENV_DB_HOST" \
+                db-port="$DSENV_DB_PORT" \
+                db-name="$DSENV_DB_NAME" \
+                db-user="$DSENV_DB_USER" \
+                db-password="$DSENV_DB_PASSWORD" \
+                db-pool-min-size="$DSENV_DB_POOL_MIN_SIZE" \
+                db-pool-max-size="$DSENV_DB_POOL_MAX_SIZE" \
+                openai-api-key="$DSENV_OPENAI_API_KEY" \
+            --env-vars \
+                DB_HOST=secretref:db-host \
+                DB_PORT=secretref:db-port \
+                DB_NAME=secretref:db-name \
+                DB_USER=secretref:db-user \
+                DB_PASSWORD=secretref:db-password \
+                DB_POOL_MIN_SIZE=secretref:db-pool-min-size \
+                DB_POOL_MAX_SIZE=secretref:db-pool-max-size \
+                OPENAI_API_KEY=secretref:openai-api-key \
+                SEARCH_AGENT_HOST=0.0.0.0 SEARCH_AGENT_PORT=8001 \
+            >/dev/null
+        success "DS app created (internal): $(get_fqdn "$DS_APP")"
+    else
+        info "Syncing secrets from ds/.env → $DS_APP"
+        az containerapp secret set -n "$DS_APP" -g "$RG" --secrets \
+            db-host="$DSENV_DB_HOST" \
+            db-port="$DSENV_DB_PORT" \
+            db-name="$DSENV_DB_NAME" \
+            db-user="$DSENV_DB_USER" \
+            db-password="$DSENV_DB_PASSWORD" \
+            db-pool-min-size="$DSENV_DB_POOL_MIN_SIZE" \
+            db-pool-max-size="$DSENV_DB_POOL_MAX_SIZE" \
+            openai-api-key="$DSENV_OPENAI_API_KEY" \
+            >/dev/null
+        success "Secrets synced"
 
-    info "Updating image/resources: $DS_IMAGE (1.0 vCPU / 2Gi / minReplicas 1)"
-    az containerapp update -n "$DS_APP" -g "$RG" \
-        --image "$DS_IMAGE" \
-        --cpu 1.0 --memory 2.0Gi \
-        --min-replicas 1 --max-replicas 3 \
-        --set-env-vars SEARCH_AGENT_HOST=0.0.0.0 SEARCH_AGENT_PORT=8001 \
-        >/dev/null
-    success "DS app updated"
+        info "Updating image/resources: $DS_IMAGE (1.0 vCPU / 2Gi / minReplicas 1)"
+        az containerapp update -n "$DS_APP" -g "$RG" \
+            --image "$DS_IMAGE" \
+            --cpu 1.0 --memory 2.0Gi \
+            --min-replicas 1 --max-replicas 3 \
+            --set-env-vars SEARCH_AGENT_HOST=0.0.0.0 SEARCH_AGENT_PORT=8001 \
+            >/dev/null
+        success "DS app updated"
+    fi
 
-    local ds_ext_fqdn
-    ds_ext_fqdn=$(get_fqdn "$DS_APP")
-    info "Waiting for new revision to serve https://$ds_ext_fqdn/docs (image pull can take minutes)"
-    curl -fsS --retry 40 --retry-delay 10 --retry-all-errors \
-        "https://$ds_ext_fqdn/docs" >/dev/null
-    success "DS /docs responds on the new revision"
+    # External ingress → poll /docs over the public FQDN. Internal ingress is
+    # unreachable from here, so poll the revision health state instead.
+    local ds_fqdn is_external
+    ds_fqdn=$(get_fqdn "$DS_APP")
+    is_external=$(az containerapp show -n "$DS_APP" -g "$RG" \
+        --query properties.configuration.ingress.external -o tsv)
+    if [[ "$is_external" == "true" ]]; then
+        info "Waiting for new revision to serve https://$ds_fqdn/docs (image pull can take minutes)"
+        curl -fsS --retry 40 --retry-delay 10 --retry-all-errors \
+            "https://$ds_fqdn/docs" >/dev/null
+        success "DS /docs responds on the new revision"
+    else
+        info "Ingress is internal — waiting for the active revision to report Healthy"
+        local i state
+        for i in {1..40}; do
+            state=$(az containerapp revision list -n "$DS_APP" -g "$RG" \
+                --query "[?properties.active] | [0].properties.healthState" -o tsv 2>/dev/null)
+            [[ "$state" == "Healthy" ]] && break
+            sleep 10
+        done
+        [[ "$state" == "Healthy" ]] || { error "DS revision not Healthy after ~7 min (state: ${state:-unknown})"; exit 1; }
+        success "DS active revision is Healthy"
+    fi
     az containerapp revision list -n "$DS_APP" -g "$RG" \
         --query "[?properties.active].{rev:name,health:properties.healthState,running:properties.runningState,traffic:properties.trafficWeight}" -o table
 }
 
 phase_ds_internal() {
-    header "DS: flip ingress to internal-only"
-    warn "This DISCONNECTS the old QA stack: investigationai-be-v1 calls DS via its"
-    warn "external FQDN and will lose access the moment ingress goes internal."
+    header "DS ($STACK): flip ingress to internal-only"
+    local is_external
+    is_external=$(az containerapp show -n "$DS_APP" -g "$RG" \
+        --query properties.configuration.ingress.external -o tsv)
+    if [[ "$is_external" != "true" ]]; then
+        info "DS ingress already internal — skipping ($(get_fqdn "$DS_APP"))"
+        return 0
+    fi
+
+    warn "This DISCONNECTS anything calling $DS_APP via its external FQDN"
+    warn "(e.g. the old investigationai-be-v1 stack, for the qa/UAT DS app)."
     confirm "Flip $DS_APP ingress to internal?" || { error "Aborted."; exit 1; }
 
     az containerapp ingress update -n "$DS_APP" -g "$RG" --type internal >/dev/null
@@ -334,7 +417,7 @@ phase_swa() {
         info "SWA already exists — skipping create"
     else
         az staticwebapp create -n "$SWA_NAME" -g "$RG" \
-            --location "$SWA_LOCATION" --sku Free >/dev/null
+            --location "$SWA_LOCATION" --sku "$SWA_SKU" >/dev/null
         success "SWA created"
     fi
     local swa_host
@@ -407,12 +490,25 @@ phase_verify() {
         "python -c \"import urllib.request as u; print('DS /docs →', u.urlopen('https://$ds_fqdn/docs', timeout=20).status)\"" \
         || warn "exec check failed — if CERTIFICATE_VERIFY_FAILED, see fallback in deploy plan"
 
-    info "3. Auth round-trip (placeholder auth)"
-    local token
-    token=$(curl -fsS -X POST "https://$be_fqdn/api/auth/login" \
-        -H 'Content-Type: application/json' \
-        -d '{"username":"qa-verify","password":"x"}' | jq -r .access_token)
-    [[ -n "$token" && "$token" != "null" ]] && success "login OK" || warn "login failed"
+    info "3. Auth (real JWT + bcrypt against athena_users since 2026-08-03)"
+    if [[ -n "${QA_TEST_USER:-}" && -n "${QA_TEST_PASSWORD:-}" ]]; then
+        local token
+        token=$(curl -fsS -X POST "https://$be_fqdn/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"$QA_TEST_USER\",\"password\":\"$QA_TEST_PASSWORD\"}" | jq -r .access_token)
+        [[ -n "$token" && "$token" != "null" ]] && success "login OK" || warn "login failed"
+    else
+        # No test credentials — assert the endpoint enforces auth (401, not 5xx).
+        local code
+        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$be_fqdn/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"qa-verify","password":"wrong"}')
+        if [[ "$code" == "401" ]]; then
+            success "auth enforced (401 for bad creds). Set QA_TEST_USER/QA_TEST_PASSWORD for a full login + generate check."
+        else
+            warn "unexpected status $code from login (expected 401)"
+        fi
+    fi
 
     if [[ -n "$swa_host" ]]; then
         info "4. CORS preflight from SWA origin"
