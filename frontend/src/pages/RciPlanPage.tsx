@@ -335,13 +335,13 @@ export function RciPlanPage() {
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
                     </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} tasks)</span>
+                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
                   </div>
                   {section.correlation && (
                     <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
                   <span>TCD:</span>
                   <input
                     type="date"
@@ -352,14 +352,14 @@ export function RciPlanPage() {
                     style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
                   />
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
                   <input
                     type="text"
                     placeholder="Unassigned"
                     value={section.assignee ?? ""}
                     onChange={(e) => setSectionAssignee(index, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ fontSize: "var(--font-size-sm)", border: "none", background: "none", width: 90, padding: 0 }}
+                    style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", border: "none", background: "none", flex: 1, minWidth: 0, padding: 0 }}
                   />
                 </div>
                 <button

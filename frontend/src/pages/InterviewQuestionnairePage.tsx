@@ -178,8 +178,10 @@ export function InterviewQuestionnairePage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card-header">
-          <p className="card-title">Interview Questionnaire</p>
+          <p className="card-title">Recommended Interview Questionnaire</p>
         </div>
+
+        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any question is not required in this investigation.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
         {error && <p className="error-banner">{error}</p>}

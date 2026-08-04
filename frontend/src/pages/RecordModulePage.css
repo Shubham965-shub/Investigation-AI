@@ -36,22 +36,28 @@
   border-radius: var(--radius-btn);
   padding: 9px 13px;
   font-weight: 500;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
+  line-height: 1.4;
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
-  /* Fixed cap so a long field (e.g. Description, hundreds of characters)
-     scrolls internally instead of growing the box to fit all of it — short
-     fields never reach this height so they're unaffected. */
-  max-height: 200px;
+  /* Fixed at exactly 3 lines of content (line-height * 3, plus the 9px
+     top/bottom padding above) for every box, regardless of how much or how
+     little text it holds — short fields get blank space below rather than
+     shrinking, long fields (e.g. Description, hundreds of characters)
+     scroll internally past 3 lines, so every box in the grid reads as the
+     same size. em-based so it stays exactly 3 lines regardless of this
+     element's own font-size. */
+  height: calc(1.4em * 3 + 18px);
   overflow-y: auto;
 }
 
 textarea.field-value {
   resize: vertical;
   min-height: 90px;
+  height: auto;
   font-family: inherit;
-  /* Overrides .field-value's max-height — the editable textarea already
+  /* Overrides .field-value's fixed height — the editable textarea already
      lets the user resize/scroll manually, capping it would just fight
      their own resize handle. */
   max-height: none;
@@ -150,7 +156,7 @@ textarea.field-value {
 
 .checklist-text {
   font-weight: 600;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
   color: var(--color-text);
   flex: 1;
 }
