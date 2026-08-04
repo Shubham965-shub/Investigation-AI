@@ -36,14 +36,18 @@
   border-radius: var(--radius-btn);
   padding: 9px 13px;
   font-weight: 500;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
+  line-height: 1.4;
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
-  /* Fixed cap so a long field (e.g. Description, hundreds of characters)
-     scrolls internally instead of growing the box to fit all of it — short
-     fields never reach this height so they're unaffected. */
-  max-height: 200px;
+  /* Capped to exactly 3 lines of content (line-height * 3, plus the 9px
+     top/bottom padding above) — a long field (e.g. Description, hundreds of
+     characters) scrolls internally past that instead of growing the box to
+     fit all of it. em-based so it stays exactly 3 lines regardless of this
+     element's own font-size; short fields never reach this height so
+     they're unaffected. */
+  max-height: calc(1.4em * 3 + 18px);
   overflow-y: auto;
 }
 
@@ -150,7 +154,7 @@ textarea.field-value {
 
 .checklist-text {
   font-weight: 600;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
   color: var(--color-text);
   flex: 1;
 }
