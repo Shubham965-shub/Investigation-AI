@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
@@ -34,7 +34,7 @@ function ThemeIcon({ dark }: { dark: boolean }) {
 }
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
@@ -44,13 +44,22 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Navigating here (rather than immediately after `await login(...)`
+  // resolves) avoids a race: navigate() could otherwise run before React
+  // actually commits the setUsername() state update from login(), so
+  // ProtectedRoute would read the still-stale isAuthenticated=false and
+  // bounce straight back to /login despite the login having succeeded —
+  // this effect only fires once the auth state has genuinely landed.
+  useEffect(() => {
+    if (isAuthenticated) navigate("/", { replace: true });
+  }, [isAuthenticated, navigate]);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       await login(username, password);
-      navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
