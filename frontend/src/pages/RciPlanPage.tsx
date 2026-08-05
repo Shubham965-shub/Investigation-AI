@@ -421,34 +421,55 @@ export function RciPlanPage() {
               {isOpen && (
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                    <span style={{ width: 700 }}>Task</span>
+                    <span style={{ width: "100%" }}>Task</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;
                     return (
                       <div
                         key={taskIndex}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, width: 700 }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%" }}>
                           <button
                             type="button"
                             className={`checklist-checkbox ${checked ? "" : "unchecked"}`}
                             onClick={lockedForEditing ? undefined : () => toggleTask(index, taskIndex)}
                             aria-label={checked ? "Uncheck task" : "Check task"}
-                            style={{ flexShrink: 0, cursor: lockedForEditing ? "default" : "pointer" }}
+                            style={{ flexShrink: 0, marginTop: 2, cursor: lockedForEditing ? "default" : "pointer" }}
                             disabled={lockedForEditing}
                           >
                             {checked && <img src={checkIcon} alt="" width={12} height={12} />}
                           </button>
                           {lockedForEditing ? (
-                            <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)" }}>{task.description}</span>
+                            <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
+                              {task.description}
+                            </span>
                           ) : (
-                            <input
-                              type="text"
+                            <textarea
                               value={task.description}
                               onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
-                              style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
+                              rows={1}
+                              ref={(el) => {
+                                if (!el) return;
+                                el.style.height = "auto";
+                                el.style.height = `${el.scrollHeight}px`;
+                              }}
+                              style={{
+                                fontSize: "var(--font-size-base)",
+                                fontWeight: 600,
+                                fontFamily: "inherit",
+                                color: "var(--color-text-muted)",
+                                border: "none",
+                                background: "none",
+                                flex: 1,
+                                minWidth: 0,
+                                padding: 0,
+                                resize: "none",
+                                overflow: "hidden",
+                                whiteSpace: "pre-wrap",
+                                overflowWrap: "break-word",
+                              }}
                             />
                           )}
                         </div>

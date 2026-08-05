@@ -7,7 +7,15 @@ tables:
   # confidence historical-search fallback (evidence_collection today, rci_plan
   # as of this change) since the search query's exception is swallowed and
   # just returns zero candidates. Confirmed via information_schema.
+  #
+  # t_deviations_vector_test only has 6 columns (deviation_id, rci_id,
+  # description, root_cause_summary, description_vector,
+  # root_cause_summary_vector) — no qe_type, location, date_opened, etc.
+  # search_details holds the full event metadata and is joined against
+  # `search` on (deviation_id, rci_id) to fetch those details.
   search: t_deviations_vector_test
+  search_details: investigation_ai_sample_test
+  join_secondary_key: rci_id
   summary: t_deviations_summary
   summary_id_column: deviation_id
   summary_columns:
@@ -24,7 +32,7 @@ columns:
   date_opened: date_opened
   qe_type: qe_type
   location: location
-  instrument: instrument_equipement_name
+  instrument: instrument_equipment
   material: name_of_material
   description_tsv: description
   root_cause_tsv: root_cause_summary
@@ -32,9 +40,15 @@ columns:
   root_cause_vector: root_cause_summary_vector
   sfg_code: sfg_code
   capa_number: capa_number
-  immediate_actions: gen_immediate_actions
-  corrective_actions: gen_corrective_actions
-  preventive_actions: gen_preventive_actions
+  # No gen_* action columns exist on investigation_ai_sample_test (confirmed
+  # via information_schema, 2026-08-05) — left blank so settings.COLUMN_*
+  # resolve to "" instead of a nonexistent column name. A real `immediate_actions`
+  # column does exist there, but it isn't currently selected by the details-table
+  # join in capa_synthesizer_route.py, so mapping it here alone wouldn't
+  # populate anything yet.
+  immediate_actions: ""
+  corrective_actions: ""
+  preventive_actions: ""
   capa_implementation_date: capa_implementation_date
 
 
