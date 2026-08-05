@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import rail1 from "../assets/icons/rail-1.svg";
-import rail2 from "../assets/icons/rail-2.svg";
 import rail3 from "../assets/icons/rail-3.svg";
 import rail4Active from "../assets/icons/rail-4-active.svg";
 
@@ -9,12 +8,10 @@ import rail4Active from "../assets/icons/rail-4-active.svg";
 // icons carry no labels or destinations, so the labels/behavior below are a
 // pragmatic interpretation, not pulled from the design:
 //  1. Dashboard — doubles as the expand/collapse toggle for this panel
-//  2. Search — no page built yet, inert
-//  3. Analytics — the reporting dashboard (rail3 node 1229:41868)
-//  4. Investigations — the Action Center
+//  2. Analytics — the reporting dashboard (rail3 node 1229:41868)
+//  3. Investigations — the Action Center
 const ITEMS = [
   { icon: rail1, label: "Dashboard", path: null },
-  { icon: rail2, label: "Search", path: null },
   { icon: rail3, label: "Analytics", path: "/analytics" },
   { icon: rail4Active, label: "Investigations", path: "/" },
 ];
