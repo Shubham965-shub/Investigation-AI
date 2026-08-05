@@ -42,6 +42,14 @@ export function RciPlanPage() {
   const [trackwiseFields, setTrackwiseFields] = useState<TrackwiseFields | undefined>(undefined);
   const [sections, setSections] = useState<RciSectionItem[] | null>(null);
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({});
+  // Toggled by the header "Edit" button (previously cosmetic/disabled) —
+  // reveals an "Add Task" row at the bottom of each open section's task
+  // list. Scoped to just adding subtasks for now, per the user (2026-08-05);
+  // editing existing task text/checking is already possible without this.
+  const [editMode, setEditMode] = useState(false);
+  // Per-section draft text for the new-task input, keyed by section index —
+  // each section's "Add Task" row needs its own independent in-progress text.
+  const [newTaskDrafts, setNewTaskDrafts] = useState<Record<number, string>>({});
   const [additionalValues, setAdditionalValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +229,18 @@ export function RciPlanPage() {
     persistSections(newSections);
   }
 
+  function addTask(sectionIndex: number) {
+    if (!sections) return;
+    const description = (newTaskDrafts[sectionIndex] ?? "").trim();
+    if (!description) return;
+    const newSections = sections.map((s, si) =>
+      si === sectionIndex ? { ...s, tasks: [...s.tasks, { description, is_checked: true }] } : s
+    );
+    setSections(newSections);
+    persistSections(newSections);
+    setNewTaskDrafts((prev) => ({ ...prev, [sectionIndex]: "" }));
+  }
+
   // Real .docx download — the backend fills the company's actual RCI Plan
   // Word template (assets/rci_plan_template.docx) with this investigation's
   // persisted sections and returns the file directly.
@@ -316,7 +336,14 @@ export function RciPlanPage() {
 
       <div className="card-header">
         <p className="card-title">RCI Plan</p>
-        <button type="button" className="btn-outline" style={{ padding: 8 }} aria-label="Edit" disabled title="Editing not wired up yet">
+        <button
+          type="button"
+          className="btn-outline"
+          style={{ padding: 8, background: editMode ? "var(--color-rail-active-bg)" : undefined }}
+          aria-label={editMode ? "Done adding tasks" : "Add tasks"}
+          title={editMode ? "Done adding tasks" : "Add tasks to a section"}
+          onClick={() => setEditMode((prev) => !prev)}
+        >
           <img src={penIcon} alt="" width={16} height={16} />
         </button>
       </div>
@@ -403,6 +430,31 @@ export function RciPlanPage() {
                       </div>
                     );
                   })}
+                  {editMode && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderTop: section.tasks.length > 0 ? "1px solid var(--color-card-border)" : "none" }}>
+                      <input
+                        type="text"
+                        placeholder="Add a task…"
+                        value={newTaskDrafts[index] ?? ""}
+                        onChange={(e) => setNewTaskDrafts((prev) => ({ ...prev, [index]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addTask(index);
+                          }
+                        }}
+                        style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", flex: 1, padding: "6px 10px" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => addTask(index)}
+                        disabled={!(newTaskDrafts[index] ?? "").trim()}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

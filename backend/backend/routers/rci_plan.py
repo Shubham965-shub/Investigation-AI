@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
 from backend.clients.ds_client import ds_post, get_client
+from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_rci_sections, replace_rci_sections
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row
+from backend.db.rci_plan_export_queries import insert_rci_plan_export
+from backend.routers.auth import get_current_username
 from backend.schemas.rci_plan import (
     RciPlanGenerateRequest,
     RciPlanGenerateResponse,
@@ -96,10 +99,16 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
 
 
 @router.get("/{record_id}/export")
-async def export_rci_plan(record_id: str) -> Response:
+async def export_rci_plan(record_id: str, username: str = Depends(get_current_username)) -> Response:
     """The real .docx download for "Accept and Push to TW" (RciPlanPage.tsx)
     — fills the company's actual RCI Plan template (assets/rci_plan_template.docx)
-    with this investigation's persisted sections, per the user (2026-07-31)."""
+    with this investigation's persisted sections, per the user (2026-07-31).
+
+    Also persists this generated docx to investigation_rci_plan_exports
+    (2026-08-04, per the user) as a frozen approval snapshot — a separate,
+    external process is expected to pick up 'pending' rows there and push
+    them into Trackwise. Best-effort: a persistence failure must never break
+    the download the user is actively waiting on."""
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -121,12 +130,34 @@ async def export_rci_plan(record_id: str) -> Response:
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
     sections = [RciSectionItem(**section) for section in persisted]
 
-    docx_bytes, truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
+    docx_bytes, truncated, owners_truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
     if truncated:
+        # Actually dropped from the Investigation tasks table entirely — the
+        # template's 6-slot capacity, same constraint the old template had.
         logger.warning(
-            "RCI plan export for record_id=%s has %d section(s) beyond the template's %d-slot capacity — dropped",
-            record_id, truncated, len(sections) - truncated,
+            "RCI plan export for record_id=%s has %d section(s) beyond the template's 6-slot task table capacity — dropped",
+            record_id, truncated,
         )
+    if owners_truncated:
+        # NOT dropped — every section's tasks still appear in full in the
+        # Investigation tasks table. Only the Sign-off row's 4 Task Owner
+        # slots are capped, so sections beyond that just have no named
+        # owner there.
+        logger.warning(
+            "RCI plan export for record_id=%s has %d section(s) beyond the Sign-off row's 4 Task Owner slots — no named owner for those",
+            record_id, owners_truncated,
+        )
+
+    try:
+        approver = await fetch_user_by_username(username)
+        await insert_rci_plan_export(
+            deviation_id=deviation_id,
+            docx=docx_bytes,
+            truncated_sections=truncated,
+            approved_by=approver["id"] if approver else None,
+        )
+    except Exception:
+        logger.warning("Could not persist RCI plan export snapshot for record_id=%s", record_id, exc_info=True)
 
     return Response(
         content=docx_bytes,

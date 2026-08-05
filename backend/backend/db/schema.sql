@@ -47,3 +47,25 @@ CREATE TABLE IF NOT EXISTS athena_api_call_trails (
 
 CREATE INDEX IF NOT EXISTS idx_api_call_trails_user_id ON athena_api_call_trails(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_call_trails_created_at ON athena_api_call_trails(created_at);
+
+-- Added 2026-08-04, per the user: when RCI Plan Creation is accepted/approved
+-- ("Accept and Push to TW" — routers/rci_plan.py's export_rci_plan), the
+-- generated .docx is persisted here in addition to being downloaded to the
+-- browser, as a frozen snapshot of exactly what was approved at that moment
+-- (re-exporting after a later section edit produces a NEW row, not an
+-- overwrite — this table is an append-only history, not a cache of "the
+-- current export"). A separate downstream process (outside this backend)
+-- is expected to poll push_status = 'pending' rows and push them into
+-- Trackwise, then flip the status once done.
+CREATE TABLE IF NOT EXISTS investigation_rci_plan_exports (
+    id BIGSERIAL PRIMARY KEY,
+    deviation_id INTEGER NOT NULL,
+    docx BYTEA NOT NULL,
+    truncated_sections INTEGER NOT NULL DEFAULT 0,
+    approved_by INTEGER REFERENCES athena_users(id),
+    push_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_rci_plan_exports_deviation_id ON investigation_rci_plan_exports(deviation_id);
+CREATE INDEX IF NOT EXISTS idx_investigation_rci_plan_exports_push_status ON investigation_rci_plan_exports(push_status);
