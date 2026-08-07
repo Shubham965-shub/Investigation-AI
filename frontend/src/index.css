@@ -63,6 +63,11 @@
   --color-info-bg: #eff6ff;
   --color-info-border: #bfdbfe;
   --color-info-text: #1d4ed8;
+  /* Task Critique's "N Accepted" pill — matches the Figma's purple badge,
+     no equivalent existed in the triad set above. */
+  --color-accepted-bg: #fdf2fe;
+  --color-accepted-border: #f0abfc;
+  --color-accepted-text: #8126dc;
 }
 
 :root[data-theme="dark"] {
@@ -95,6 +100,9 @@
   --color-info-bg: rgba(59, 130, 246, 0.12);
   --color-info-border: rgba(59, 130, 246, 0.35);
   --color-info-text: #60a5fa;
+  --color-accepted-bg: rgba(192, 38, 211, 0.12);
+  --color-accepted-border: rgba(192, 38, 211, 0.35);
+  --color-accepted-text: #e879f9;
 }
 
 /* @strides-pharma-science-ltd/feedback-widget (AppFeedbackButton.tsx) colors

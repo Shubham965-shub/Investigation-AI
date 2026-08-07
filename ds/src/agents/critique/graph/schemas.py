@@ -33,15 +33,11 @@ class ImageAnalysisResult(BaseModel):
     supports_written_claim: bool
 
 
-class DimensionCritique(BaseModel):
-    dimension: str   # one of the 6 dimension names
-    issues: str      # specific issue text; only present when there is a genuine gap
-
-
 class TaskCritiqueDetail(BaseModel):
     task_number: int
     title: str
-    critiques: List[DimensionCritique]   # empty list means no issues found
+    recommendations: List[str]   # flat list of actionable recommendations, not tagged by dimension
+    strengths: str                # 1-2 sentences on what was done well for this task
 
 
 class AllTaskCritiquesResult(BaseModel):

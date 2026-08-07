@@ -162,6 +162,9 @@ export interface RciSectionItem {
   tasks: RciTaskItem[];
   due_date?: string | null;
   assignee?: string | null;
+  // investigation_rci_sections.id — only populated on read-back, used by
+  // Task Critique to attach report/recommendation history to a section.
+  id?: number | null;
 }
 
 export interface RciPlanResponse {
@@ -185,6 +188,9 @@ export interface RciPlanRecordResponse {
   event_type: EventType;
   trackwise_fields: TrackwiseFields;
   sections: RciSectionItem[] | null;
+  // True once Task Critique has started on any section — RCI Plan is
+  // read-only at that point (see RciPlanPage.tsx's lockedForEditing).
+  locked_for_editing?: boolean;
 }
 
 export function getRciPlanRecord(recordId: string): Promise<RciPlanRecordResponse | null> {
@@ -216,6 +222,147 @@ export function uploadRciTemplates(file: File): Promise<RciTemplateUploadRespons
   const formData = new FormData();
   formData.append("file", file);
   return apiPostForm<RciTemplateUploadResponse>("/rci-plan/upload", formData);
+}
+
+// ── Task Critique ─────────────────────────────────────────────────────────
+
+export interface TaskCritiqueRecommendation {
+  id: number;
+  description: string;
+  decision: "pending" | "accepted" | "rejected";
+  reason: string | null;
+}
+
+export interface TaskCritiqueReport {
+  id: number;
+  attempt_number: number;
+  file_name: string;
+  is_gospel: boolean;
+  // DS-generated (/critique/analyse-task-report) — task_score stays null
+  // until DS returns one (or permanently, for an is_gospel report).
+  summary: string | null;
+  task_score: number | null;
+  uploaded_at: string;
+  recommendations: TaskCritiqueRecommendation[];
+}
+
+export interface TaskCritiqueSection {
+  // 0-based position within the RCI Plan document's extracted task list —
+  // not a DB row id.
+  task_index: number;
+  title: string;
+  correlation: string | null;
+  task_count: number;
+  due_date: string | null;
+  assignee: string | null;
+  status: "pending" | "in_progress" | "complete";
+  upload_count: number;
+  max_uploads: number;
+  locked: boolean;
+  next_upload_is_final: boolean;
+  can_upload: boolean;
+  latest_report: TaskCritiqueReport | null;
+}
+
+export interface TaskCritiqueListResponse {
+  record_id: string;
+  sections: TaskCritiqueSection[];
+  // False when neither module 4's RCI Plan export nor a manually-uploaded
+  // stand-in document exists yet.
+  has_source_document: boolean;
+  source_document_name: string | null;
+}
+
+export function getTaskCritique(recordId: string): Promise<TaskCritiqueListResponse | null> {
+  return getRecordOrNull<TaskCritiqueListResponse>(`/task-critique/${recordId}`);
+}
+
+export function uploadTaskCritiqueSourceDocument(recordId: string, file: File): Promise<TaskCritiqueListResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPostForm<TaskCritiqueListResponse>(`/task-critique/${recordId}/source-document`, formData);
+}
+
+export function uploadTaskCritiqueReport(recordId: string, taskIndex: number, file: File): Promise<TaskCritiqueSection> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPostForm<TaskCritiqueSection>(`/task-critique/${recordId}/sections/${taskIndex}/upload`, formData);
+}
+
+export function decideTaskCritiqueRecommendation(
+  recordId: string,
+  taskIndex: number,
+  recommendationId: number,
+  decision: "accepted" | "rejected",
+  reason?: string
+): Promise<TaskCritiqueSection> {
+  return apiPost<TaskCritiqueSection>(
+    `/task-critique/${recordId}/sections/${taskIndex}/recommendations/${recommendationId}/decision`,
+    { decision, reason }
+  );
+}
+
+// ── RC & CAPA Critique ────────────────────────────────────────────────────
+
+export interface RcCapaRecommendation {
+  id: number;
+  description: string;
+  decision: "pending" | "accepted" | "rejected";
+  reason: string | null;
+}
+
+export interface RcCapaCritique {
+  category: "rc_impact" | "capa";
+  summary: string | null;
+  strengths: string | null;
+  recommendations: RcCapaRecommendation[];
+}
+
+export interface RcCapaReport {
+  id: number;
+  attempt_number: number;
+  file_name: string;
+  is_gospel: boolean;
+  rc_score: number | null;
+  capa_score: number | null;
+  total_score: number | null;
+  uploaded_at: string;
+  critiques: RcCapaCritique[];
+}
+
+export interface RcCapaState {
+  record_id: string;
+  status: "pending" | "in_progress" | "complete";
+  upload_count: number;
+  max_uploads: number;
+  locked: boolean;
+  next_upload_is_final: boolean;
+  can_upload: boolean;
+  latest_report: RcCapaReport | null;
+  sit_review_status: "pending" | null;
+}
+
+export function getRcCapaCritique(recordId: string): Promise<RcCapaState | null> {
+  return getRecordOrNull<RcCapaState>(`/rc-capa-critique/${recordId}`);
+}
+
+export function uploadRcCapaCritiqueReport(recordId: string, file: File): Promise<RcCapaState> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPostForm<RcCapaState>(`/rc-capa-critique/${recordId}/upload`, formData);
+}
+
+export function decideRcCapaRecommendation(
+  recordId: string,
+  recommendationId: number,
+  decision: "accepted" | "rejected",
+  reason?: string
+): Promise<RcCapaState> {
+  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/recommendations/${recommendationId}/decision`, { decision, reason });
+}
+
+export function pushRcCapaToSitReview(recordId: string): Promise<RcCapaState> {
+  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/push-to-sit-review`, {});
 }
 
 // ── Action Center ─────────────────────────────────────────────────────────

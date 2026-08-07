@@ -101,11 +101,17 @@ def build_rci_plan_docx(
     # ── 1.0 Event Details ──────────────────────────────────────────────
     fields_table = outer.rows[2].cells[1].tables[0]
     value_row = fields_table.rows[1]
-    rci_owner = trackwise_fields.get("Deviation Owner") or next(
-        (s.assignee for s in sections if s.assignee), ""
+    # dim_investigator.investigator (the real assigned investigator) is
+    # preferred; "Deviation Owner" (dim_event.owner_name, a different column)
+    # and a section's manually-typed assignee are both weaker fallbacks for
+    # when investigator_key isn't set on this event (2026-08-07, per the user).
+    rci_owner = (
+        trackwise_fields.get("Investigator")
+        or trackwise_fields.get("Deviation Owner")
+        or next((s.assignee for s in sections if s.assignee), "")
     )
     _set_cell_text(value_row.cells[0], record_id)
-    _set_cell_text(value_row.cells[1], "")  # RCI Number — assigned by Trackwise itself on real push, not generated here
+    _set_cell_text(value_row.cells[1], trackwise_fields.get("RCI Number") or "")
     _set_cell_text(value_row.cells[2], rci_owner or "")
     _set_cell_text(value_row.cells[3], datetime.date.today().strftime("%d-%b-%Y"))
     # Row 3 intentionally left blank — manual entry, not auto-filled.

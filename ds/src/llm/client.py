@@ -88,6 +88,7 @@ class LLMClient:
         user_prompt: str,
         structure,
         system_prompt: str | None = None,
+        temperature: float | None = None,
     ):
         messages = []
         if system_prompt:
@@ -95,11 +96,16 @@ class LLMClient:
 
         messages.append({"role": "user", "content": user_prompt})
 
-        response = await self._client.responses.parse(
-            model=self._model,
-            input=messages,
-            text_format=structure
-        )
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "input": messages,
+            "text_format": structure,
+        }
+        # Pin temperature when a caller needs reproducibility (e.g. scoring).
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+
+        response = await self._client.responses.parse(**kwargs)
 
         return response.output_parsed
     
@@ -121,6 +127,7 @@ class LLMClient:
         user_prompt: str,
         structure,
         system_prompt: str | None = None,
+        temperature: float | None = None,
     ):
         messages = []
 
@@ -140,11 +147,15 @@ class LLMClient:
             ],
         })
 
-        response = await self._client.responses.parse(
-            model=self._model,
-            input=messages,
-            text_format=structure,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "input": messages,
+            "text_format": structure,
+        }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+
+        response = await self._client.responses.parse(**kwargs)
 
         return response.output_parsed
     

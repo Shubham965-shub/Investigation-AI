@@ -12,6 +12,7 @@ from backend.db.generated_content_queries import fetch_rci_sections, replace_rci
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import insert_rci_plan_export
+from backend.db.task_critique_queries import any_task_critique_started
 from backend.routers.auth import get_current_username
 from backend.schemas.rci_plan import (
     RciPlanGenerateRequest,
@@ -83,6 +84,17 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    if await any_task_critique_started(deviation_id):
+        # replace_rci_sections deletes-then-recreates every section row (new
+        # IDs) — once Task Critique has a report against a section, further
+        # edits here would cascade-delete that history (2026-08-05, per the
+        # user: lock RCI Plan editing instead of letting that happen).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="RCI Plan is locked because Task Critique has already started",
+        )
+
     await replace_rci_sections(
         deviation_id,
         [
@@ -190,4 +202,5 @@ async def get_rci_plan(record_id: str) -> RciPlanRecord:
         trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=extended),
         sections=[RciSectionItem(**section) for section in persisted] if persisted else None,
         stage=stage_for(row["status"]),
+        locked_for_editing=await any_task_critique_started(deviation_id),
     )

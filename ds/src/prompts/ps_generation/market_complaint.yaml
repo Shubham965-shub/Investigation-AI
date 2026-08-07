@@ -1,4 +1,4 @@
-active: v2
+active: v3
 versions:
   v1:
     description: Original market complaint prompt — batch/lot number included in output if provided
@@ -72,6 +72,60 @@ versions:
       - Preserve the original meaning and event flow as much as possible.
       - Correct only obvious grammar, spacing, punctuation, and readability issues.
       - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      Market complaint-specific rules:
+      - Mention complainant/customer/market/source, product name, strength, dosage form, and complaint description only if provided.
+      - Do NOT include batch number, lot number, AR number, or SR number in the problem statement.
+      - Preserve the reported defect or complaint exactly in meaning, such as odor, broken tablets, missing capsules, leakage, deformed capsules, missing seal, dented tablets, shortage, taste issue, or adverse event description.
+      - Do not add medical assessment, seriousness assessment, causality, patient outcome, investigation conclusion, or regulatory classification unless explicitly provided.
+      - Do not soften or exaggerate the complaint wording.
+      - Do not include date or time information in the problem statement.
+
+      Structure:
+      - During <activity if available> of <Product Name> <Strength if available> <Dosage Form if available>, <complainant source if available> <complainee if available> observed/reported <complaint description>.
+
+      Real-world examples:
+      During dispensing of Amitriptyline Tablets 10 mg, pharmacist observed a few tablets debossed with "1" instead of "10/AM" as specified in PIL.
+      During dispensing of Prednisone Tablets USP 10 mg, pharmacist observed a small gray-like substance on the tablet.
+      During inspection of Alfacalcidol SGC 1 mcg, complainant observed deformed capsules leaking oily substance inside the box.
+      During administration of Cortisone Tablets 25 mg, consumer observed tablets were harder than usual and difficult to cut accurately.
+      During inspection of Betamethasone and Dexchlorpheniramine Maleate Tablets (0.25 mg/2 mg), healthcare professional observed broken tablets in the container.
+      During dispensing of Oseltamivir Phosphate Capsules 75 mg, customer observed only 8 capsules present instead of 10 capsules in the bottle.
+      During inspection of the product bottle, customer observed tablets dented or shaved off on the back surface and tablets of different sizes in multiple bottles.
+      During inspection of the product bottle, pharmacist observed a strong odor from the product and confirmed similar odor in pharmacy stock.
+      During administration of Macrogol 13.71 g sachets powder for oral solution, patient observed a soapy taste.
+      During inspection of Omega-3-Acid Ethyl Esters Capsules USP [1 g], reporter observed shortage of 3-4 capsules and smaller-sized capsules in bottles.
+      During opening of Alfacalcidol Soft Gelatin Capsules (SGC) 0.25 mcg, customer observed missing sealing foil from the packaging.
+      During administration of the medication, consumer observed foul odor from the capsules and consumed 02 capsules without experiencing side effects.
+      During inspection of HealthyLax, unpleasant odor was observed from the product.
+      During inspection of Cholecalciferol Capsules [1000 IU], patient observed missing desiccant from the bottle and capsules stuck together.
+      During administration of Sodium Sulfate, Potassium Sulfate and Magnesium Sulfate Oral Solution (17.5 g/3.13 g/1.6 g), patient experienced itching of skin, redness, loss of consciousness, and breathing difficulty.
+
+  v3:
+    description: Added explicit language/grammar/flow clarity check to General rules
+    created_at: '2026-08-05T00:00:00+00:00'
+    template: |
+      Generate a concise Market Complaint problem statement by rewriting the provided details in a professional quality complaint format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, lot number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Write in clear, grammatically correct, natural-sounding sentences — re-read the sentence for language, grammar, and flow clarity before returning it; make sure the subject and verb of every clause agree in meaning and the sentence reads as natural prose rather than concatenated fields.
       - Return only the final problem statement text.
       - Do not return JSON.
       - Do not include headings, bullets, explanations, or notes.

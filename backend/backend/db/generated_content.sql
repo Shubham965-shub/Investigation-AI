@@ -68,3 +68,100 @@ CREATE TABLE IF NOT EXISTS investigation_rci_tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_rci_tasks_section_id ON investigation_rci_tasks(section_id);
+
+-- Task Critique (module step 5) — each task is one block extracted from the
+-- RCI Plan document (services/rci_plan_extraction.py — see
+-- investigation_task_critique_source_documents in schema.sql for where that
+-- document comes from). Not keyed by investigation_rci_sections.id anymore
+-- (2026-08-06, per the user) — that table isn't populated by anything real
+-- right now (RCI Plan Creation's own persistence into it depends on this
+-- same file being run, which it hasn't been), so Task Critique's own tasks
+-- are identified by their position in the extracted list instead
+-- (task_index, 0-based, stable as long as the same source document is used).
+-- A task can be uploaded/reuploaded up to 3 times (attempt_number); only the
+-- latest attempt is ever kept — each new upload REPLACES this row in place
+-- (per the user, 2026-08-06: no need to retain previous/rejected attempts'
+-- files or critiques, only the current/final state). attempt_number is an
+-- explicit counter (not derived from row count, since there's only ever one
+-- row per task) so the 3-upload cap still works. is_gospel marks a report
+-- that was uploaded after every recommendation on the prior attempt was
+-- rejected — that report skips critique entirely and locks the task
+-- immediately (per the user, 2026-08-05). Recommendations are stored inline
+-- as a JSONB array (each element: {id, description, decision, reason,
+-- decided_at}) rather than a child table, since there's no cross-attempt
+-- history to normalize anymore and the list is always small. Status/lock/
+-- upload-count are derived in Python from this row (see
+-- db/task_critique_queries.py's compute_section_state), never stored
+-- redundantly here.
+CREATE TABLE IF NOT EXISTS investigation_task_critique_reports (
+    id SERIAL PRIMARY KEY,
+    deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),
+    task_index INTEGER NOT NULL,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    file_name TEXT NOT NULL,
+    file_bytes BYTEA NOT NULL,
+    is_gospel BOOLEAN NOT NULL DEFAULT FALSE,
+    summary TEXT,
+    task_score INTEGER,
+    recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (deviation_id, task_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id ON investigation_task_critique_reports(deviation_id);
+
+-- RC & CAPA Critique (module step 6) — one shared upload cycle for the whole
+-- investigation (not per-RCI-section like Task Critique). Each uploaded
+-- report is critiqued into two fixed categories (rc_impact/capa) by ds's
+-- POST /critique/analyse-task-report, each with its own summary/strengths
+-- text and recommendation list. Same 3-upload-cap + all-rejected-means-next-
+-- upload-is-gospel rule as Task Critique (per the user, 2026-08-06) — see
+-- db/critique_state.py's compute_upload_state, shared by both modules.
+CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
+    id SERIAL PRIMARY KEY,
+    deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),
+    attempt_number INTEGER NOT NULL,
+    file_name TEXT NOT NULL,
+    file_bytes BYTEA NOT NULL,
+    is_gospel BOOLEAN NOT NULL DEFAULT FALSE,
+    -- ds's rubric-based /score/report, as percentages — set once this report
+    -- becomes final (gospel or 3rd attempt), same trigger/pattern as Task
+    -- Critique's task_score (2026-08-07, per the user). rc_score is the
+    -- combined Root Cause + Impact sections' percentage (matches this
+    -- module's own "RC Impact Assessment Critique" category, which already
+    -- bundles the two together everywhere else); capa_score is the CAPA
+    -- section's percentage alone. Column names/split match a table already
+    -- created directly against the live DB before this code existed.
+    rc_score INTEGER,
+    capa_score INTEGER,
+    -- Consolidated figure (2026-08-07, per the user): rc_score's and
+    -- capa_score's underlying raw marks added together, divided by their
+    -- combined max — not a naive average of the two percentages.
+    total_score INTEGER,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_deviation_id ON investigation_rc_capa_reports(deviation_id);
+
+CREATE TABLE IF NOT EXISTS investigation_rc_capa_critiques (
+    id SERIAL PRIMARY KEY,
+    report_id INTEGER NOT NULL REFERENCES investigation_rc_capa_reports(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    summary TEXT,
+    strengths TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_critiques_report_id ON investigation_rc_capa_critiques(report_id);
+
+CREATE TABLE IF NOT EXISTS investigation_rc_capa_recommendations (
+    id SERIAL PRIMARY KEY,
+    critique_id INTEGER NOT NULL REFERENCES investigation_rc_capa_critiques(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    decision TEXT NOT NULL DEFAULT 'pending',
+    reason TEXT,
+    decided_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_recommendations_critique_id ON investigation_rc_capa_recommendations(critique_id);

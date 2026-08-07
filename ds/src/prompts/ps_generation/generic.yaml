@@ -1,4 +1,4 @@
-active: v2
+active: v3
 versions:
   v1:
     description: Original generic prompt — batch number included in output if provided
@@ -47,6 +47,36 @@ versions:
       - Preserve the original meaning and event flow as much as possible.
       - Correct only obvious grammar, spacing, punctuation, and readability issues.
       - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+
+      Event-specific rules:
+      - Clearly describe the observed/reported issue.
+      - Mention product/material, test, equipment, area, person, observed result, and limit only if provided.
+      - Do NOT include batch number, AR number, or SR number in the problem statement.
+      - Do not add assumptions or missing details.
+
+  v3:
+    description: Added explicit language/grammar/flow clarity check to General rules
+    created_at: '2026-08-05T00:00:00+00:00'
+    template: |
+      Generate a concise pharmaceutical quality event problem statement by rewriting the provided details in a professional GMP-compliant format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Write in clear, grammatically correct, natural-sounding sentences — re-read the sentence for language, grammar, and flow clarity before returning it; make sure the subject and verb of every clause agree in meaning and the sentence reads as natural prose rather than concatenated fields.
       - Return only the final problem statement text.
       - Do not return JSON.
       - Do not include headings, bullets, explanations, or notes.

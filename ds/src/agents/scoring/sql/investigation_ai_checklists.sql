@@ -1,0 +1,224 @@
+-- ============================================================================
+-- Scoring checklist tables (public schema)
+-- Database: investigation_ai   (server: azure_qa / qa-lighthouse-db)
+--
+-- Holds the marking checklists used to score investigation reports:
+--   * Task Report Execution rubric  (/40)
+--   * IQ Score rubric — RC (/30), Impact (/10), CAPA (/20)  → /60
+--
+-- Tables live in the public schema, prefixed with investigation_ai_ (moved out of
+-- the former dedicated task_report_critique schema, which is dropped below).
+--
+-- GENERATED from src/agents/scoring/rubric/rubric_config.py — do not edit by hand.
+-- Regenerate: uv run python -m src.agents.scoring.sql.generate_checklist_seed
+-- Idempotent: safe to re-run (ON CONFLICT DO UPDATE keeps the DB in sync with code).
+-- ============================================================================
+
+-- Remove the previous dedicated schema (its tables are relocated below).
+DROP SCHEMA IF EXISTS task_report_critique CASCADE;
+
+CREATE TABLE IF NOT EXISTS public.investigation_ai_checklist_section (
+    section         text PRIMARY KEY,          -- task_report | rc | impact | capa
+    label           text        NOT NULL,
+    native_max      numeric     NOT NULL,       -- section total as printed on the source checklist
+    achievable_max  numeric     NOT NULL,       -- sum of checkpoint maxima (max earnable)
+    source          text        NOT NULL,       -- originating checklist file
+    display_order   int         NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.investigation_ai_checklist_checkpoint (
+    section         text        NOT NULL REFERENCES public.investigation_ai_checklist_section(section) ON DELETE CASCADE,
+    checkpoint_id   text        NOT NULL,        -- e.g. '3.1a', '1'
+    sub_criteria    text        NOT NULL,
+    checkpoint_text text        NOT NULL,
+    max_marks       numeric     NOT NULL,        -- marks awarded when satisfied
+    kind            text        NOT NULL DEFAULT 'binary',   -- binary | classification
+    allow_na        boolean     NOT NULL DEFAULT false,
+    tiers           jsonb,                        -- null unless kind='classification' (e.g. RC tiers)
+    display_order   int         NOT NULL,
+    PRIMARY KEY (section, checkpoint_id)
+);
+
+-- These tables are a code-generated mirror of rubric_config.py — clear and
+-- reload so removed/renamed checkpoints never linger as stale rows.
+DELETE FROM public.investigation_ai_checklist_checkpoint;
+DELETE FROM public.investigation_ai_checklist_section;
+
+
+-- ── Sections ────────────────────────────────────────────────────────────────
+INSERT INTO public.investigation_ai_checklist_section (section, label, native_max, achievable_max, source, display_order) VALUES
+    ('task_report', 'Task Report Execution', 40.0, 40.0, 'Task_Report_Execution_Rubric_40marks.docx', 1)
+ON CONFLICT (section) DO UPDATE SET
+    label = EXCLUDED.label, native_max = EXCLUDED.native_max,
+    achievable_max = EXCLUDED.achievable_max, source = EXCLUDED.source,
+    display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_section (section, label, native_max, achievable_max, source, display_order) VALUES
+    ('rc', 'Root Cause / Probable Causes', 30.0, 30.0, 'IQ _ RC ,IMPACT & CAPA .xlsx', 2)
+ON CONFLICT (section) DO UPDATE SET
+    label = EXCLUDED.label, native_max = EXCLUDED.native_max,
+    achievable_max = EXCLUDED.achievable_max, source = EXCLUDED.source,
+    display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_section (section, label, native_max, achievable_max, source, display_order) VALUES
+    ('impact', 'Final Impact Assessment', 10.0, 10.0, 'IQ _ RC ,IMPACT & CAPA .xlsx', 3)
+ON CONFLICT (section) DO UPDATE SET
+    label = EXCLUDED.label, native_max = EXCLUDED.native_max,
+    achievable_max = EXCLUDED.achievable_max, source = EXCLUDED.source,
+    display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_section (section, label, native_max, achievable_max, source, display_order) VALUES
+    ('capa', 'Effectiveness of Corrections and CAPA', 20.0, 20.0, 'IQ _ RC ,IMPACT & CAPA .xlsx', 4)
+ON CONFLICT (section) DO UPDATE SET
+    label = EXCLUDED.label, native_max = EXCLUDED.native_max,
+    achievable_max = EXCLUDED.achievable_max, source = EXCLUDED.source,
+    display_order = EXCLUDED.display_order;
+
+-- ── Checkpoints ─────────────────────────────────────────────────────────────
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '2.1a', '2.1 Coverage of Tasks', 'Tasks collectively examine all relevant potential-source categories (Man, Machine, Material, Method, Measurement, Environment — 6M), or reason out those that are not applicable.', 8.0, 'binary', false, NULL, 1)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '2.1b', '2.1 Coverage of Tasks', 'No obvious relevant line of enquiry for the stated problem is left undefined.', 2.0, 'binary', false, NULL, 2)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '2.2a', '2.2 Title & Objective Quality', 'Each investigation task has a clear, specific Title that identifies what is being investigated.', 2.0, 'binary', false, NULL, 3)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '2.2b', '2.2 Title & Objective Quality', 'Each task states a specific, answerable Objective linked to the problem or a hypothesis.', 2.0, 'binary', false, NULL, 4)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '3.1a', '3.1 Evidence & Objectivity', 'Findings are supported by objective evidence & data (records, logbooks, trend data, interviews, reconstruction) rather than unsupported assertions.', 5.0, 'binary', false, NULL, 5)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '3.1b', '3.1 Evidence & Objectivity', 'Both confirming and disconfirming evidence is captured (no cherry-picking); findings state fact and are quantified where relevant.', 3.0, 'binary', false, NULL, 6)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '3.2a', '3.2 Completeness & Traceability', 'Each task''s stated Objective is actually answered by its Findings — the task is executed to closure, not left open.', 5.0, 'binary', false, NULL, 7)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '3.2b', '3.2 Completeness & Traceability', 'Data / evidence in the Findings is traceable to authenticated source records (ALCOA+).', 3.0, 'binary', false, NULL, 8)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '4.1a', '4.1 Logical Linkage & Analytical Depth', 'Each Inference follows logically from that task''s Findings (no leaps or unsupported conclusions).', 3.0, 'binary', false, NULL, 9)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '4.1b', '4.1 Logical Linkage & Analytical Depth', 'Ruled-out lines are justified by findings (Is / Is-Not or equivalent); the inference reaches a systemic level; where human error is inferred, underlying systemic contributors are examined.', 3.0, 'binary', true, NULL, 10)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '4.2a', '4.2 Report Quality & Accountability', 'The report is clear and self-contained, follows Good Documentation Practices, and is prepared, signed and dated by the investigator.', 2.0, 'binary', false, NULL, 11)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('task_report', '4.2b', '4.2 Report Quality & Accountability', 'The inferences collectively provide a coherent, gap-free basis for the root-cause determination.', 2.0, 'binary', false, NULL, 12)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('rc', '1', '1 Root Cause / Probable Causes', 'Classify the root-cause conclusion: ''assignable'' = proven through evidence, reproducible, direct linkage established (30); ''probable'' = evidence/data suggest a likely reason, scientifically justified (10); ''none'' = no root cause established (-5).', 30.0, 'classification', false, '{"assignable": 30.0, "probable": 10.0, "none": -5.0}'::jsonb, 1)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.1a', '6.1 Final Impact Assessment on Current Batches', 'Impact on the current/affected batch(es) is accurately identified (patient safety, product quality, area compliance status or other status such as documentation) based on the nature of the non-conformance.', 1.0, 'binary', false, NULL, 1)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.1b', '6.1 Final Impact Assessment on Current Batches', 'Where patient safety is impacted and the product is in market, the health-hazard-evaluation (HHE) requirement has been checked — or it is appropriately reasoned that HHE is not required.', 1.0, 'binary', false, NULL, 2)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.1c', '6.1 Final Impact Assessment on Current Batches', 'Where product quality / patient safety is impacted, the requirement of regulatory submission / market notification has been evaluated — or it is appropriately reasoned that none is required.', 1.0, 'binary', false, NULL, 3)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.1d', '6.1 Final Impact Assessment on Current Batches', 'Where product quality or regulatory compliance is impacted, continuation of production in similar areas/sites has been evaluated — or it is appropriately reasoned as not applicable.', 1.0, 'binary', false, NULL, 4)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.2a', '6.2 Extended Impact Assessment', 'Impact on other batches / area / process / products / systems has been mentioned with rationale (patient safety, product quality, compliance, documentation) — or, if there is no impact on other product, that has been stated.', 2.0, 'binary', false, NULL, 5)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.2b', '6.2 Extended Impact Assessment', 'If only the current batch/area/process is impacted and there is no impact on other batches, the rationale for the same has been mentioned.', 2.0, 'binary', false, NULL, 6)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('impact', '6.3', '6.3 Batch Disposition', 'The batch disposition decision is clearly written (i.e. whether the non-conformance affects release of the current / other batches).', 2.0, 'binary', false, NULL, 7)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('capa', '7.1a', '7.1 Remedial Action (Correction)', 'The correction / remedial action addresses the effect of the non-conformance based on its nature and root cause (what, where documented, who, by when) — or a rationale is given if no correction is recommended.', 1.0, 'binary', false, NULL, 1)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('capa', '7.1b', '7.1 Remedial Action (Correction)', 'Evidence / justification is provided that the correction does not adversely affect product quality and allows the product to meet specifications.', 1.0, 'binary', false, NULL, 2)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('capa', '7.2', '7.2 Corrective Action / Preventive Action (CAPA)', 'Classify the CAPA proposed against the identified root cause by its effectiveness level (marks: Level 1=4, Level 2=4, Level 3=8, Level 4=10, Level 5=10). Use ''none'' when there is no adequate CAPA. Higher levels are more robust / systemic; see the level definitions in the CAPA prompt.', 10.0, 'classification', false, '{"none": 0.0, "level_1": 4.0, "level_2": 4.0, "level_3": 8.0, "level_4": 10.0, "level_5": 10.0}'::jsonb, 3)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('capa', '7.3', '7.2 Corrective Action / Preventive Action (CAPA)', 'Interim control is explained appropriately with clear objectives, responsibilities and a timeline (or appropriate justification if not applicable).', 4.0, 'binary', true, NULL, 4)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
+INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
+    ('capa', '7.4', '7.2 Corrective Action / Preventive Action (CAPA)', 'CAPA effectiveness check is explained appropriately with clear objectives, responsibilities and a timeline (or appropriate justification if not applicable).', 4.0, 'binary', true, NULL, 5)
+ON CONFLICT (section, checkpoint_id) DO UPDATE SET
+    sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
+    max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
+    tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;

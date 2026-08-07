@@ -20,7 +20,9 @@ from backend.routers.evidence import router as evidence_router
 from backend.routers.health import router as health_router
 from backend.routers.problem_statement import router as problem_statement_router
 from backend.routers.questionnaire import router as questionnaire_router
+from backend.routers.rc_capa_critique import router as rc_capa_critique_router
 from backend.routers.rci_plan import router as rci_plan_router
+from backend.routers.task_critique import router as task_critique_router
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,8 @@ def create_app() -> FastAPI:
     app.include_router(evidence_router, prefix=api_prefix, **protected)
     app.include_router(questionnaire_router, prefix=api_prefix, **protected)
     app.include_router(rci_plan_router, prefix=api_prefix, **protected)
+    app.include_router(task_critique_router, prefix=api_prefix, **protected)
+    app.include_router(rc_capa_critique_router, prefix=api_prefix, **protected)
     app.include_router(action_center_router, prefix=api_prefix, **protected)
     app.include_router(analytics_router, prefix=api_prefix, **protected)
 
