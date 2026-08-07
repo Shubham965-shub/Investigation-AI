@@ -25,6 +25,24 @@ TARGET_VECTOR_MAP: dict[str, str] = {
     "root_cause_summary": settings.COLUMN_ROOT_CAUSE_VECTOR, }
 
 
+def _build_from_clause() -> str:
+    """Build the FROM clause, joining the vector table to the details table when configured.
+
+    ``SEARCH_TABLE`` holds only description/root_cause_summary text plus their
+    embeddings; ``SEARCH_DETAILS_TABLE`` (when set) holds the full event metadata
+    (qe_type, location, date_opened, etc.). They're joined on (id, secondary_key)
+    so callers get the full record rather than just the 6 vector-table columns.
+    """
+    if settings.SEARCH_DETAILS_TABLE:
+        return (
+            f'FROM "{settings.SEARCH_DETAILS_TABLE}" t '
+            f'JOIN "{settings.SEARCH_TABLE}" v '
+            f'ON t."{settings.COLUMN_ID}" = v."{settings.COLUMN_ID}" '
+            f'AND t."{settings.JOIN_SECONDARY_KEY}" = v."{settings.JOIN_SECONDARY_KEY}"'
+        )
+    return f'FROM "{settings.SEARCH_TABLE}" t'
+
+
 async def semantic_search(
     pool: asyncpg.Pool,
     query_vector: list[float],
@@ -43,14 +61,17 @@ async def semantic_search(
     search_conditions = build_filter_clause(filters, param_offset=1)
     limit_parameter_index = 2 + len(search_conditions.params)
 
-    escaped_vec_column = f'"{target_vec_column}"'
-    
+    # Vector columns only ever live on the vector table (aliased "v" when a
+    # details table is joined in, "t" otherwise — see _build_from_clause).
+    vec_table_alias = "v" if settings.SEARCH_DETAILS_TABLE else "t"
+    escaped_vec_column = f'{vec_table_alias}."{target_vec_column}"'
+
     # Perform standard vector search with an appended relevance_score metric
     query_sql = f"""
-        SELECT 
+        SELECT
             t.*,
             (1 - ({escaped_vec_column}::vector <=> $1::vector)) AS relevance_score
-        FROM "{settings.SEARCH_TABLE}" t
+        {_build_from_clause()}
         WHERE {escaped_vec_column} IS NOT NULL
             {search_conditions.sql}
         ORDER BY relevance_score DESC

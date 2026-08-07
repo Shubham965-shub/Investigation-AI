@@ -87,14 +87,35 @@ async def event_record_synthesizer(
                 else f'sv."{settings.COLUMN_ID}" = ANY($1)'
             )
 
+            # sv (SEARCH_TABLE) only carries description/root_cause_summary/vectors —
+            # category, location, and date_opened live on the details table and are
+            # only available when it's joined in.
+            details_join = ""
+            details_select = ""
+            if settings.SEARCH_DETAILS_TABLE:
+                details_join = (
+                    f'LEFT JOIN "{settings.SEARCH_DETAILS_TABLE}" d '
+                    f'ON sv."{settings.COLUMN_ID}" = d."{settings.COLUMN_ID}" '
+                    f'AND sv."{settings.JOIN_SECONDARY_KEY}" = d."{settings.JOIN_SECONDARY_KEY}"'
+                )
+                details_select = (
+                    f', d."{settings.COLUMN_CATEGORY}" AS "{settings.COLUMN_CATEGORY}"'
+                    f', d."{settings.COLUMN_LOCATION}" AS "{settings.COLUMN_LOCATION}"'
+                    # EREvent.date_opened is a plain str — cast the timestamp to
+                    # text here rather than relying on Pydantic to coerce it.
+                    f', d."{settings.COLUMN_DATE_OPENED}"::text AS "{settings.COLUMN_DATE_OPENED}"'
+                )
+
             query = f"""
             SELECT
-                sv.*,
+                sv.*
+                {details_select},
                 s."{settings.SUMMARY_COL_EVENT_DESCRIPTION}"   AS "{settings.SUMMARY_COL_EVENT_DESCRIPTION}",
                 s."{settings.SUMMARY_COL_ROOT_CAUSE}"          AS "{settings.SUMMARY_COL_ROOT_CAUSE}",
                 s."{settings.SUMMARY_COL_CAPA}"                AS "{settings.SUMMARY_COL_CAPA}",
                 s."{settings.SUMMARY_COL_CAPA_DATE}" AS "{settings.SUMMARY_COL_CAPA_DATE}"
             FROM "{settings.SEARCH_TABLE}" sv
+            {details_join}
             LEFT JOIN "{settings.SUMMARY_TABLE}" s
             ON {join_condition}
             WHERE {where_clause}
@@ -113,7 +134,10 @@ async def event_record_synthesizer(
             row_lower = {k.lower(): v for k, v in row_dict.items()}
 
             def ci_get(col_name: str):
-                return row_lower.get(col_name.lower(), "")
+                # `or ""` also covers a present-but-NULL column (e.g. a LEFT
+                # JOIN row with no match) — .get()'s default only fires when
+                # the key is absent entirely.
+                return row_lower.get(col_name.lower()) or ""
             event_records.append(
                 EREvent(
                     deviation_id=ci_get(settings.COLUMN_ID),

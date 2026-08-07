@@ -38,10 +38,22 @@ export function RciPlanPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
+  // True once Task Critique has started on any section — RCI Plan becomes
+  // read-only at that point (2026-08-05, per the user), since editing here
+  // would delete-then-recreate section rows and cascade away that history.
+  const [lockedForEditing, setLockedForEditing] = useState(false);
   const [eventType, setEventType] = useState<EventType | undefined>(undefined);
   const [trackwiseFields, setTrackwiseFields] = useState<TrackwiseFields | undefined>(undefined);
   const [sections, setSections] = useState<RciSectionItem[] | null>(null);
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({});
+  // Toggled by the header "Edit" button (previously cosmetic/disabled) —
+  // reveals an "Add Task" row at the bottom of each open section's task
+  // list. Scoped to just adding subtasks for now, per the user (2026-08-05);
+  // editing existing task text/checking is already possible without this.
+  const [editMode, setEditMode] = useState(false);
+  // Per-section draft text for the new-task input, keyed by section index —
+  // each section's "Add Task" row needs its own independent in-progress text.
+  const [newTaskDrafts, setNewTaskDrafts] = useState<Record<number, string>>({});
   const [additionalValues, setAdditionalValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +83,7 @@ export function RciPlanPage() {
         if (rciRecord) {
           setEventType(rciRecord.event_type);
           setTrackwiseFields(rciRecord.trackwise_fields);
+          setLockedForEditing(rciRecord.locked_for_editing ?? false);
           if (rciRecord.sections) {
             setSections(rciRecord.sections);
           }
@@ -221,6 +234,18 @@ export function RciPlanPage() {
     persistSections(newSections);
   }
 
+  function addTask(sectionIndex: number) {
+    if (!sections) return;
+    const description = (newTaskDrafts[sectionIndex] ?? "").trim();
+    if (!description) return;
+    const newSections = sections.map((s, si) =>
+      si === sectionIndex ? { ...s, tasks: [...s.tasks, { description, is_checked: true }] } : s
+    );
+    setSections(newSections);
+    persistSections(newSections);
+    setNewTaskDrafts((prev) => ({ ...prev, [sectionIndex]: "" }));
+  }
+
   // Real .docx download — the backend fills the company's actual RCI Plan
   // Word template (assets/rci_plan_template.docx) with this investigation's
   // persisted sections and returns the file directly.
@@ -316,10 +341,24 @@ export function RciPlanPage() {
 
       <div className="card-header">
         <p className="card-title">RCI Plan</p>
-        <button type="button" className="btn-outline" style={{ padding: 8 }} aria-label="Edit" disabled title="Editing not wired up yet">
-          <img src={penIcon} alt="" width={16} height={16} />
-        </button>
+        {!lockedForEditing && (
+          <button
+            type="button"
+            className="btn-outline"
+            style={{ padding: 8, background: editMode ? "var(--color-rail-active-bg)" : undefined }}
+            aria-label={editMode ? "Done adding tasks" : "Add tasks"}
+            title={editMode ? "Done adding tasks" : "Add tasks to a section"}
+            onClick={() => setEditMode((prev) => !prev)}
+          >
+            <img src={penIcon} alt="" width={16} height={16} />
+          </button>
+        )}
       </div>
+      {lockedForEditing && (
+        <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
+          This RCI Plan is read-only — Task Critique has already started on it.
+        </p>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map((section, index) => {
@@ -343,24 +382,32 @@ export function RciPlanPage() {
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
                   <span>TCD:</span>
-                  <input
-                    type="date"
-                    min={minDueDate}
-                    value={section.due_date ?? ""}
-                    onChange={(e) => setSectionDueDate(index, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
-                  />
+                  {lockedForEditing ? (
+                    <span>{section.due_date || "—"}</span>
+                  ) : (
+                    <input
+                      type="date"
+                      min={minDueDate}
+                      value={section.due_date ?? ""}
+                      onChange={(e) => setSectionDueDate(index, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
+                    />
+                  )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
-                  <input
-                    type="text"
-                    placeholder="Unassigned"
-                    value={section.assignee ?? ""}
-                    onChange={(e) => setSectionAssignee(index, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", border: "none", background: "none", flex: 1, minWidth: 0, padding: 0 }}
-                  />
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: lockedForEditing ? "9px 13px" : "5px 7px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
+                  {lockedForEditing ? (
+                    <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder="Unassigned"
+                      value={section.assignee ?? ""}
+                      onChange={(e) => setSectionAssignee(index, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", border: "none", background: "none", flex: 1, width: "100%", minWidth: 0, padding: "6px 8px", boxSizing: "border-box" }}
+                    />
+                  )}
                 </div>
                 <button
                   type="button"
@@ -374,35 +421,86 @@ export function RciPlanPage() {
               {isOpen && (
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                    <span style={{ width: 700 }}>Task</span>
+                    <span style={{ width: "100%" }}>Task</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;
                     return (
                       <div
                         key={taskIndex}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 16px", borderBottom: taskIndex < section.tasks.length - 1 ? "1px solid var(--color-card-border)" : "none" }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, width: 700 }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%" }}>
                           <button
                             type="button"
                             className={`checklist-checkbox ${checked ? "" : "unchecked"}`}
-                            onClick={() => toggleTask(index, taskIndex)}
+                            onClick={lockedForEditing ? undefined : () => toggleTask(index, taskIndex)}
                             aria-label={checked ? "Uncheck task" : "Check task"}
-                            style={{ flexShrink: 0 }}
+                            style={{ flexShrink: 0, marginTop: 2, cursor: lockedForEditing ? "default" : "pointer" }}
+                            disabled={lockedForEditing}
                           >
                             {checked && <img src={checkIcon} alt="" width={12} height={12} />}
                           </button>
-                          <input
-                            type="text"
-                            value={task.description}
-                            onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
-                            style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", border: "none", background: "none", flex: 1, padding: 0 }}
-                          />
+                          {lockedForEditing ? (
+                            <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
+                              {task.description}
+                            </span>
+                          ) : (
+                            <textarea
+                              value={task.description}
+                              onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
+                              rows={1}
+                              ref={(el) => {
+                                if (!el) return;
+                                el.style.height = "auto";
+                                el.style.height = `${el.scrollHeight}px`;
+                              }}
+                              style={{
+                                fontSize: "var(--font-size-base)",
+                                fontWeight: 600,
+                                fontFamily: "inherit",
+                                color: "var(--color-text-muted)",
+                                border: "none",
+                                background: "none",
+                                flex: 1,
+                                minWidth: 0,
+                                padding: 0,
+                                resize: "none",
+                                overflow: "hidden",
+                                whiteSpace: "pre-wrap",
+                                overflowWrap: "break-word",
+                              }}
+                            />
+                          )}
                         </div>
                       </div>
                     );
                   })}
+                  {editMode && !lockedForEditing && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderTop: section.tasks.length > 0 ? "1px solid var(--color-card-border)" : "none" }}>
+                      <input
+                        type="text"
+                        placeholder="Add a task…"
+                        value={newTaskDrafts[index] ?? ""}
+                        onChange={(e) => setNewTaskDrafts((prev) => ({ ...prev, [index]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addTask(index);
+                          }
+                        }}
+                        style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", flex: 1, padding: "6px 10px" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => addTask(index)}
+                        disabled={!(newTaskDrafts[index] ?? "").trim()}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -46,7 +46,7 @@ class SearchViaOption(str, Enum):
 class SearchRequest(BaseModel):
     """POST body for ``/api/search``."""
 
-    query: str = Field(..., min_length=1, description="The search query text (keyword or semantic)")
+    problem_statement: str = Field(..., min_length=1, description="The investigation problem statement to search on (keyword or semantic)")
     
     search_on: Optional[str] = Field(
         None, 

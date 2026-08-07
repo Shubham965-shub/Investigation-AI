@@ -47,7 +47,7 @@ async def _get_executive_narrative(state: SearchState, body: SearchRequest) -> s
     # Prepare results context (top 20 results to stay within limits)
     id_col = settings.COLUMN_ID
     desc_col = settings.COLUMN_DESCRIPTION
-    root_col = settings.SUMMARY_COL_ROOT_CAUSE
+    root_col = settings.COLUMN_ROOT_CAUSE
     cat_col = settings.COLUMN_CATEGORY
     loc_col = settings.COLUMN_LOCATION
     prod_col = getattr(settings, 'COLUMN_PRODUCT', 'product')
@@ -110,7 +110,7 @@ async def _get_top_cause_description(state: SearchState, body: SearchRequest) ->
 
     id_col = settings.COLUMN_ID
 #    desc_col = settings.COLUMN_DESCRIPTION
-    root_col = settings.SUMMARY_COL_ROOT_CAUSE
+    root_col = settings.COLUMN_ROOT_CAUSE
     cat_col = settings.COLUMN_CATEGORY
     
     results_context = "\n\n".join(
