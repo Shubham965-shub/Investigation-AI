@@ -26,6 +26,10 @@ class RciSectionItem(BaseModel):
     # yet (see project memory: rci-plan-schema-gap).
     due_date: Optional[str] = None
     assignee: Optional[str] = None
+    # investigation_rci_sections.id — only populated on read-back (never on a
+    # freshly-generated, not-yet-persisted DS response). Consumed by Task
+    # Critique to attach report/recommendation history to a specific section.
+    id: Optional[int] = None
 
 
 class RciPlanGenerateResponse(BaseModel):
@@ -49,6 +53,11 @@ class RciPlanRecord(BaseModel):
     sections: Optional[List[RciSectionItem]] = None
     # See src/schemas/problem_statement.py's stage field for what this means.
     stage: int = 0
+    # True once any section has Task Critique history (a report uploaded) —
+    # RCI Plan becomes read-only at that point, since further edits here
+    # would delete-then-recreate investigation_rci_sections rows (fresh IDs),
+    # cascading away that Task Critique history (2026-08-05, per the user).
+    locked_for_editing: bool = False
 
 
 class RciTemplateUploadResponse(BaseModel):

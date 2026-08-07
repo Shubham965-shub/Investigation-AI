@@ -115,6 +115,7 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
 
         return [
             {
+                "id": s["id"],
                 "title": s["title"],
                 "correlation": s["correlation"],
                 "due_date": s["due_date"].isoformat() if s["due_date"] else None,

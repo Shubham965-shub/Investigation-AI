@@ -1,0 +1,33 @@
+active: v1
+versions:
+  v1:
+    description: Split a completed investigation report into its four scoreable sections; empty string for any absent section.
+    created_at: '2026-08-03T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical QA document analyst. The attached document is a completed
+      investigation report (event types: Deviation, OOS, OOT, or Market Complaint). It may be
+      a full consolidated report or only ONE section. Split it into the fields below.
+
+      Copy text VERBATIM from the document — do not summarise, paraphrase, correct, or invent.
+      If a section is not present in the document, return an empty string for it. Never fabricate
+      content for a missing section.
+
+      Fields:
+      - event_type: one of "Deviation", "OOS", "OOT", "Market Complaint" if determinable, else null.
+      - problem_statement: the full narrative under "Problem statement" / "Event description".
+      - task_report_text: the entire "Investigation tasks" body — every investigation task with its
+        Objective, Findings and Inference (numbered sub-sections such as 2.1, 2.2, … and any tables),
+        up to but NOT including the Root Cause Conclusion. Include table content as text.
+      - rc_text: the Root Cause Conclusion / Probable cause statement, including any causal-factor
+        category and sub-category. Exclude the impact and CAPA sections.
+      - impact_text: the Impact Assessment section — the "Impact on affected batch / marketed batches /
+        other product / regulatory / facility / process / data integrity / patient safety" items and any
+        batch-disposition / conclusion statement (typically numbered 8.1–8.11).
+      - capa_text: the Corrective Action & Preventive Action (CAPA) details section, including any
+        correction / remedial action, interim controls, effectiveness check, and the CAPA table
+        (description, responsibility, due date).
+
+      Boundaries can be fuzzy in these reports. Use the meaning of the content, not just headings, to
+      decide where each section belongs. A single-section upload should populate only that one field.
+
+      Return only the structured fields. No commentary.

@@ -196,6 +196,21 @@ textarea.field-value {
   text-align: center;
 }
 
+.status-pill {
+  display: inline-flex;
+  border-radius: var(--radius-btn);
+  padding: 3px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.status-pill.pending { color: var(--color-text-muted); border-color: var(--color-text-muted); }
+.status-pill.in_progress { color: var(--color-info-text); border-color: var(--color-info-text); }
+.status-pill.complete { color: var(--color-success-text); border-color: var(--color-success-text); }
+.status-pill.accepted { color: var(--color-accepted-text); border-color: var(--color-accepted-border); background: var(--color-accepted-bg); }
+
 .error-banner {
   background: var(--color-danger-bg);
   border: 1px solid var(--color-danger-border);

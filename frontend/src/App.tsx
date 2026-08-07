@@ -11,6 +11,9 @@ import { ProblemStatementPage } from "./pages/ProblemStatementPage";
 import { EvidenceCollectionPage } from "./pages/EvidenceCollectionPage";
 import { InterviewQuestionnairePage } from "./pages/InterviewQuestionnairePage";
 import { RciPlanPage } from "./pages/RciPlanPage";
+import { TaskCritiquePage } from "./pages/TaskCritiquePage";
+import { TaskCritiqueDetailPage } from "./pages/TaskCritiqueDetailPage";
+import { RcCapaCritiquePage } from "./pages/RcCapaCritiquePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 
 export default function App() {
@@ -44,6 +47,13 @@ export default function App() {
               </Route>
               <Route path="/records/:recordId/rci-plan" element={<RecordShell currentStep="rci-plan" />}>
                 <Route index element={<RciPlanPage />} />
+              </Route>
+              <Route path="/records/:recordId/task-critique" element={<RecordShell currentStep="task-critique" />}>
+                <Route index element={<TaskCritiquePage />} />
+                <Route path=":taskIndex" element={<TaskCritiqueDetailPage />} />
+              </Route>
+              <Route path="/records/:recordId/rc-capa-critique" element={<RecordShell currentStep="rc-capa-critique" />}>
+                <Route index element={<RcCapaCritiquePage />} />
               </Route>
             </Route>
 

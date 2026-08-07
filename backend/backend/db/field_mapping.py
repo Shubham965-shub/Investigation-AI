@@ -116,6 +116,20 @@ def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
 
 
 def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = False) -> Dict[str, Any]:
+    fields = _type_specific_trackwise_fields(row, qe_type, extended=extended)
+    # Universal, regardless of event type (2026-08-07, per the user) —
+    # dim_investigator.investigator via fact_qms_event.investigator_key, and
+    # dim_rci.reference_number via fact_qms_event.rci_key. Neither was
+    # previously joined into fetch_investigation_row's query at all, so
+    # rci_plan_export.py had no real source for either and left them blank/
+    # fell back to the differently-scoped "Deviation Owner" (dim_event.owner_name).
+    if fields:
+        fields["Investigator"] = _val(row, "investigator")
+        fields["RCI Number"] = _val(row, "rci_number")
+    return fields
+
+
+def _type_specific_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = False) -> Dict[str, Any]:
     event_type = QE_TYPE_TO_EVENT_TYPE.get(qe_type)
 
     if event_type == "Deviation":

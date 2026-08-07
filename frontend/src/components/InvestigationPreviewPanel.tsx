@@ -51,8 +51,8 @@ const STEP_DEFS: { label: string; description: string; path: string | null }[] =
   { label: "Evidence Collection", description: "List of Evidences to be collected for the investigation.", path: "evidence-collection" },
   { label: "Interview Questionnaire", description: "Creation of interview Questionnaire.", path: "interview-questionnaire" },
   { label: "RCI Plan Creation", description: "RCI plan creation based on the Collected evidence and Interview questionnaire's response.", path: "rci-plan" },
-  { label: "Task Critique", description: "Critique the tasks that is completed by the RCI plan creation step.", path: null },
-  { label: "RC & CAPA Critique", description: "Final report generation of the investigation.", path: null },
+  { label: "Task Critique", description: "Critique the tasks that is completed by the RCI plan creation step.", path: "task-critique" },
+  { label: "RC & CAPA Critique", description: "Final report generation of the investigation.", path: "rc-capa-critique" },
   { label: "RCI Report", description: "Final quality review and investigation closure with the reviews.", path: null },
 ];
 

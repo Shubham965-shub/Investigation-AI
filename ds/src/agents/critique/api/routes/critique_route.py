@@ -216,12 +216,12 @@ async def extract(file: UploadFile = File(...)) -> JSONResponse:
 # ── Task report critique endpoints ────────────────────────────────────────────
 
 @router.post(
-    "/analyse-task-report",
+    "/critique-rc-conclusion-and-capa",
     tags=["critique"],
     response_model=RCIReportCritiqueResponse,
     summary="Critique RC conclusion and CAPA from a task report (full document)",
 )
-async def analyse_task_report(
+async def critique_rc_conclusion_and_capa(
     event_type: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
 ) -> RCIReportCritiqueResponse:

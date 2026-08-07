@@ -26,3 +26,18 @@ async def insert_rci_plan_export(
             truncated_sections,
             approved_by,
         )
+
+
+async def fetch_latest_rci_plan_export_docx(deviation_id: int) -> Optional[bytes]:
+    """Used by Task Critique (services/rci_plan_extraction.py) to read the
+    document module 4 generated. Append-only table — most recent row wins if
+    RCI Plan was ever re-exported after an edit."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            """
+            SELECT docx FROM investigation_rci_plan_exports
+            WHERE deviation_id = $1 ORDER BY created_at DESC LIMIT 1
+            """,
+            deviation_id,
+        )

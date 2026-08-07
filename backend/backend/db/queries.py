@@ -67,13 +67,17 @@ SELECT
     e.observed_by,
     p.name_of_material,
     eq.instrument_equipment,
-    eq.instrument_equipment_id
+    eq.instrument_equipment_id,
+    di.investigator,
+    r.reference_number AS rci_number
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
 LEFT JOIN dim_product p ON p.product_key = f.product_key
 LEFT JOIN dim_equipment eq ON eq.equipment_key = f.equipment_key
 LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
+LEFT JOIN dim_investigator di ON di.investigator_key = f.investigator_key
+LEFT JOIN dim_rci r ON r.rci_key = f.rci_key
 WHERE f.deviation_id = $1
 LIMIT 1
 """

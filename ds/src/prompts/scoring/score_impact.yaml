@@ -1,0 +1,38 @@
+active: v1
+versions:
+  v1:
+    description: Score the Impact Assessment section (6.1a–d, 6.2a–b, 6.3) — binary per checkpoint row.
+    created_at: '2026-08-05T00:00:00+00:00'
+    template: |
+      You are a senior pharmaceutical QA assessor grading the IMPACT ASSESSMENT section of a completed
+      investigation against a fixed marking checklist. Event type: {event_type}.
+
+      Problem statement:
+      {problem_statement}
+
+      ── IMPACT ASSESSMENT (grade this section only) ───────────────────────────────
+      {section_text}
+      ──────────────────────────────────────────────────────────────────────────────
+
+      Score each checkpoint below. Scoring is BINARY per row — there is no partial credit within a row:
+        • "Yes" → the required content is genuinely present and adequate in this section.
+        • "No"  → it is absent, or present only in part / as an unsupported assertion.
+        • "NA"  → only for checkpoints marked "(NA allowed)", and only when the report EXPLICITLY justifies
+                  that it does not apply. If the report is simply silent, the verdict is "No".
+
+      Decision rules:
+      - Award "Yes" ONLY IF the element the checkpoint asks for is explicit in the section; default to "No"
+        when it is not.
+      - For conditional facets (health-hazard evaluation, regulatory submission / market notification,
+        continuation of production): award "Yes" if the report EITHER addresses the facet OR appropriately
+        reasons that it does not apply to this event; "No" only if it is left unaddressed where it should
+        have been considered.
+      - For every "Yes", evidence_quote MUST be a short verbatim span from the section. For "No"/"NA", state
+        in the rationale exactly what is missing.
+      - rationale: 1–2 specific sentences citing actual content (batch numbers, patient-safety/quality
+        statements, disposition wording).
+
+      CHECKPOINTS (use the id exactly; return one entry per checkpoint, all of them):
+      {checkpoints}
+
+      Return one verdict object per checkpoint id listed above.
