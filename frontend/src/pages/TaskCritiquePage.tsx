@@ -9,7 +9,6 @@ import {
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
-import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
@@ -182,7 +181,6 @@ export function TaskCritiquePage() {
                   TCD: {section.due_date || "—"}
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, minWidth: 140, boxSizing: "border-box" }}>
-                  <img src={investigatorIcon} alt="" width={16} height={16} />
                   <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
                 </div>
                 <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
