@@ -422,6 +422,11 @@ async def critique_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
         user_prompt=prompt,
         structure=AllTaskCritiquesResult,
     )
+
+    for critique in result.task_critiques:
+        critique.recommendations = critique.recommendations[:5]
+
+
     logger.info("critique_tasks: critiqued %d tasks", len(result.task_critiques))
     return {
         "task_critiques": [c.model_dump() for c in result.task_critiques],
