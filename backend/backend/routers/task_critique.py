@@ -14,6 +14,7 @@ from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
 from backend.db.task_critique_queries import (
     compute_section_state,
     fetch_reports_by_task_index,
+    insert_recommendation_history,
     save_critique,
     set_recommendation_decision,
     set_task_score,
@@ -236,6 +237,7 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
 
     report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
     await save_critique(report_id, summary, task_score=None, recommendations=recommendations)
+    await insert_recommendation_history(deviation_id, task_index, attempt_number, summary, recommendations)
 
     # The 3rd attempt is final regardless of how its recommendations end up
     # decided (see critique_state.compute_upload_state) — score it now, since
