@@ -11,8 +11,6 @@ import { generateProblemStatement, getProblemStatementRecord } from "../api/dash
 import { ApiError } from "../api/client";
 import { RecordDetailsModal } from "../components/RecordDetailsModal";
 import { DbErrorModal } from "../components/DbErrorModal";
-import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
-import { RECORD_STEPS } from "../components/Stepper";
 import copyIcon from "../assets/icons/copy-icon.svg";
 import chevronEntry from "../assets/icons/chevron-entry.svg";
 import chevronA from "../assets/icons/chevron-a.svg";
@@ -36,6 +34,12 @@ export function ProblemStatementPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [eventType, setEventType] = useState<EventType>(EVENT_TYPE_OPTIONS["problem-statement"][0]);
+  // True once a real DB record was found for this id — even if its
+  // problem_statement itself hasn't been generated yet, trackwise_fields
+  // already reflects real (Trackwise-sourced) data at that point, so the
+  // entry form below switches those fields to read-only instead of letting
+  // the user edit already-committed DB data through this form.
+  const [recordExists, setRecordExists] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -46,7 +50,6 @@ export function ProblemStatementPage() {
   // a fresh generation this session or landing on an already-generated
   // record (matches Figma's "Home<Problem_Statement_Generated" modal).
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [showPreviewPanel, setShowPreviewPanel] = useState(false);
 
   // Real event_type/trackwise_fields/problem_statement come from the DB only
   // — no localStorage fallback. A 404 (no record yet) is a valid, non-error
@@ -62,6 +65,7 @@ export function ProblemStatementPage() {
         const record = await getProblemStatementRecord(recordId);
         if (cancelled) return;
         if (record) {
+          setRecordExists(true);
           setEventType(record.event_type);
           const initialValues: Record<string, string> = {};
           for (const [k, v] of Object.entries(record.trackwise_fields)) {
@@ -147,24 +151,6 @@ export function ProblemStatementPage() {
     navigate(`/records/${rid}/evidence-collection`);
   }
 
-  // Best-effort progress derivation for the reused Investigation Preview
-  // Panel — this page only knows its own step's completion (no localStorage,
-  // and no visibility into the other 3 modules' DB records from here; see
-  // project memory: preview panel).
-  function derivePreviewInvestigation(): PreviewInvestigation {
-    const step = problemStatement ? 1 : 0;
-    return {
-      id: rid,
-      title: values["title"] || "Untitled Investigation",
-      eventType,
-      investigator: values["Observed By"] || "Unassigned",
-      step,
-      totalSteps: RECORD_STEPS.length,
-      dueDate: "—",
-      lastUpdated: "—",
-    };
-  }
-
   if (problemStatement) {
     return (
       <>
@@ -236,17 +222,9 @@ export function ProblemStatementPage() {
             setProblemStatement(newText);
           }}
           onSaveAndNext={handleCloseAndNext}
-          onViewRecordDetails={() => {
-            setShowSummaryModal(false);
-            setShowPreviewPanel(true);
-          }}
+          onViewRecordDetails={() => setShowSummaryModal(false)}
         />
       )}
-
-      <InvestigationPreviewPanel
-        investigation={showPreviewPanel ? derivePreviewInvestigation() : null}
-        onClose={() => setShowPreviewPanel(false)}
-      />
       </>
     );
   }
@@ -256,17 +234,21 @@ export function ProblemStatementPage() {
       <div className="card">
         <div style={{ maxWidth: 280 }}>
           <p className="field-label">Event Type</p>
-          <select
-            className="field-value"
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value as EventType)}
-          >
-            {EVENT_TYPE_OPTIONS["problem-statement"].map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          {recordExists ? (
+            <div className="field-value">{eventType}</div>
+          ) : (
+            <select
+              className="field-value"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as EventType)}
+            >
+              {EVENT_TYPE_OPTIONS["problem-statement"].map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -298,7 +280,9 @@ export function ProblemStatementPage() {
                     {field.label}
                     {field.required && " *"}
                   </p>
-                  {field.kind === "textarea" ? (
+                  {recordExists ? (
+                    <div className="field-value">{values[field.key] || "—"}</div>
+                  ) : field.kind === "textarea" ? (
                     <textarea
                       className="field-value"
                       required={field.required}

@@ -22,9 +22,8 @@ router = APIRouter(prefix="/critique", tags=["critique"])
     summary="Critique an investigation task report document",
     description=(
         "Accept a .docx investigation task report, extract tasks and photographic evidence, "
-        "run vision analysis on evidence photos, and critique each task across 7 dimensions: "
-        "Adequacy, Accuracy, Relevance, Gap Identification, Scientific Rationale, "
-        "Logical Conclusion, and Actionability."
+        "run vision analysis on evidence photos, and critique each task, returning a flat list "
+        "of actionable recommendations plus a strengths summary per task."
     ),
 )
 async def analyse_task_report(

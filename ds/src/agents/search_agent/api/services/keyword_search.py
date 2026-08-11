@@ -36,6 +36,24 @@ def build_tsquery_format(raw_input: str) -> str:
     return " & ".join(words)
 
 
+def _build_from_clause() -> str:
+    """Build the FROM clause, joining the vector table to the details table when configured.
+
+    ``SEARCH_TABLE`` holds only description/root_cause_summary text plus their
+    embeddings; ``SEARCH_DETAILS_TABLE`` (when set) holds the full event metadata
+    (qe_type, location, date_opened, etc.). They're joined on (id, secondary_key)
+    so callers get the full record rather than just the 6 vector-table columns.
+    """
+    if settings.SEARCH_DETAILS_TABLE:
+        return (
+            f'FROM "{settings.SEARCH_DETAILS_TABLE}" t '
+            f'JOIN "{settings.SEARCH_TABLE}" v '
+            f'ON t."{settings.COLUMN_ID}" = v."{settings.COLUMN_ID}" '
+            f'AND t."{settings.JOIN_SECONDARY_KEY}" = v."{settings.JOIN_SECONDARY_KEY}"'
+        )
+    return f'FROM "{settings.SEARCH_TABLE}" t'
+
+
 async def keyword_search(
     pool: asyncpg.Pool,
     query: str,
@@ -63,14 +81,14 @@ async def keyword_search(
 
     # Perform TS search prioritizing descending date sorting
     search_sql = f"""
-        SELECT 
+        SELECT
             t.*,
-            ts_rank_cd(to_tsvector('english', "{db_text_col}"), query_t) AS relevance_score
-        FROM "{settings.SEARCH_TABLE}" t,
+            ts_rank_cd(to_tsvector('english', t."{db_text_col}"), query_t) AS relevance_score
+        {_build_from_clause()},
              to_tsquery('english', $1) AS query_t
-        WHERE to_tsvector('english', "{db_text_col}") @@ query_t
+        WHERE to_tsvector('english', t."{db_text_col}") @@ query_t
             {condition_clause.sql}
-        ORDER BY "{settings.COLUMN_DATE_OPENED}" DESC
+        ORDER BY t."{settings.COLUMN_DATE_OPENED}" DESC
         LIMIT ${limit_param_index}
     """
 

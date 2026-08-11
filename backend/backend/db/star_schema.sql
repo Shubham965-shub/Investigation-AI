@@ -139,13 +139,22 @@ CREATE TABLE IF NOT EXISTS public.dim_investigator (
 -- reference_number is a genuinely new column, not seen in the sample data
 -- validated so far.
 CREATE TABLE IF NOT EXISTS public.dim_rci (
-    rci_key INT PRIMARY KEY,
-    reference_number TEXT,
-    root_cause_summary TEXT,        -- moved off dim_event — blank/open items store '' not NULL
-    root_cause_conclusion TEXT      -- moved off dim_event — [DUPLICATE] of root_cause_summary per earlier validation; re-check once this table has real data
-);
+            rci_key INT PRIMARY KEY,
+            reference_number TEXT,
+            root_cause_summary TEXT,
+            root_cause_conclusion TEXT,
+            investigation_results TEXT,
+            rci_supporting_documents TEXT
+        );
 
--- dim_stability, dim_capa, dim_complaint removed — [ALIGNED] their columns
+
+CREATE TABLE IF NOT EXISTS public.dim_capa (
+            capa_record_id INT PRIMARY KEY,
+            qa_closure_on TIMESTAMP,
+            sub_area TEXT,
+            actions_taken TEXT,
+        );
+-- dim_stability, dim_complaint removed — [ALIGNED] their columns
 -- live on dim_event instead.
 
 -- One row per event (deviation_id = PK), denormalised narrative/investigation
@@ -201,143 +210,121 @@ CREATE TABLE IF NOT EXISTS public.dim_rci (
 --     wired into field_mapping.py yet; surfacing them here for visibility,
 --     not implying they're all relevant to the current 4 frontend modules.
 CREATE TABLE IF NOT EXISTS public.dim_event (
-    deviation_id INTEGER PRIMARY KEY,
-    title TEXT,
-    description TEXT,
-    -- [DROPPED] description_of_event — 100% filled in source (structured JSON
-    -- 6-question investigation template); confirmed absent from this table
-    -- entirely, not renamed/relocated elsewhere.
-    --date_opened TIMESTAMP,                                   -- moved to fact_qms_event
-    --date_closed TIMESTAMP,                                   -- moved to fact_qms_event
-    --due_date TIMESTAMP,                                       -- moved to fact_qms_event
-    --closed_on TIMESTAMP,                                      -- moved to fact_qms_event
-    observation_date DATE,
-    observation_time TEXT,
-    failure_duration TEXT,                                    -- Deviation only
-    repeated_deviation TEXT,                                   -- Deviation only
-    immediate_cause_known TEXT,                                -- Deviation only
-    cause_detail TEXT,                                         -- Deviation only
-    root_cause_sub_category TEXT,
-    root_cause_category TEXT,                                  -- [DEAD]
-    investigation_summary TEXT,                                -- Deviation only
-    immediate_actions TEXT,                                    -- Deviation only
-    impact_analysis TEXT,                                      -- Deviation only
-    impact_details TEXT,                                       -- Deviation only
-    impact_on_deviation_batches TEXT,                          -- Deviation only
-    impact_on_other_batches TEXT,                              -- new 2026-07-24
-    actions_taken TEXT,                                        -- [DEAD]
-    actions_to_be_completed TEXT,
-    actions_to_be_completed_not_use TEXT,                      -- Deviation only
-    correction_or_remedial_action TEXT,                        -- Deviation only
-    proposal_for_resolution TEXT,                              -- Deviation only
-    -- [GONE 2026-07-24, not yet confirmed dropped vs. relocated]
-    -- immediate_actions_and_assessment, corrective_actions_and_preventive_
-    -- actions, correction_corrective_and_preventive_actions (was
-    -- [DUPLICATE] of the former), investigation_tasks,
-    -- immediate_containment_actions — see table-level comment above.
-    status TEXT,                                               -- new 2026-07-24, replaces activity_type/status_origin/status_after (DIM_ACTIVITY cancelled)
-    status_start_date TIMESTAMP,                               -- new 2026-07-24
-    status_end_date TIMESTAMP,                                 -- new 2026-07-24
-    workflow_status TEXT,                                      -- [DEAD]
-    deviation_number TEXT,                                     -- Deviation only
-    deviation_to TEXT,                                         -- Deviation only
-    report_delay_justification TEXT,                           -- Deviation only
-    em_failure_checklist_response TEXT[],                      -- rare (38/44,018 non-empty) but not all 'Not Applicable' — 16 of those 38 hold real Yes/No answers across a 22-23 item EM checklist
-    risk_analysis TEXT,                                        -- [DEAD]
-    number_of_times_events_occurred TEXT,                      -- [DEAD]
-    other TEXT,                                                -- [DEAD]
-    notification_sent_to_customer_mah_on TEXT,                 -- Deviation only
-    -- [DROPPED] impact_assessment_and_conclusion_batch_disposition — 100%
-    -- filled in source (structured JSON); confirmed absent entirely.
-    originator TEXT,                                           -- creator in Trackwise — 100% — stays on dim_event; NOT consolidated into dim_investigator (that table is a distinct "assignee" concept, see above)
-    analyst_name TEXT,                                         -- OOS/OOT only — stays on dim_event
-    owner_name TEXT,                                           -- COALESCE(deviation_owner, qc_manager) at source — stays on dim_event; deviation_owner and qc_manager below are now also real, separate columns
-    deviation_owner TEXT,                                      -- [CORRECTED 2026-07-24] real column — see table-level comment above
-    qc_manager TEXT,                                           -- new 2026-07-24 — see table-level comment above
-    observed_by TEXT,                                          -- Deviation only — 98% — stays on dim_event
-    category TEXT,                                             -- Deviation only — 75%
-    broad_category TEXT,                                       -- Deviation only — 75%
-    final_categorization TEXT,                                 -- Deviation only — 74%
-    failure_type TEXT,                                          -- OOS only — 95%
-    market TEXT,                                               -- Complaint only — same concept as related_market, split by event type
-    related_market TEXT[],                                     -- Dev/OOS/OOT only — same concept as market, split by event type
-    -- [DROPPED 2026-07-24] equipment_number — Deviation only, was 99% —
-    -- confirmed absent from the live 107-column dim_event; no replacement.
-    -- field_mapping.py's Deviation-extended "Equipment ID" is now always
-    -- None (was previously sourced from this column).
-    laboratory_details TEXT,                                   -- OOS/OOT only
-    name_of_test TEXT,                                         -- OOS/OOT
-    sample_number TEXT,                                        -- OOS/OOT
-    specification_number TEXT,                                 -- OOS/OOT
-    stability_condition TEXT,                                  -- OOS/OOT — correctly 0% for Complaint/Dev
-    stability_protocol_number TEXT,                            -- OOS/OOT
-    stability_review_comments TEXT,                            -- new 2026-07-24
-    stability_time_point TEXT,                                 -- OOS/OOT
-    stp_number TEXT,                                           -- OOS/OOT
-    labelled_storage_conditions TEXT,                          -- OOS/OOT
-    capa_record_id TEXT,                                       -- [CORRECTED] confirmed plain comma-separated text (e.g. '1083, 1090'), permanently — not an array, per engineer (2026-07-23)
-    capa_number TEXT[],                                        -- 22% overall
-    capa_implementation_date TEXT,                             -- Deviation only — 91%
-    capa_effectiveness TEXT,                                   -- [DEAD]
-    capa_details TEXT,                                         -- [DEAD]
-    -- [GONE 2026-07-24] capa_implementation_date_e_signature_and_qa_closure_on
-    -- (previously [DEAD]) — replaced by two real separate columns:
-    -- e_signature_certificate and qa_closure_on below.
-    e_signature_certificate TEXT,                              -- new 2026-07-24
-    qa_closure_on TEXT,                                        -- new 2026-07-24
-    complaint_number TEXT,                                     -- Complaint only — 97%
-    complaint_related_to TEXT,                                 -- new 2026-07-24
-    complainant_name TEXT,                                     -- Complaint only — 97%
-    complainant_country TEXT,                                  -- Complaint only — 97%
-    complaint_received_by TEXT,                                -- Complaint only — 97%
-    complaint_reported_by TEXT,                                -- Complaint only — 70%
-    customer TEXT,                                             -- Complaint only — 100%
-    date_complaint_received DATE,                              -- Complaint only — 100%
-    reference_complaint_number TEXT,                           -- Complaint only — 26%
-    nature_of_complaint TEXT,                                  -- new 2026-07-24
-    counterfeiting_details TEXT,                               -- new 2026-07-24
-    sfg_code TEXT,                                             -- Dev/OOS/OOT 99% · 0% Complaint
-    product_type TEXT,                                         -- OOS/OOT only
-    dosage_form TEXT,                                          -- Complaint only — 97%
-    product_manufacturing_info TEXT,                           -- Complaint only — 97%
-    --batch_no TEXT,                                            -- moved to dim_batch
-    related_customer TEXT[],                                   -- [BUG] moved from DIM_COMPLAINT, then from dim_product — Dev/OOS/OOT ~99% · 0% Complaint
-    affected_batches_batch_ar_number TEXT[],                    -- new 2026-07-24 — see table-level comment above (candidate "Batches Details" source)
-    affected_batches_product_material_name TEXT[],              -- new 2026-07-24
-    batches_details_batch_no_ar_no TEXT[],                      -- new 2026-07-24 — see table-level comment above (candidate "Batches Details" source)
-    batches_details_product_or_material_name TEXT[],            -- new 2026-07-24
-    qty_of_material_quarantined TEXT,                          -- [CORRECTED 2026-07-24] previously listed as one of 13 confirmed-dropped source columns — that was wrong; it's live here (35.5% filled per earlier sample check)
-    material_is_quarantined TEXT,                              -- new 2026-07-24
-    segregation_of_the_material TEXT,                          -- new 2026-07-24
-    rationale_for_recall_decision TEXT,                        -- new 2026-07-24
-    re_dilution_results TEXT,                                  -- new 2026-07-24
-    re_injection_results TEXT,                                 -- new 2026-07-24
-    reserve_sample_observations TEXT,                          -- new 2026-07-24
-    health_hazard_evaluation TEXT,                             -- new 2026-07-24
-    medical_impact_analysis TEXT,                              -- new 2026-07-24
-    medical_investigation_summary TEXT,                        -- new 2026-07-24
-    investigation_results TEXT,                                -- new 2026-07-24
-    impact_justification TEXT,                                 -- new 2026-07-24
-    primary_defect TEXT,                                       -- new 2026-07-24
-    explain_if_not_injected TEXT,                               -- new 2026-07-24
-    explain_the_reason TEXT,                                    -- new 2026-07-24
-    explanation_1 TEXT,                                        -- new 2026-07-24
-    explanation_2 TEXT,                                        -- new 2026-07-24
-    explanation_3 TEXT,                                        -- new 2026-07-24
-    explanation_4 TEXT,                                        -- new 2026-07-24
-    explanation_reg_notification TEXT,                         -- new 2026-07-24
-    doc_updated_for_above_actions TEXT,                         -- new 2026-07-24
-    supporting_documents TEXT,                                 -- new 2026-07-24
-    suspension_of_the_operation TEXT,                          -- new 2026-07-24
-    sub_area TEXT                                              -- new 2026-07-24
-    -- [DROPPED] products_information_product_name — Complaint only, 13.1%
-    -- overall (~100% within Complaint); confirmed absent entirely.
-    -- [DROPPED] date_updated — confirmed absent entirely (still, as of
-    -- 2026-07-24 re-check).
-    -- [DROPPED] the whole initial_impact_assessment_* group (7 columns,
-    -- 49-97% filled each) — confirmed absent entirely (still, as of
-    -- 2026-07-24 re-check).
-);
+          deviation_id INTEGER PRIMARY KEY,
+          actions_to_be_completed TEXT,
+          actions_to_be_completed_not_use TEXT,
+          affected_batches_batch_ar_number TEXT[],
+          affected_batches_product_material_name TEXT[],
+          analyst_name TEXT,
+          batches_details_batch_no_ar_no TEXT[],
+          batches_details_product_or_material_name TEXT[],
+          broad_category TEXT,
+          capa_details TEXT,
+          capa_effectiveness TEXT,
+          capa_implementation_date TEXT,
+          capa_number TEXT[],
+        --   capa_record_id TEXT,
+          category TEXT,
+          cause_detail TEXT,
+          complainant_country TEXT,
+          complainant_name TEXT,
+          complaint_number TEXT,
+          complaint_received_by TEXT,
+          complaint_related_to TEXT,
+          complaint_reported_by TEXT,
+          correction_or_remedial_action TEXT,
+          counterfeiting_details TEXT,
+          customer TEXT,
+          date_complaint_received DATE,
+          description TEXT,
+          deviation_number TEXT,
+          deviation_owner TEXT,
+          deviation_to TEXT,
+          doc_updated_for_above_actions TEXT,
+          dosage_form TEXT,
+          e_signature_certificate TEXT,
+          em_failure_checklist_response TEXT[],
+          escalation_level TEXT,
+          explain_if_not_injected TEXT,
+          explain_the_reason TEXT,
+          explanation_1 TEXT,
+          explanation_2 TEXT,
+          explanation_3 TEXT,
+          explanation_4 TEXT,
+          explanation_reg_notification TEXT,
+          failure_duration TEXT,
+          failure_type TEXT,
+          --final_categorization TEXT,
+          health_hazard_evaluation TEXT,
+          immediate_actions TEXT,
+          immediate_cause_known TEXT,
+          --impact_analysis TEXT,
+          impact_details TEXT,
+          impact_justification TEXT,
+          impact_on_deviation_batches TEXT,
+          impact_on_other_batches TEXT,
+        --   investigation_results TEXT,
+          investigation_summary TEXT,
+          labelled_storage_conditions TEXT,
+          laboratory_details TEXT,
+          market TEXT,
+          material_is_quarantined TEXT,
+          medical_impact_analysis TEXT,
+          medical_investigation_summary TEXT,
+          name_of_test TEXT,
+          nature_of_complaint TEXT,
+          notification_sent_to_customer_mah_on TEXT,
+          number_of_times_events_occurred TEXT,
+          observation_date DATE,
+          observation_time TEXT,
+          observed_by TEXT,
+          originator TEXT,
+          other TEXT,
+          owner_name TEXT,
+          primary_defect TEXT,
+          product_manufacturing_info TEXT,
+          products_information_product_name_list TEXT[],
+          products_information_batch_name_list TEXT[],
+          product_type TEXT,
+          proposal_for_resolution TEXT,
+        --   qa_closure_on TEXT,
+          qc_manager TEXT,
+          qty_of_material_quarantined TEXT,
+          rationale_for_recall_decision TEXT,
+          re_dilution_results TEXT,
+          re_injection_results TEXT,
+          reference_complaint_number TEXT,
+          related_customer TEXT[],
+          related_market TEXT[],
+          repeated_deviation TEXT,
+          report_delay_justification TEXT,
+          reserve_sample_observations TEXT,
+          risk_analysis TEXT,
+          root_cause_category TEXT,
+          root_cause_broad_category TEXT,
+          root_cause_sub_category TEXT,
+          sample_number TEXT,
+          segregation_of_the_material TEXT,
+          site_code TEXT,
+          sfg_code TEXT,
+          specification_number TEXT,
+          stability_condition TEXT,
+          stability_protocol_number TEXT,
+          stability_review_comments TEXT,
+          stability_time_point TEXT,
+          module TEXT,
+          module_end_date timestamp ,
+          module_start_date timestamp,
+          module_cutoff_date timestamp,
+          module_risk_status TEXT,
+          stp_number TEXT,
+          supporting_documents TEXT,
+          suspension_of_the_operation TEXT,
+          title TEXT,
+          workflow_status TEXT,
+          criticality TEXT,
+          open_investigation_status TEXT
+        );
 
 -- ── Fact table ───────────────────────────────────────────────────────────
 -- Grain: one row per QMS event (Deviation, OOS, OOT, Market Complaint).
@@ -361,59 +348,67 @@ CREATE TABLE IF NOT EXISTS public.dim_event (
 -- Likely the final set, but treat as provisional until the engineer
 -- explicitly confirms no more dimensions are coming.
 CREATE TABLE IF NOT EXISTS public.fact_qms_event (
-    composite_primary_key TEXT PRIMARY KEY,
+                composite_primary_key TEXT PRIMARY KEY,
 
-    date_opened TIMESTAMP,
-    date_closed TIMESTAMP,                 -- OOS/OOT closed-date column — see time_elapsed [BUG]
-    due_date TIMESTAMP,
-    closed_on TIMESTAMP,                   -- Complaint/Dev closed-date column — see time_elapsed [BUG]
+                date_opened TIMESTAMP,
+                date_closed TIMESTAMP,
+                due_date TIMESTAMP,
+                date_updated TIMESTAMP,
+                closed_on TIMESTAMP,
 
-    location_key INTEGER,
-    event_classification_key INTEGER,
-    equipment_key INTEGER,
-    department_key INTEGER,
-    product_key INTEGER,
-    deviation_id INTEGER,                  -- no longer unique/PK — see header note
-    batch_key INTEGER,
-    investigator_key INTEGER,              -- new 2026-07-24 — FK to dim_investigator (source: assignee_id)
-    rci_key INTEGER,                       -- new 2026-07-24 — FK to dim_rci (source: rci_id)
+                location_key INTEGER,
+                event_classification_key INTEGER,
+                equipment_key INTEGER,
+                department_key INTEGER,
+                product_key INTEGER,
+                deviation_id INTEGER,
+                capa_record_id INTEGER,
+                batch_key INTEGER,
+                investigator_key INTEGER,
+                rci_key INTEGER,
 
-    time_elapsed INTEGER,                  -- [BUG] fixed as DATEDIFF(COALESCE(closed_on, date_closed), date_opened) in the Gold-layer transform that populates this column
-    pg_updated_at_timestamp TIMESTAMP,     -- renamed from lk_updated_at_timestamp in the data dictionary
+                time_elapsed INTEGER,
+                closure_days INTEGER,
+                days_since_opened INTEGER,
+                pg_updated_at_timestamp TIMESTAMP,
 
-    CONSTRAINT fk_fact_location
-        FOREIGN KEY (location_key)
-        REFERENCES public.dim_location(location_key),
+                CONSTRAINT fk_fact_location
+                    FOREIGN KEY (location_key)
+                    REFERENCES public.dim_location(location_key),
 
-    CONSTRAINT fk_fact_event_classification
-        FOREIGN KEY (event_classification_key)
-        REFERENCES public.dim_event_classification(event_classification_key),
+                CONSTRAINT fk_fact_event_classification
+                    FOREIGN KEY (event_classification_key)
+                    REFERENCES public.dim_event_classification(event_classification_key),
 
-    CONSTRAINT fk_fact_equipment
-        FOREIGN KEY (equipment_key)
-        REFERENCES public.dim_equipment(equipment_key),
+                CONSTRAINT fk_fact_equipment
+                    FOREIGN KEY (equipment_key)
+                    REFERENCES public.dim_equipment(equipment_key),
 
-    CONSTRAINT fk_fact_department
-        FOREIGN KEY (department_key)
-        REFERENCES public.dim_department(department_key),
+                CONSTRAINT fk_fact_department
+                    FOREIGN KEY (department_key)
+                    REFERENCES public.dim_department(department_key),
 
-    CONSTRAINT fk_fact_product
-        FOREIGN KEY (product_key)
-        REFERENCES public.dim_product(product_key),
+                CONSTRAINT fk_fact_product
+                    FOREIGN KEY (product_key)
+                    REFERENCES public.dim_product(product_key),
 
-    CONSTRAINT fk_fact_event
-        FOREIGN KEY (deviation_id)
-        REFERENCES public.dim_event(deviation_id),
+                CONSTRAINT fk_fact_event
+                    FOREIGN KEY (deviation_id)
+                    REFERENCES public.dim_event(deviation_id),
 
-    CONSTRAINT fk_fact_batch
-        FOREIGN KEY (batch_key)
-        REFERENCES public.dim_batch(batch_key),
+                CONSTRAINT fk_fact_batch
+                    FOREIGN KEY (batch_key)
+                    REFERENCES public.dim_batch(batch_key),
 
-    CONSTRAINT fk_fact_investigator
-        FOREIGN KEY (investigator_key)
-        REFERENCES public.dim_investigator(investigator_key),
+                CONSTRAINT fk_fact_investigator
+                    FOREIGN KEY (investigator_key)
+                    REFERENCES public.dim_investigator(investigator_key),
 
-    CONSTRAINT fk_fact_rci
-        FOREIGN KEY (rci_key)
-        REFERENCES public.dim_rci(rci_key)
-);
+                CONSTRAINT fk_fact_rci
+                    FOREIGN KEY (rci_key)
+                    REFERENCES public.dim_rci(rci_key),
+                
+                CONSTRAINT fk_fact_capa
+                    FOREIGN KEY (capa_record_id)
+                    REFERENCES public.dim_capa(capa_record_id)
+            );

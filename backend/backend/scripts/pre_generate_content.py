@@ -102,9 +102,12 @@ class _Progress:
 
 # Same de-dup pattern as action_center_queries.py's open-investigations query
 # (a deviation_id can legitimately have >1 fact_qms_event row — take the most
-# recently updated one as representative) but with NO open/closed filter —
-# this backfill should cover every investigation whose module implies a step
-# is done, not just currently-open ones.
+# recently updated one as representative). Scoped to currently-open
+# investigations only (closed_on IS NULL — same column/convention
+# action_center_queries.py uses as authoritative for "open"; date_closed is a
+# separate column that can be set on rows still genuinely open, see that
+# file's own header comment) — per the user (2026-08-04), this backfill
+# should only cover open investigations, not the full all-time history.
 _ALL_INVESTIGATIONS_QUERY = """
 SELECT DISTINCT ON (f.deviation_id)
     f.deviation_id,
@@ -131,6 +134,7 @@ LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_c
 LEFT JOIN dim_product p ON p.product_key = f.product_key
 LEFT JOIN dim_equipment eq ON eq.equipment_key = f.equipment_key
 LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
+WHERE f.closed_on IS NULL
 ORDER BY f.deviation_id, f.pg_updated_at_timestamp DESC NULLS LAST
 """
 

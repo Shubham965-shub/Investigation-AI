@@ -32,11 +32,12 @@ HOW TO WRITE EACH RECOMMENDATION
 
 - Use simple, everyday language. Avoid regulatory terminology and the names or numbers of the checks above — write as if you're pointing something out to the investigator directly, not filing a compliance finding.
 - Use abbreviations and terms exactly as the report uses them. Do NOT expand, define, or guess what an abbreviation stands for — if the report doesn't spell it out, neither should you. Inventing an expansion risks stating something factually wrong.
-- Phrase every item as a question the investigator can weigh and accept or reject: name the specific gap or weakness in one short clause, then ask directly for the fix, using a construction like "why don't you...", "could you...", or "have you considered...". For example: "The conclusion doesn't explain how the interview findings led to this cause — why don't you add a sentence connecting the two?" or "History shows a similar event (DR/2024/118) that isn't mentioned here — could you explain whether the earlier fix failed, or add why this case is different?"
+- Phrase every item as exactly two direct sentences, not a question and not a hyphenated clause: the first sentence states the specific gap or weakness observed, the second sentence states the fix as an instruction. Do NOT join the two with a hyphen or dash. For example: "The conclusion doesn't explain how the interview findings led to this cause. Add a sentence connecting the two." or "History shows a similar event (DR/2024/118) that isn't mentioned here. Explain whether the earlier fix failed, or add why this case is different." Never phrase a recommendation as "why don't you...", "could you...", "have you considered...", or any other question form.
 - Cover exactly ONE issue per recommendation. If a section has several distinct gaps, write a separate recommendation for each rather than bundling them into one long sentence — do not chain unrelated asks together with "and"/"also".
-- Keep each recommendation to one short sentence wherever possible — a second sentence is allowed only when it's the question itself.
+- Every recommendation must be exactly two sentences: the gap, then the fix. No more, no fewer.
 - Only create a recommendation for a genuine gap. If a check is fully satisfied, do not manufacture a recommendation for it.
 - If every check passes, return an empty list for `recommendations`.
+- Return AT MOST 5 recommendations. If more than 5 genuine gaps exist, keep only the 5 most significant ones — ranked by impact on data integrity, traceability, or compliance — and drop the rest. List them from most to least significant.
 - "Simpler language" does not mean softer content — a serious finding (like an ignored recurring failure) must still be stated plainly and directly, just without jargon.
 
 ---
@@ -51,7 +52,7 @@ Return a JSON object with this exact structure:
 }
 
 CRITICAL RULES:
-- `recommendations` is a flat list — do not group, number, or tag items by check name or number.
+- `recommendations` is a flat list of at most 5 items, most significant first — do not group, number, or tag items by check name or number.
 - Be specific — reference actual phrases, task inferences, or gaps visible in the full report.
 - Keep positive observations out of `recommendations` entirely — they belong only in `strengths`. Every entry in `recommendations` must point to a gap or improvement.
 - `strengths` should be genuine and specific, not generic praise — reference what was actually done well (e.g. a specific piece of evidence properly traced, or history correctly reviewed and confirmed nil).

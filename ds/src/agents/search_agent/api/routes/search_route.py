@@ -23,7 +23,12 @@ from src.agents.search_agent.graph.state import SearchState
 from src.config.settings import settings
 from src.agents.search_agent.api.services.filters import parse_date_range, SearchFilters
 import asyncpg
-from src.agents.search_agent.api.services.executive_service import _get_executive_narrative, _get_top_cause_description, _get_capa_recurring_themes, get_final_ranked_results
+from src.agents.search_agent.api.services.executive_service import (
+    _get_executive_narrative,
+    _get_top_cause_description,
+    _get_capa_recurring_themes,
+    get_final_ranked_results,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +148,7 @@ async def search(
     start = time.perf_counter()
     
     # DEBUG: Log incoming request
-    logger.info(f"[SEARCH REQUEST] query={body.query}, search_type={body.search_type}, sfg_code={body.product_code}, search_on={body.search_on}")
+    logger.info(f"[SEARCH REQUEST] problem_statement={body.problem_statement}, search_type={body.search_type}, sfg_code={body.product_code}, search_on={body.search_on}")
 
     # Import here to avoid circular dependencies
 
@@ -184,7 +189,7 @@ async def search(
 
     # Prepare initial graph state
     initial_state: SearchState = {
-        "query": body.query,
+        "query": body.problem_statement,
         "search_fields": search_fields,
         "search_type": internal_search_type,
         "filters": {

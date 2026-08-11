@@ -73,6 +73,8 @@ class SharedSettings:
         t = self._schema.get("tables", {})
         sc = t.get("summary_columns", {})
         self.SEARCH_TABLE = t.get("search", "")
+        self.SEARCH_DETAILS_TABLE = t.get("search_details", "")
+        self.JOIN_SECONDARY_KEY = t.get("join_secondary_key", "")
         self.SUMMARY_TABLE = t.get("summary", "")
         self.SUMMARY_ID_COLUMN = t.get("summary_id_column", "")
         self.SUMMARY_COL_EVENT_DESCRIPTION = sc.get("event_description", "")

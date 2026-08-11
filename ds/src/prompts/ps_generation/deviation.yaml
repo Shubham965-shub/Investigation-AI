@@ -1,4 +1,4 @@
-active: v2
+active: v3
 versions:
   v1:
     description: Original deviation prompt — output-only examples, batch number preserved in output
@@ -130,6 +130,173 @@ versions:
       * Use only information explicitly provided in the input.
       * Mention product/material name, activity/stage, area, line, equipment, instrument, document reference (SOP/BMR/BPR/STP), observed value, and requirement/limit only if explicitly provided.
       * Mention the observer, reviewer, operator, analyst, department, or function only if explicitly provided and relevant to the observation.
+      * If both an observed value and a requirement/limit are provided, state them together in the format: "<observed value> against <requirement/limit>".
+      * Preserve all identifiers exactly as provided, including equipment IDs, instrument IDs, SOP numbers, document references, employee IDs, and sample identifiers. Do NOT include batch numbers or AR numbers.
+      * Do not introduce root cause, impact, risk, product quality assessment, investigation details, CAPA, corrective action, preventive action, conclusion, or outcome unless explicitly stated in the source text.
+      * Do not use subjective, interpretive, or speculative language.
+      * For multiple observations, repeated measurements, time-series data, tabulated results, or trend data, summarize the observed condition and applicable requirement/limit without listing individual readings, timestamps, or measurement points.
+
+      Activity Context Rules:
+
+      * Begin the statement with an activity context that identifies where or during which activity the issue was observed.
+      * The activity context must be derived only from information explicitly present in the input.
+      * Use the most specific activity associated with identification of the issue.
+      * Do not infer, generalize, or create activities that are not stated.
+      * Preferred activity context formats include:
+        * During review of ...
+        * During analysis of ...
+        * During testing of ...
+        * During inspection of ...
+        * During verification of ...
+        * During reconciliation of ...
+        * During qualification of ...
+        * During execution of ...
+        * During retrieval of ...
+        * During manufacturing activity ...
+        * During packing activity ...
+        * During LIMS entry ...
+        * Upon review of ...
+        * While performing ...
+
+      KPI / Attribute / Condition Rules:
+
+      * Clearly state the specific KPI, attribute, condition, record, result, parameter, equipment status, document field, or requirement involved in the deviation.
+      * Use the most specific observable fact available from the input.
+      * Avoid generic phrases such as: issue observed, discrepancy noted, problem identified, deviation found.
+      * Prefer specific observations such as: batch number updated incorrectly, AR number entered incorrectly, audit trail entry deleted, yield observed below limit, product traces observed, qualification status missed, training not included in curriculum.
+
+      Structure:
+
+      <Activity context>, <observer/role if relevant> observed <KPI/attribute/condition> <observation statement>.
+
+          Where:
+          - For a single observation:
+          <observation statement> = "as <observed value> against <requirement/limit>"
+
+          - For multiple observations, repeated measurements, trend data, or tabulated results:
+          <observation statement> = "outside the <requirement/limit>"
+          OR
+          <observation statement> = "not meeting the <requirement/limit>"
+          OR
+          <observation statement> = "exceeding the <requirement/limit>"
+          OR
+          <observation statement> = "below the <requirement/limit>"
+
+      <Activity context>, <observer/role if relevant> identified that <specific record, field, identifier, status, or condition> was <incorrectly entered, updated, recorded, assigned, deleted, omitted, or not performed>.
+
+      The final statement should be concise, factual, GMP-compliant, and typically written as a single sentence.
+
+      Real-world examples (Trackwise input fields → Expected problem statement):
+
+      Example 1:
+      Title: Additional Two checklists Pulled and used for Analysis of Material Lot No:10000525081, without issuance.
+      Deviation To: F1/QC/118
+      Description: During Q1 periodic review of Quality control log books, on 22/04/2026, Ms. Sowjanya. (AQA Reviewer) Identified that, Two checklists of test sheet for gloves log book has been executed by QC analyst Mr. Akhil.S for the material Inspection Lot No: 10000525081 without getting the issuance from QA.
+      Observed By: SRIMANNARAYANA S
+      → During material inspection, two glove test sheet checklists were executed from the log book without QA issuance.
+
+      Example 2:
+      Title: Released samples, expired chemicals & Placebo were not destructed as per the procedure.
+      Deviation To: F1/QC/124/R13
+      Description: On 15/04/2026, during the scheduled internal audit at quality control laboratory, the internal auditor Mr. Pavan Gutti identified expired placebo samples of Ethosuximide Capsules stored in the Sample Management Room, labeling discrepancies in Cholecalciferol 20,000 & 800 IU Capsules, and expired chemicals in the chemical store with labels not defaced.
+      Observed By: Rajesh Kurian
+      → During internal audit, expired placebo samples of Ethosuximide Capsules, labeling discrepancies in Cholecalciferol 20,000 & 800 IU Capsules, and improper handling of released, expired chemicals and placebo materials were observed not in compliance with procedures.
+
+      Example 3:
+      Title: Viscosity Test Performed Prior to Approval of Hypothesis Protocol : TCA Ointment USP 0.05%
+      Product Name / Material Name: Triamcinolone Acetonide Oint USP 0.05%
+      Deviation To: GQA/031
+      Description: As part of OOS investigation ODF/OOS/2026/0105, a hypothesis protocol was prepared to evaluate the impact of structural changes in white petrolatum and ceresin wax on viscosity. However, the viscosity test intended to rule out this potential cause was performed prior to approval of the hypothesis protocol.
+      Observed By: Ravindra MR
+      → During OOS investigation, viscosity testing of Triamcinolone Acetonide Ointment USP 0.05% was performed prior to approval of the hypothesis protocol.
+
+      Example 4:
+      Title: 5 ply shippers dispensed instead of 3 ply shippers for Macrogol Natural 13.72g
+      Product Name / Material Name: Macrovic-13.71 g-30's-ARROW-AUSTRALIA
+      Deviation To: BPR instruction
+      Description: On 02/04/2026 at 16:00 hrs during in process verification, packing person Mr. Yellaraju V observed that 5 ply shippers were dispensed instead of 3 ply shippers for Macrogol Natural 13.72g at Line# 02 secondary packaging area.
+      Observed By: Kumaresan M
+      → During packing, 5-ply shippers were dispensed instead of 3-ply shippers for Macrogol Natural 13.72g, deviating from BPR instruction.
+
+      Example 5:
+      Title: Incorrect Recording of In-Process Check: Overprinting/Embossing and Legibility – A+V Tablets 5/160 mg
+      Product Name / Material Name: Amlo & Vals Tabs 5/160mg[10x7's][EM][Ex]
+      Deviation To: BPR Part B - 2008166L1766/PA/R0
+      Description: On 23/03/2026, during PVR data compilation for Amlodipine and Valsartan Tablets 5mg/160mg by QA (Sheik China Masthan), it was observed that in-process checks for overprinting/embossing and legibility were marked as compliant for plain primary packing material.
+      Observed By: Paramjeet Singh
+      → During PVR data compilation, in-process check for overprinting/embossing and legibility was incorrectly recorded as compliant against BPR specification for Amlodipine and Valsartan Tablets 5/160 mg, even though the primary packing material was plain.
+
+      Example 6:
+      Title: Incorrect sample details updated in instrument application, water content by KF for Tenofovir Disoproxil fumarate.
+      Deviation To: STP No : 1017114/RMSTP
+      Description: On 15/12/2025, analyst Mr. Loganandh Rajendran performed water content by KF analysis for Tenofovir Disoproxil fumarate. Post completion, analyst observed that incorrect sample details were entered in the tiamo application.
+      Observed By: Venkata Gopisairam
+      → During water content analysis by KF as per STP specification, incorrect sample details were entered in the instrument application instead of correct batch details for Tenofovir Disoproxil Fumarate.
+
+      Example 7:
+      Title: Blend Spillage Observed During Compression Process for Ciprofloxacin Tablets 500 mg
+      Product Name / Material Name: Ciprofloxacin Tabs 500mg1X14's-Arrow-AUS
+      Deviation To: BMR
+      Description: On 11/01/2026 at 06:00 hrs, during ongoing compression process, blend spillage was observed for Ciprofloxacin Tablets 500 mg. All spilled blend was collected separately, weighed accurately, and labeled as Rejected Material.
+      Observed By: Manjunath K M T
+      → During compression process, blend spillage of Ciprofloxacin Tablets 500 mg was observed, which is not in line with BMR requirements.
+
+      Example 8:
+      Title: BMR issued as routine instead of validation batch without PVP for Ursodiol Tablets USP [500mg]
+      Product Name / Material Name: Ursodiol Tablets USP 500mg
+      Deviation To: Issuance of BMR/BPR and other document SOP No. F/QA/002
+      Description: On 24/01/2026, during review of change control No. PC-ODF/2024/839, Mr. Hazarathaiah identified that the BMR was issued as routine instead of validation batch without PVP for Ursodiol Tablets USP [500mg].
+      Observed By: Kumar B
+      → During BMR issuance as per SOP, a routine BMR was issued instead of a validation batch with PVP for Ursodiol Tablets USP 500 mg.
+
+      Example 9:
+      Title: Weighed 5mg of indicator in a balance with operational range of 10 mg to 200 g for the Content analysis of SLS- RM.
+      Product Name / Material Name: Sod Lauryl Sulfate BP-USNF-IP-PhEur
+      Description: On 31/12/2025, analyst Ms. Janani G performed content analysis of Sodium Lauryl Sulphate. On 13/01/2026, reviewer Mr. Silambarasan identified that balance 1070-AWBE-0696 used to weigh 5 mg of dithizone indicator is not qualified to weigh below 10 mg. Obtained result: 0.6% (Specification limit: NMT 8.0%).
+      Observed By: Janani G
+      → During content analysis of Sodium Lauryl Sulfate, 5 mg of indicator was weighed using a balance below its operational range, contrary to STP requirements, though the obtained result (0.6%) was within the specification limit (NMT 8.0%).
+
+      Example 10:
+      Title: Incomplete in Mixing Time during Fill Manufacturing of Dutasteride 0.5mg Soft Gelatin Capsules
+      Product Name / Material Name: Dutasteride 0.5mg [SGC]- 6OB
+      Deviation To: Against BMR instruction
+      Description: On 28/01/2026 at 17:00hrs, during fill manufacturing of Dutasteride 0.5mg SGC, the final mixing of Glycerol Monocaprylocaprate and Butylhydroxytoluene mixture was performed for 19 minutes instead of 30 minutes as per BMR instructions Step No. 1.3.
+      Observed By: Loganathan N
+      → During fill manufacturing of Dutasteride 0.5 mg Soft Gelatin Capsules, mixing was performed for 19 minutes against the BMR specification of 30 minutes, resulting in deviation from the expected mixing time.
+
+  v3:
+    description: Added explicit language/grammar/flow clarity check to General rules
+    created_at: '2026-08-05T00:00:00+00:00'
+    template: |
+      Generate a concise Deviation problem statement by rewriting the provided details in a professional GMP-compliant format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Write in clear, grammatically correct, natural-sounding sentences — re-read the sentence for language, grammar, and flow clarity before returning it; make sure the subject and verb of every clause agree in meaning and the sentence reads as natural prose rather than concatenated fields.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      Deviation-specific rules:
+
+      * Do not include date, time, timestamp, duration, clock references, batch number, AR number, or SR number in the problem statement.
+      * Describe only the observed deviation, discrepancy, abnormality, defect, non-conformance, or documentation error.
+      * Use only information explicitly provided in the input.
+      * Mention product/material name, activity/stage, area, line, equipment, instrument, document reference (SOP/BMR/BPR/STP), observed value, and requirement/limit only if explicitly provided.
+      * If an observer, reviewer, operator, analyst, or department/function name is explicitly provided and relevant to the observation, you MUST include that specific name in the statement — do not omit it and do not generalize it to a role-only reference (e.g. "the reviewer", "an analyst") when a named individual is given in the input.
       * If both an observed value and a requirement/limit are provided, state them together in the format: "<observed value> against <requirement/limit>".
       * Preserve all identifiers exactly as provided, including equipment IDs, instrument IDs, SOP numbers, document references, employee IDs, and sample identifiers. Do NOT include batch numbers or AR numbers.
       * Do not introduce root cause, impact, risk, product quality assessment, investigation details, CAPA, corrective action, preventive action, conclusion, or outcome unless explicitly stated in the source text.

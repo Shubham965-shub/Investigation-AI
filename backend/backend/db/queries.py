@@ -67,13 +67,17 @@ SELECT
     e.observed_by,
     p.name_of_material,
     eq.instrument_equipment,
-    eq.instrument_equipment_id
+    eq.instrument_equipment_id,
+    di.investigator,
+    r.reference_number AS rci_number
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
 LEFT JOIN dim_product p ON p.product_key = f.product_key
 LEFT JOIN dim_equipment eq ON eq.equipment_key = f.equipment_key
 LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
+LEFT JOIN dim_investigator di ON di.investigator_key = f.investigator_key
+LEFT JOIN dim_rci r ON r.rci_key = f.rci_key
 WHERE f.deviation_id = $1
 LIMIT 1
 """
@@ -84,36 +88,6 @@ async def fetch_investigation_row(deviation_id: int) -> Optional[asyncpg.Record]
     async with pool.acquire() as conn:
         return await conn.fetchrow(_INVESTIGATION_ROW_QUERY, deviation_id)
 
-
-# t_deviations_vector_test is ds's search corpus (pgvector embeddings over
-# historical investigations, including this one if it's been synced there) —
-# not part of star_schema.sql, but the same physical Postgres instance, so a
-# plain query works without going through ds's HTTP API. Doing the nearest-
-# neighbor lookup entirely in SQL (subquery for the target row's own vector)
-# avoids needing a Python pgvector codec or a fresh embedding call — the
-# current investigation's own description_vector is reused directly.
-_SIMILAR_INVESTIGATIONS_QUERY = """
-WITH target AS (
-    SELECT description_vector::vector AS description_vector
-    FROM t_deviations_vector_test
-    WHERE deviation_id = $1 AND description_vector IS NOT NULL
-)
-SELECT
-    v.deviation_id,
-    v.title,
-    (1 - (v.description_vector::vector <=> target.description_vector)) AS relevance_score
-FROM t_deviations_vector_test v, target
-WHERE v.deviation_id != $1
-  AND v.description_vector IS NOT NULL
-  -- ~16% of rows have an all-zero placeholder embedding, not a real one —
-  -- cosine distance against a zero vector is undefined (NaN), and Postgres
-  -- sorts NaN as larger than any real number in DESC order, so without this
-  -- filter every zero-vector row floats to the very top and buries the
-  -- genuine matches entirely (confirmed live, 2026-07-30).
-  AND vector_norm(v.description_vector::vector) > 0
-ORDER BY relevance_score DESC
-LIMIT $2
-"""
 
 # Reuses the same open/closed/cancelled classification action_center_queries.py
 # established (module='Cancelled' -> Cancelled; closed_on set -> Closed;
@@ -134,30 +108,14 @@ GROUP BY f.deviation_id
 """
 
 
-async def fetch_similar_investigations(deviation_id: int, limit: int = 5) -> List[Dict[str, Any]]:
-    """Historic investigations this one is most similar to, per pgvector
-    cosine similarity on t_deviations_vector_test.description_vector.
-
-    Returns [] if the investigation itself has no row/vector there yet
-    (e.g. not synced) rather than raising — this is a "nice to have" panel,
-    not a hard dependency for the Problem Statement page.
-    """
+async def fetch_investigation_statuses(deviation_ids: List[int]) -> Dict[int, str]:
+    """Open/Closed/Cancelled classification for a batch of deviation_ids —
+    used by the "View Historic Data" panel to annotate results returned by
+    ds's /api/search (which only knows about its own search corpus, not
+    Trackwise's own status fields)."""
+    if not deviation_ids:
+        return {}
     pool = get_pool()
     async with pool.acquire() as conn:
-        matches = await conn.fetch(_SIMILAR_INVESTIGATIONS_QUERY, deviation_id, limit)
-        if not matches:
-            return []
-
-        ids = [m["deviation_id"] for m in matches]
-        status_rows = await conn.fetch(_INVESTIGATION_STATUS_QUERY, ids)
-        status_by_id = {r["deviation_id"]: r["status"] for r in status_rows}
-
-        return [
-            {
-                "deviation_id": m["deviation_id"],
-                "title": m["title"],
-                "status": status_by_id.get(m["deviation_id"], "Unknown"),
-                "relevance_score": round(float(m["relevance_score"]), 4),
-            }
-            for m in matches
-        ]
+        status_rows = await conn.fetch(_INVESTIGATION_STATUS_QUERY, deviation_ids)
+        return {r["deviation_id"]: r["status"] for r in status_rows}

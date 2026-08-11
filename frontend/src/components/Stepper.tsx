@@ -8,15 +8,15 @@ export interface StepDef {
   path: string | null;
 }
 
-// Steps 5-7 aren't implemented yet (see project memory: on hold) — path is
-// null so the stepper renders them but they aren't navigable.
+// Step 7 isn't implemented yet (see project memory: on hold) — path is
+// null so the stepper renders it but it isn't navigable.
 export const RECORD_STEPS: StepDef[] = [
   { key: "problem-statement", label: "Problem Statement", path: "problem-statement" },
   { key: "evidence-collection", label: "Evidence Collection", path: "evidence-collection" },
   { key: "interview-questionnaire", label: "Interview Questionnaire", path: "interview-questionnaire" },
   { key: "rci-plan", label: "RCI Plan Creation", path: "rci-plan" },
-  { key: "task-critique", label: "Task Critique", path: null },
-  { key: "rc-capa-critique", label: "RC & CAPA Critique", path: null },
+  { key: "task-critique", label: "Task Critique", path: "task-critique" },
+  { key: "rc-capa-critique", label: "RC & CAPA Critique", path: "rc-capa-critique" },
   { key: "rci-report", label: "RCI Report", path: null },
 ];
 

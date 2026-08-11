@@ -61,8 +61,13 @@ def _suppress_recurrence_claims_without_citation(rc_result: RCConclusionCritique
     rc_result.recommendations = [
         rec for rec in rc_result.recommendations
         if not (_RECURRENCE_CLAIM_RE.search(rec) and not _DEVIATION_REF_RE.search(rec))
-    ]
+    ][:5]
     return rc_result
+
+def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueResponse:
+    """Hard cap at 5 recommendations in case the model over-generates despite the prompt limit."""
+    capa_result.recommendations = capa_result.recommendations[:5]
+    return capa_result
 
 
 def _extract_problem_statement(full_doc_text: str) -> str:
@@ -216,12 +221,12 @@ async def extract(file: UploadFile = File(...)) -> JSONResponse:
 # ── Task report critique endpoints ────────────────────────────────────────────
 
 @router.post(
-    "/analyse-task-report",
+    "/critique-rc-conclusion-and-capa",
     tags=["critique"],
     response_model=RCIReportCritiqueResponse,
     summary="Critique RC conclusion and CAPA from a task report (full document)",
 )
-async def analyse_task_report(
+async def critique_rc_conclusion_and_capa(
     event_type: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
 ) -> RCIReportCritiqueResponse:
@@ -247,7 +252,7 @@ async def analyse_task_report(
         return RCIReportCritiqueResponse(
             problem_statement=_extract_problem_statement(full_doc_text),
             rc_conclusion=_suppress_recurrence_claims_without_citation(rc_result),
-            capa=capa_result,
+            capa=_cap_recommendations(capa_result),
         )
     except HTTPException:
         raise
@@ -309,11 +314,12 @@ async def critique_capa(
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
         llm_instance = LLMClient()
-        return await llm_instance.get_structured_response(
+        result = await llm_instance.get_structured_response(
             system_prompt=capa_system_prompt + "\n" + guard_rail_text,
             user_prompt=user_prompt,
             structure=CAPACritiqueResponse,
         )
+        return _cap_recommendations(result)
     except HTTPException:
         raise
     except Exception:

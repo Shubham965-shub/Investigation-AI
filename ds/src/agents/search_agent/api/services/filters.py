@@ -137,15 +137,18 @@ def build_filter_clause(
         clause.params.append(filters.qe_type)
         idx += 1
 
-    # Date range filters (date_opened column)
+    # Date range filters (date_opened column) — pass the real datetime object;
+    # asyncpg needs an actual datetime/date instance for a timestamp column
+    # comparison, not its string representation (str() previously broke every
+    # caller that actually exercised date_from/date_to against a real DB).
     if filters.date_from is not None:
         clause.fragments.append(f'"{settings.COLUMN_DATE_OPENED}" >= ${idx}')
-        clause.params.append(str(filters.date_from))
+        clause.params.append(filters.date_from)
         idx += 1
 
     if filters.date_to is not None:
         clause.fragments.append(f'"{settings.COLUMN_DATE_OPENED}" <= ${idx}')
-        clause.params.append(str(filters.date_to))
+        clause.params.append(filters.date_to)
         idx += 1
 
     # Multi-value filters with "all" handling
