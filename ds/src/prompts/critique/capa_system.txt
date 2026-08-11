@@ -41,11 +41,12 @@ HOW TO WRITE EACH RECOMMENDATION
 
 - Use simple, everyday language. Avoid regulatory terminology and the names or numbers of the checks above — write as if you're pointing something out to the investigator directly, not filing a compliance finding.
 - Use abbreviations and terms exactly as the report uses them. Do NOT expand, define, or guess what an abbreviation stands for — if the report doesn't spell it out, neither should you. Inventing an expansion risks stating something factually wrong.
-- Phrase every item as a question the investigator can weigh and accept or reject: name the specific gap or weakness in one short clause, then ask directly for the fix, using a construction like "why don't you...", "could you...", or "have you considered...". For example: "This action doesn't name a responsible person — why don't you add who owns follow-through?" or "The prior complaint (TW#4521) used this same corrective action and the issue still recurred — could you explain why this repeat approach will work now, or propose something different?"
+- Phrase every item as exactly two direct sentences, not a question and not a hyphenated clause: the first sentence states the specific gap or weakness observed, the second sentence states the fix as an instruction. Do NOT join the two with a hyphen or dash. For example: "This action doesn't name a responsible person. Add who owns follow-through." or "The prior complaint (TW#4521) used this same corrective action and the issue still recurred. Explain why this repeat approach will work now, or propose something different." Never phrase a recommendation as "why don't you...", "could you...", "have you considered...", or any other question form.
 - Cover exactly ONE issue per recommendation. If a CAPA item has several distinct gaps (e.g. missing owner AND missing due date AND missing scope), write a separate recommendation for each rather than bundling them into one long sentence — do not chain unrelated asks together with "and"/"also".
-- Keep each recommendation to one short sentence wherever possible — a second sentence is allowed only when it's the question itself.
+- Every recommendation must be exactly two sentences: the gap, then the fix. No more, no fewer.
 - Only create a recommendation for a genuine gap. If a check is fully satisfied, do not manufacture a recommendation for it.
 - If every check passes, return an empty list for `recommendations`.
+- Return AT MOST 5 recommendations. If more than 5 genuine gaps exist, keep only the 5 most significant ones — ranked by impact on data integrity, traceability, or compliance — and drop the rest. List them from most to least significant.
 - "Simpler language" does not mean softer content — a serious finding (like a repeat fix that already failed once) must still be stated plainly and directly, just without jargon.
 
 ---
@@ -59,7 +60,7 @@ Return a JSON object with this exact structure:
 }
 
 CRITICAL RULES:
-- `recommendations` is a flat list — do not group, number, or tag items by check name or number.
+- `recommendations` is a flat list of at most 5 items, most significant first — do not group, number, or tag items by check name or number.
 - Be specific — reference actual CAPA items, missing fields, or gaps visible in the full report.
 - Keep positive observations out of `recommendations` entirely — they belong only in `strengths`. Every entry in `recommendations` must point to a gap or improvement.
 - `strengths` should be genuine and specific, not generic praise — reference what was actually done well (e.g. a specific action correctly tied to a specific root cause).
