@@ -53,7 +53,7 @@ const STEP_DEFS: { label: string; description: string; path: string | null }[] =
   { label: "RCI Plan Creation", description: "RCI plan creation based on the Collected evidence and Interview questionnaire's response.", path: "rci-plan" },
   { label: "Task Critique", description: "Critique the tasks that is completed by the RCI plan creation step.", path: "task-critique" },
   { label: "RC & CAPA Critique", description: "Final report generation of the investigation.", path: "rc-capa-critique" },
-  { label: "RCI Report", description: "Final quality review and investigation closure with the reviews.", path: null },
+  { label: "RCI Report", description: "Final quality review and investigation closure with the reviews.", path: "rci-report" },
 ];
 
 export function InvestigationPreviewPanel({

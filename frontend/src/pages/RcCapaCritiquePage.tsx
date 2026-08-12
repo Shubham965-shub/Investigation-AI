@@ -139,6 +139,7 @@ export function RcCapaCritiquePage() {
     try {
       const updated = await pushRcCapaToSitReview(recordId!);
       setState(updated);
+      navigate(`/records/${recordId}/rci-report`);
     } catch (err) {
       setPushError(err instanceof ApiError ? String(err.detail) : "Failed to push for SIT review");
     } finally {
