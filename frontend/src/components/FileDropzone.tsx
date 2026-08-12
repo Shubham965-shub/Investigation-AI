@@ -6,11 +6,15 @@ export function FileDropzone({
   disabled,
   label = "Drag & Drop or Choose file to upload",
   hint = "fig, zip, pdf, png, jpeg",
+  compact = false,
 }: {
   onFileSelected: (file: File) => void;
   disabled?: boolean;
   label?: string;
   hint?: string;
+  // Horizontal, no-hint-text button variant — matches the Task Critique
+  // list page's compact per-row upload control (2026-08-12 Figma revision).
+  compact?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -33,7 +37,19 @@ export function FileDropzone({
         setDragOver(false);
         handleFiles(e.dataTransfer.files);
       }}
-      style={{
+      style={compact ? {
+        border: `1px dashed ${dragOver ? "var(--color-primary)" : "var(--color-card-border)"}`,
+        borderRadius: 6,
+        padding: "16px 24px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        background: "var(--color-bg)",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        whiteSpace: "nowrap",
+      } : {
         border: `1px dashed ${dragOver ? "var(--color-primary)" : "var(--color-card-border)"}`,
         borderRadius: 6,
         padding: "16px 24px",
@@ -47,11 +63,15 @@ export function FileDropzone({
         textAlign: "center",
       }}
     >
-      <img src={uploadIcon} alt="" width={24} height={24} />
-      <div>
-        <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>{label}</p>
-        <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>{hint}</p>
-      </div>
+      <img src={uploadIcon} alt="" width={compact ? 20 : 24} height={compact ? 20 : 24} />
+      {compact ? (
+        <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-faint)" }}>{label}</p>
+      ) : (
+        <div>
+          <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>{label}</p>
+          <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>{hint}</p>
+        </div>
+      )}
       <input
         ref={inputRef}
         type="file"
