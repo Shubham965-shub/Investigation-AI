@@ -1,4 +1,4 @@
-active: v3
+active: v4
 versions:
   v1:
     description: Original OOS prompt — batch number included in output if provided
@@ -204,3 +204,104 @@ versions:
       NDSRI result for the product Tramadol Hydrochloride Tablets USP 50 mg was reported 0.100 ppm against the specification limit of NMT 0.033 ppm.
       OOS was observed for N-Nitroso-di-butylamine (NDBA) exceeding the specification limit while NDEA remained within limit, during GC-MS testing of Artemether/Lumefantrine Tablets 20/120 mg (Dispersible).
       During Related Substance by HPLC testing for Gemfibrozil Tablets [600mg] [FC], 'Any other individual impurity' was reported as 0.25% against the specification limit of Not more than 0.2%, and 'Total Impurities' was reported as 0.67% against the specification limit of Not more than 0.5%.
+
+  v4:
+    description: 'Consolidated fix (squashed from this session v4-v5 iterations; remote was at v3): (1) Named Individual Preservation Rule - analyst/reviewer names are preserved, not generalized away; (2) Multiple Batch/Sample Result Rule - the same test/parameter reported across two or more distinct batches/samples has every batchs result preserved, not just the first. Found and fixed via the ps_generation golden-corpus harness, 2026-08-11'
+    created_at: '2026-08-11T12:00:00+00:00'
+    template: |
+      Generate a concise OOS (Out-of-Specification) problem statement by rewriting the provided details in a professional laboratory investigation format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Write in clear, grammatically correct, natural-sounding sentences — every sentence must have a subject and verb that agree in meaning; re-read the sentence and confirm the subject of "was reported as" is a value-bearing noun (a result, reading, or parameter), never a bare test/method name.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      OOS-specific rules:
+
+      1. Conditional Field Inclusion Rule:
+         - Include the following fields only if they are explicitly provided in the input:
+           - Test name / activity name
+           - Test parameter
+           - Method / instrument / technique
+           - Product / material name
+           - Analyst name
+           - Instrument / equipment ID
+           - Observed result
+           - Specification limit
+         - Do NOT include batch number, AR number, or SR number in the problem statement.
+
+      2. Exact Value Preservation Rule:
+         - If both observed result and specification limit are provided, include them exactly as given in the input.
+         - Do not rephrase, interpret, or modify numeric or textual values.
+
+      3. No Inference / No Addition Rule:
+         - Do not include any information that is not explicitly present in the input.
+         - Specifically, do NOT add: Analyst name, Laboratory name, Instrument or equipment details, Observed values, Specification limits unless they are explicitly provided.
+
+      4. Prohibited Interpretation Rule:
+         - Do not use interpretive or evaluative phrases such as: "above the approved specification limit", "out of limit", "failed specification" unless such wording is explicitly present in the input.
+
+      5. Strict Data Dependency Rule:
+         - The output must be strictly derived from the input without inference, assumption, or completion of missing information.
+
+      6. Do not include date, time, batch number, AR number, or SR number in the problem statement.
+
+      7. Subject-Verb Agreement Rule (avoid mismatched "was reported as"):
+         - The phrase "was reported as <value>" must attach to a noun that can hold a value — e.g. "<Test Parameter/Activity Name> result", a named parameter, or a reading. It must NOT attach directly to a bare test or method name (e.g. do not write "Related Substance by HPLC ... was reported as 0.25%"; write "Related Substance by HPLC result ... was reported as 0.25%").
+         - When only a test/method name is available with no separate parameter name, append "result" to the test/method name so it reads grammatically, e.g. "<Test Name> result for <Product> was reported as <Observed Result>".
+
+      8. Multiple Parameter/Result Rule (self-contained clauses, no colon-stuffing):
+         - If the input provides two or more distinct named parameters (e.g. multiple impurities), each with its own observed result and specification limit, give each parameter its OWN clause pairing it directly with its own result and its own limit: "<Parameter A> was reported as <Result A> against the specification limit of <Limit A>", joined with "and" before the final clause.
+         - Do NOT collapse a parameter and its value into a colon pair (e.g. avoid "Parameter A: Result A and Parameter B: Result B").
+         - Do NOT pool all specification limits into one trailing clause with "respectively" — pair each result directly with its own limit in the same clause so the reader never has to cross-reference order.
+         - Optionally prefix the sentence with "During <Test Name> testing for <Product>," to establish context once instead of repeating the test/method name in each clause.
+
+      9. Parameter Name Quoting Rule:
+         - Whenever a named test parameter (e.g. an individual impurity name, "Total Impurities", "Assay", "NDSRI") is used as the subject of a result clause ("<Parameter> was reported as <Result>..."), enclose the parameter name in single quotes, e.g. 'Total Impurities' was reported as 0.67%.
+         - Do NOT put quotes around the test/method name (e.g. Related Substance by HPLC), the product/material name, results, or specification limits — quoting applies only to the named parameter acting as the subject.
+         - Preserve the parameter name's wording and casing exactly as given in the input; quoting must not change the text itself.
+
+      10. Named Individual Preservation Rule:
+          - If an analyst, reviewer, or other named individual is explicitly provided in the input — whether in a structured field (e.g. Analyst name) or embedded in the free-text description — you MUST include that specific name in the statement. Do not omit it and do not generalize it to a role-only reference (e.g. "the analyst", "the reviewer") when a named individual is given.
+          - If more than one named individual is provided (e.g. both an analyst and a reviewer), include all of them.
+          - Append named individuals as a trailing clause after the result/limit clause, e.g. "..., tested by <Analyst Name>" and/or "..., reviewed by <Reviewer Name>" — combine both with "and" when both are present. Do not let this clause replace or crowd out the result/limit clause.
+
+      11. Multiple Batch/Sample Result Rule:
+          - If the SAME test/parameter is reported for two or more distinct batches or samples (e.g. an additional sample explicitly noted as "also observed", "appended in the same sequence", or a second batch analyzed alongside the first), you MUST include EVERY batch's/sample's result — do not drop any of them.
+          - Batch/AR/SR numbers still cannot appear (per the Conditional Field Inclusion Rule). Since you cannot use those identifiers to distinguish the results, use sequence/order language instead — e.g. "the initial batch", "a second batch in the same sequence", "an additional sample" — so each result is still attributable to a distinct batch without naming it.
+          - Give each batch's result its own self-contained clause pairing it with its own limit (mirroring the Multiple Parameter/Result Rule's approach in rule 8, but keyed on batch/sample instead of named parameter), joined with "while" or "and".
+
+      12. Full Product/Material Name Preference Rule:
+          - If the structured product/material name field contains an abbreviated or coded short name (e.g. an internal SKU-style label from a product master list, such as "Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX"), but the free-text description explicitly states the full, non-abbreviated product name elsewhere (e.g. "Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG"), use the FULL descriptive name in the problem statement instead of the abbreviated code — both refer to the same product, and the full name is what a reader needs.
+          - Only use the abbreviated/coded name if no full descriptive name appears anywhere in the source.
+
+      Structure:
+      - Single parameter: <Test Parameter/Activity Name> result for <Product/Material Name> was reported as <Observed Result> against the specification limit of <Specification Limit>.
+      - Single named parameter (distinct from test/method name): '<Parameter>' result for <Product/Material Name> was reported as <Observed Result> against the specification limit of <Specification Limit>.
+      - Multiple parameters under one test: During <Test Parameter/Activity Name> testing for <Product/Material Name>, '<Parameter A>' was reported as <Result A> against the specification limit of <Limit A>, and '<Parameter B>' was reported as <Result B> against the specification limit of <Limit B>.
+      - With named individual(s): <any of the above clauses>, tested by <Analyst Name>[, and reviewed by <Reviewer Name>].
+      - Multiple batches/samples of the same test: <Test Parameter/Activity Name> result for <Product/Material Name> was reported as <Result A> against the specification limit of <Limit A> for the initial batch, while a second batch in the same sequence was reported as <Result B> against the specification limit of <Limit B>.
+
+      Real-world examples:
+      NDSRI result for the product Tramadol Hydrochloride Tablets USP 50 mg was reported 0.100 ppm against the specification limit of NMT 0.033 ppm.
+      OOS was observed for N-Nitroso-di-butylamine (NDBA) exceeding the specification limit while NDEA remained within limit, during GC-MS testing of Artemether/Lumefantrine Tablets 20/120 mg (Dispersible).
+      During Related Substance by HPLC testing for Gemfibrozil Tablets [600mg] [FC], 'Any other individual impurity' was reported as 0.25% against the specification limit of Not more than 0.2%, and 'Total Impurities' was reported as 0.67% against the specification limit of Not more than 0.5%.
+      Assay result for Amlodipine Besylate Tablets 10mg was reported as 94.2% against the specification limit of 95.0% to 105.0%, tested by Rekha Nair.
+      Water content by KF result for Metformin Hydrochloride USP was reported as 0.85% against the specification limit of NMT 0.5%, tested by Vivek Chandran and reviewed by Anjali Menon.
+      Assay by HPLC result for Losartan Potassium Tablets 50mg was reported as 97.5% against the specification limit of 95.0% to 105.0% for the initial batch, while a second batch analyzed in the same sequence was reported as 93.8% against the same limit.
+      Assay by HPLC result for AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG was reported as 93.4% against the specification limit of 95.0% to 105.0%, tested by Kiran Bhat.

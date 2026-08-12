@@ -223,7 +223,7 @@ async def decide_rc_capa_recommendation(
     if not _find_recommendation(reports, recommendation_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such recommendation on the current report")
 
-    await set_recommendation_decision(recommendation_id, request.decision, request.reason)
+    await set_recommendation_decision(state["latest"]["id"], recommendation_id, request.decision, request.reason)
     return await _build_state(record_id, deviation_id)
 
 

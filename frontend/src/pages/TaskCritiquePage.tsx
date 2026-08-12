@@ -9,7 +9,6 @@ import {
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
-import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -153,15 +152,15 @@ export function TaskCritiquePage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map((section, index) => {
-          const openCount = section.latest_report?.recommendations.filter((r) => r.decision === "pending").length ?? 0;
           const busy = busyTaskIndex === section.task_index;
+          const hasScore = section.status === "complete" && section.latest_report?.task_score != null;
           return (
-            <div key={section.task_index} className="card" style={{ gap: 12 }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
-                onClick={() => navigate(`/records/${recordId}/task-critique/${section.task_index}`)}
-              >
-                <div style={{ flex: 1 }}>
+            <div key={section.task_index} className="card" style={{ padding: 0, gap: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "12px 16px" }}>
+                <div
+                  style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}
+                  onClick={() => navigate(`/records/${recordId}/task-critique/${section.task_index}`)}
+                >
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
@@ -169,76 +168,74 @@ export function TaskCritiquePage() {
                     <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
                       ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
                     </span>
-                    {openCount > 0 && (
-                      <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-danger-text)" }}>{openCount} Open</span>
-                    )}
                   </div>
                   {section.correlation && (
-                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                    <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                  )}
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
+                    <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, boxSizing: "border-box" }}>
+                      <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
+                    </div>
+                    <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", boxSizing: "border-box" }}>
+                      <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>TCD: {section.due_date || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ flexShrink: 0, minWidth: 180 }} onClick={(e) => e.stopPropagation()}>
+                  {section.can_upload && (
+                    <FileDropzone compact disabled={busy} label="Upload Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
+                  )}
+                  {hasScore && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        padding: "16px 24px",
+                        borderRadius: 6,
+                        background: "var(--color-success-bg)",
+                        border: "1px solid var(--color-success-text)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          border: "1.5px solid var(--color-success-text)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-success-text)" }}>
+                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase" }}>
+                          Task Score
+                        </p>
+                        <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{section.latest_report!.task_score}%</p>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 160, boxSizing: "border-box" }}>
-                  TCD: {section.due_date || "—"}
-                </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, minWidth: 140, boxSizing: "border-box" }}>
-                  <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
-                </div>
-                <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
-                <img src={rowChevronIcon} alt="" width={24} height={24} style={{ transform: "rotate(180deg)" }} />
               </div>
 
-              {section.can_upload && (
-                <div onClick={(e) => e.stopPropagation()}>
+              {section.can_upload && (section.next_upload_is_final || uploadError[section.task_index]) && (
+                <div style={{ padding: "0 16px 12px" }}>
                   {section.next_upload_is_final && (
-                    <p style={{ margin: "0 0 12px", fontSize: "var(--font-size-base)", color: "var(--color-warning-text)" }}>
+                    <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-warning-text)" }}>
                       All recommendations were rejected — the next report you upload will be accepted as final, with no further review.
                     </p>
                   )}
-                  <FileDropzone
-                    disabled={busy}
-                    label={section.upload_count === 0 ? "Drag & Drop or Choose file to upload" : "Drag & Drop or Choose an updated report to upload"}
-                    onFileSelected={(file) => handleUpload(section.task_index, file)}
-                  />
-                  {uploadError[section.task_index] && <p className="error-banner">{uploadError[section.task_index]}</p>}
-                </div>
-              )}
-
-              {section.status === "complete" && section.latest_report?.task_score != null && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 12,
-                    padding: "16px",
-                    borderRadius: 8,
-                    background: "var(--color-success-bg)",
-                    border: "1px solid var(--color-success-text)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: "50%",
-                      border: "1.5px solid var(--color-success-text)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-success-text)" }}>
-                      <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)" }}>
-                      TASK SCORE
-                    </p>
-                    <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{section.latest_report.task_score}%</p>
-                  </div>
+                  {uploadError[section.task_index] && <p className="error-banner" style={{ margin: "8px 0 0" }}>{uploadError[section.task_index]}</p>}
                 </div>
               )}
             </div>

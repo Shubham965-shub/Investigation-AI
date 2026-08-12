@@ -1,10 +1,22 @@
-"""Queries against generated_content.sql's investigation_rc_capa_reports/
-critiques/recommendations tables. Follows the same conventions as
-task_critique_queries.py: UndefinedTableError degrades reads to an empty
-default, any other DB error propagates.
+"""Queries against generated_content.sql's investigation_rc_capa_reports
+table. Follows the same conventions as task_critique_queries.py:
+UndefinedTableError degrades reads to an empty default, any other DB error
+propagates.
+
+One row per attempt — never replaced (each upload is a fresh INSERT), so
+history across all attempts is naturally preserved, unlike Task Critique's
+single upserted row. Each category's summary/strengths/recommendations live
+directly on that row as separate rc_*/capa_* columns (2026-08-07, per the
+user) — matching Task Critique's "one row, recommendations as an inline
+JSONB array" shape — rather than the previous normalized
+investigation_rc_capa_critiques/_recommendations child tables. Recommendation
+ids are unique per report, not globally: rc's ids run 0..len(rc)-1, capa's
+continue numbering from there — see save_critiques/set_recommendation_decision.
 """
 from __future__ import annotations
 
+import datetime
+import json
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -13,17 +25,25 @@ from backend.clients.db_client import get_pool
 from backend.db.critique_state import compute_upload_state
 
 
+def _parse_recommendations(raw: Any) -> List[Dict[str, Any]]:
+    if raw is None:
+        return []
+    return raw if isinstance(raw, list) else json.loads(raw)
+
+
 async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
-    """Returns all reports for this investigation ordered by attempt_number,
-    each with its two critiques (categories) and each critique's
-    recommendations — compute_rc_capa_state below only looks at the last
-    report, but the full history is returned so a caller could show it."""
+    """Returns all reports for this investigation ordered by attempt_number
+    — compute_rc_capa_state below only looks at the last one, but the full
+    history is returned so a caller could show it."""
     pool = get_pool()
     async with pool.acquire() as conn:
         try:
-            report_rows = await conn.fetch(
+            rows = await conn.fetch(
                 """
-                SELECT id, attempt_number, file_name, is_gospel, rc_score, capa_score, total_score, uploaded_at
+                SELECT id, attempt_number, file_name, is_gospel,
+                       rc_summary, rc_strengths, rc_recommendations,
+                       capa_summary, capa_strengths, capa_recommendations,
+                       rc_score, capa_score, total_score, uploaded_at
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
                 """,
@@ -31,56 +51,6 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
             )
         except asyncpg.exceptions.UndefinedTableError:
             return []
-        if not report_rows:
-            return []
-
-        report_ids = [r["id"] for r in report_rows]
-        try:
-            critique_rows = await conn.fetch(
-                """
-                SELECT id, report_id, category, summary, strengths
-                FROM investigation_rc_capa_critiques
-                WHERE report_id = ANY($1::int[]) ORDER BY report_id, id
-                """,
-                report_ids,
-            )
-        except asyncpg.exceptions.UndefinedTableError:
-            critique_rows = []
-
-        critique_ids = [r["id"] for r in critique_rows]
-        recs_by_critique: Dict[int, List[Dict[str, Any]]] = {}
-        if critique_ids:
-            try:
-                rec_rows = await conn.fetch(
-                    """
-                    SELECT id, critique_id, description, decision, reason
-                    FROM investigation_rc_capa_recommendations
-                    WHERE critique_id = ANY($1::int[]) ORDER BY critique_id, sort_order, id
-                    """,
-                    critique_ids,
-                )
-            except asyncpg.exceptions.UndefinedTableError:
-                rec_rows = []
-            for r in rec_rows:
-                recs_by_critique.setdefault(r["critique_id"], []).append(
-                    {
-                        "id": r["id"],
-                        "description": r["description"],
-                        "decision": r["decision"],
-                        "reason": r["reason"],
-                    }
-                )
-
-        critiques_by_report: Dict[int, List[Dict[str, Any]]] = {}
-        for c in critique_rows:
-            critiques_by_report.setdefault(c["report_id"], []).append(
-                {
-                    "category": c["category"],
-                    "summary": c["summary"],
-                    "strengths": c["strengths"],
-                    "recommendations": recs_by_critique.get(c["id"], []),
-                }
-            )
 
         return [
             {
@@ -92,9 +62,22 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 "capa_score": r["capa_score"],
                 "total_score": r["total_score"],
                 "uploaded_at": r["uploaded_at"],
-                "critiques": critiques_by_report.get(r["id"], []),
+                "critiques": [
+                    {
+                        "category": "rc_impact",
+                        "summary": r["rc_summary"],
+                        "strengths": r["rc_strengths"],
+                        "recommendations": _parse_recommendations(r["rc_recommendations"]),
+                    },
+                    {
+                        "category": "capa",
+                        "summary": r["capa_summary"],
+                        "strengths": r["capa_strengths"],
+                        "recommendations": _parse_recommendations(r["capa_recommendations"]),
+                    },
+                ],
             }
-            for r in report_rows
+            for r in rows
         ]
 
 
@@ -135,50 +118,36 @@ async def save_critiques(
     capa_recommendations: List[str],
     capa_strengths: str,
 ) -> None:
-    """Persists both fixed categories' critique + recommendation rows for one
-    report, in a single transaction. rc_impact's summary is DS's
-    rc_conclusion_text; capa has no dedicated summary field in DS's response
-    (CAPACritiqueResponse), so its summary falls back to strengths."""
+    """Persists both fixed categories' critique directly onto the report row.
+    rc_impact's summary is DS's rc_conclusion_text; capa has no dedicated
+    summary field in DS's response (CAPACritiqueResponse), so its summary
+    falls back to strengths (unchanged from the previous design). Recommendation
+    ids are unique per report: rc's run 0..len(rc)-1, capa's continue from there."""
+    rc_recs = [
+        {"id": i, "description": d, "decision": "pending", "reason": None, "decided_at": None}
+        for i, d in enumerate(rc_recommendations)
+    ]
+    capa_recs = [
+        {"id": len(rc_recs) + i, "description": d, "decision": "pending", "reason": None, "decided_at": None}
+        for i, d in enumerate(capa_recommendations)
+    ]
     pool = get_pool()
     async with pool.acquire() as conn:
-        async with conn.transaction():
-            rc_critique_id = await conn.fetchval(
-                """
-                INSERT INTO investigation_rc_capa_critiques (report_id, category, summary, strengths)
-                VALUES ($1, 'rc_impact', $2, $3)
-                RETURNING id
-                """,
-                report_id,
-                rc_conclusion_text,
-                rc_strengths,
-            )
-            if rc_recommendations:
-                await conn.executemany(
-                    """
-                    INSERT INTO investigation_rc_capa_recommendations (critique_id, description, sort_order)
-                    VALUES ($1, $2, $3)
-                    """,
-                    [(rc_critique_id, description, i) for i, description in enumerate(rc_recommendations)],
-                )
-
-            capa_critique_id = await conn.fetchval(
-                """
-                INSERT INTO investigation_rc_capa_critiques (report_id, category, summary, strengths)
-                VALUES ($1, 'capa', $2, $3)
-                RETURNING id
-                """,
-                report_id,
-                capa_strengths,
-                capa_strengths,
-            )
-            if capa_recommendations:
-                await conn.executemany(
-                    """
-                    INSERT INTO investigation_rc_capa_recommendations (critique_id, description, sort_order)
-                    VALUES ($1, $2, $3)
-                    """,
-                    [(capa_critique_id, description, i) for i, description in enumerate(capa_recommendations)],
-                )
+        await conn.execute(
+            """
+            UPDATE investigation_rc_capa_reports SET
+                rc_summary = $2, rc_strengths = $3, rc_recommendations = $4::jsonb,
+                capa_summary = $5, capa_strengths = $6, capa_recommendations = $7::jsonb
+            WHERE id = $1
+            """,
+            report_id,
+            rc_conclusion_text,
+            rc_strengths,
+            json.dumps(rc_recs),
+            capa_strengths,
+            capa_strengths,
+            json.dumps(capa_recs),
+        )
 
 
 async def set_rc_capa_scores(
@@ -195,19 +164,37 @@ async def set_rc_capa_scores(
         )
 
 
-async def set_recommendation_decision(recommendation_id: int, decision: str, reason: Optional[str]) -> None:
+async def set_recommendation_decision(report_id: int, recommendation_id: int, decision: str, reason: Optional[str]) -> None:
+    """recommendation_id is only unique within one report (see save_critiques)
+    — determine which category's array actually contains it, then rewrite
+    that array with the matching element's decision updated."""
     pool = get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            UPDATE investigation_rc_capa_recommendations
-            SET decision = $2, reason = $3, decided_at = now()
-            WHERE id = $1
-            """,
-            recommendation_id,
-            decision,
-            reason,
-        )
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT rc_recommendations, capa_recommendations FROM investigation_rc_capa_reports WHERE id = $1 FOR UPDATE",
+                report_id,
+            )
+            if row is None:
+                return
+            decided_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            for column in ("rc_recommendations", "capa_recommendations"):
+                recs = _parse_recommendations(row[column])
+                matched = False
+                for rec in recs:
+                    if rec["id"] == recommendation_id:
+                        rec["decision"] = decision
+                        rec["reason"] = reason
+                        rec["decided_at"] = decided_at
+                        matched = True
+                        break
+                if matched:
+                    await conn.execute(
+                        f"UPDATE investigation_rc_capa_reports SET {column} = $2::jsonb WHERE id = $1",
+                        report_id,
+                        json.dumps(recs),
+                    )
+                    return
 
 
 def compute_rc_capa_state(reports: List[Dict[str, Any]]) -> Dict[str, Any]:

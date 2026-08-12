@@ -66,6 +66,7 @@ def _filters_from_dict(d: dict[str, Any]) -> SearchFilters:
     instruments = d.get("instruments")
     materials = d.get("materials")
     sfg_code = d.get("sfg_code")
+    exclude_id = d.get("exclude_id")
 
     date_from = _normalize_date(date_from)
     date_to = _normalize_date(date_to)
@@ -77,7 +78,8 @@ def _filters_from_dict(d: dict[str, Any]) -> SearchFilters:
         locations=locations if locations not in ("null", None) else None,
         instruments=instruments if instruments not in ("null", None) else None,
         materials=materials if materials not in ("null", None) else None,
-        sfg_code=sfg_code if sfg_code not in ("null", None) else None
+        sfg_code=sfg_code if sfg_code not in ("null", None) else None,
+        exclude_id=exclude_id if exclude_id not in ("null", None) else None,
     )
 
 
