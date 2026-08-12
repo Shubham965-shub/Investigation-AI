@@ -27,7 +27,11 @@ class SearchFilters:
     materials: Optional[list[str]] = None
     sfg_code: Optional[list[str]] = None
     product_code: Optional[list[str]] = None  # sfg_code parameter
-    
+    # The record's own id, excluded from results — a "historical similar events"
+    # search run using this record's own description as the query text otherwise
+    # self-matches with near-perfect relevance once the record itself is persisted.
+    exclude_id: Optional[str] = None
+
 
 
 
@@ -135,6 +139,18 @@ def build_filter_clause(
     if filters.qe_type is not None:
         clause.fragments.append(f'"{settings.COLUMN_QE_TYPE}" = ${idx}')
         clause.params.append(filters.qe_type)
+        idx += 1
+
+    if filters.exclude_id is not None:
+        # Table-qualified with "t": when SEARCH_DETAILS_TABLE is configured,
+        # semantic_search.py joins details table "t" to vector table "v" ON
+        # t.<COLUMN_ID> = v.<COLUMN_ID> -- both sides then have this column,
+        # so an unqualified reference is ambiguous to Postgres. "t" is always
+        # a valid alias for this column: it's the join's left side when a
+        # details table is configured, and the sole table's own alias
+        # otherwise.
+        clause.fragments.append(f't."{settings.COLUMN_ID}"::text != ${idx}')
+        clause.params.append(str(filters.exclude_id))
         idx += 1
 
     # Date range filters (date_opened column) — pass the real datetime object;

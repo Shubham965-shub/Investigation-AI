@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 from typing import Any, Dict, List, Optional
 
 
@@ -95,7 +95,17 @@ class MarketComplaintTrackwiseFields(BaseModel):
     """Trackwise fields for Market Complaint events."""
     title: str = Field(...)
     date_complaint_received: str = Field(..., alias="Date Complaint Received")
-    market_complaint_reported_by: str = Field(..., alias="Market Complaint Reported By")
+    # validation_alias accepts both the correct label and the old "Market
+    # Complaint Reported By" label backend's field_mapping.py currently still
+    # sends (see rci_plan/GAPS.md, 2026-08-09) — backend isn't ours to change
+    # on our timeline, so ds tolerates either instead of depending on it being
+    # updated. Output (by_alias=False in validate_trackwise_fields) is
+    # unaffected either way: always the plain field name below.
+    complaint_reported_by: str = Field(
+        ...,
+        alias="Complaint Reported By",
+        validation_alias=AliasChoices("Complaint Reported By", "Market Complaint Reported By"),
+    )
     reference_complaint_number: str = Field(..., alias="Reference Complaint Number")
     description: str = Field(...)
     products_information: str = Field(..., alias="Products Information")
@@ -122,6 +132,47 @@ class RciReportDeviationTrackwiseFields(ExtendedDeviationTrackwiseFields):
     for required fields.
     """
     sub_area: Optional[str] = Field(None, alias="Sub Area")
+
+    # immediate_actions is typed `list` on ExtendedDeviationTrackwiseFields, but the
+    # live DB confirms it's a plain TEXT column (one narrative string, not an array)
+    # — redeclared here to match reality, same fix already applied to
+    # root_cause_conclusion/impact_details below.
+    immediate_actions: Optional[str] = Field(None, alias="Immediate Actions")
+
+    # The TW tab is literally "Immediate action & assessment" — a separate structured
+    # Yes/No checklist alongside the free-text immediate_actions narrative above.
+    # Never modeled until flagged missing (2026-08-03) — see GAPS.md. Modeled as raw
+    # text (matching the live DB's own `immediate_actions_and_assessment` column,
+    # which stores the 4 question/answer/explanation triples as one JSON-in-text
+    # blob) rather than a nested Pydantic structure, consistent with how this module
+    # treats other free-text TW fields.
+    immediate_actions_and_assessment: Optional[str] = Field(
+        None, alias="Immediate Actions And Assessment"
+    )
+    # Word template (Table 2, "Material / Product" grid) cites this + the segregation/
+    # quarantine explanations above as the real source for quantity_on_hold — not a
+    # generic TW dump. Confirmed live: text column, e.g. "7,84,301nos of tablets are
+    # kept Quarantined." Never modeled until this cross-check (2026-08-03).
+    qty_of_material_quarantined: Optional[str] = Field(
+        None, alias="Qty Of Material Quarantined"
+    )
+
+    # "Affected Batches" grid (Deviation/OOS/OOT) and "Batches Details" grid (MC) —
+    # confirmed live DB: text[] on both, populated for the affected/campaign batch(es).
+    # Never modeled until this was flagged missing from Initial Impact Assessment's
+    # material_product_impacts (2026-08-03) — see GAPS.md.
+    affected_batches_product_material_name: List[str] = Field(
+        default_factory=list, alias="Affected Batches Product Material Name"
+    )
+    affected_batches_batch_ar_number: List[str] = Field(
+        default_factory=list, alias="Affected Batches Batch AR Number"
+    )
+    batches_details_product_or_material_name: List[str] = Field(
+        default_factory=list, alias="Batches Details Product Or Material Name"
+    )
+    batches_details_batch_no_ar_no: List[str] = Field(
+        default_factory=list, alias="Batches Details Batch No AR No"
+    )
 
     # 3-tier root-cause taxonomy confirmed live (broad_category -> category ->
     # root_cause_sub_category). root_cause_category is NOT modeled: confirmed empty
@@ -158,6 +209,10 @@ class RciReportDeviationTrackwiseFields(ExtendedDeviationTrackwiseFields):
     capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
 
     capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    # TW Digital field: "CAPA & Change control – Related links & Related CAPA &
+    # Related Change control" — a distinct linked-record type alongside Related CAPA,
+    # confirmed cited in all three RCI Report Word templates but not previously modeled.
+    related_change_control: List[str] = Field(default_factory=list, alias="Related Change Control")
     # DB: text[] — supports multiple markets/customers per CAPA extrapolation.
     # Overrides ExtendedDeviationTrackwiseFields' related_market/related_customer,
     # which are typed plain `str` there; that's a separate, pre-existing typing gap
@@ -176,6 +231,23 @@ class RciReportDeviationTrackwiseFields(ExtendedDeviationTrackwiseFields):
 class RciReportOOSTrackwiseFields(OOSTrackwiseFields):
     """Additional fields RCI Report generation needs for OOS/OOT events."""
     sub_area: Optional[str] = Field(None, alias="Sub Area")
+
+    # "Affected Batches" grid (Deviation/OOS/OOT) and "Batches Details" grid (MC) —
+    # confirmed live DB: text[] on both, populated for the affected/campaign batch(es).
+    # Never modeled until this was flagged missing from Initial Impact Assessment's
+    # material_product_impacts (2026-08-03) — see GAPS.md.
+    affected_batches_product_material_name: List[str] = Field(
+        default_factory=list, alias="Affected Batches Product Material Name"
+    )
+    affected_batches_batch_ar_number: List[str] = Field(
+        default_factory=list, alias="Affected Batches Batch AR Number"
+    )
+    batches_details_product_or_material_name: List[str] = Field(
+        default_factory=list, alias="Batches Details Product Or Material Name"
+    )
+    batches_details_batch_no_ar_no: List[str] = Field(
+        default_factory=list, alias="Batches Details Batch No AR No"
+    )
     broad_category: Optional[str] = Field(None, alias="Broad Category")
     category: Optional[str] = Field(None, alias="Category")
     root_cause_sub_category: Optional[str] = Field(None, alias="Root Cause Sub Category")
@@ -189,6 +261,10 @@ class RciReportOOSTrackwiseFields(OOSTrackwiseFields):
     capa_details: Optional[str] = Field(None, alias="CAPA Details")
     capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
     capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    # TW Digital field: "CAPA & Change control – Related links & Related CAPA &
+    # Related Change control" — a distinct linked-record type alongside Related CAPA,
+    # confirmed cited in all three RCI Report Word templates but not previously modeled.
+    related_change_control: List[str] = Field(default_factory=list, alias="Related Change Control")
     related_market: List[str] = Field(default_factory=list, alias="Related Market")
     related_customer: List[str] = Field(default_factory=list, alias="Related Customer")
     market: Optional[str] = Field(None, alias="Market")
@@ -204,6 +280,24 @@ class RciReportOOSTrackwiseFields(OOSTrackwiseFields):
     # Confirmed: no TrackWise field on Immediate Action for OOS/OOT — expect this to
     # arrive via RciReportGenerationRequest.manual_entries instead, never TrackWise.
     immediate_actions: Optional[str] = Field(None, alias="Immediate Actions")
+    # See RciReportDeviationTrackwiseFields — same "Immediate action & assessment"
+    # structured checklist, included here in case OOS/OOT ever populates it live;
+    # not yet confirmed either way.
+    immediate_actions_and_assessment: Optional[str] = Field(
+        None, alias="Immediate Actions And Assessment"
+    )
+    qty_of_material_quarantined: Optional[str] = Field(
+        None, alias="Qty Of Material Quarantined"
+    )
+    # Moved here from RciReportMarketComplaintTrackwiseFields 2026-08-09 — both
+    # fields are cited by the templates as OOS/OOT sources ("QA Initial Review &
+    # Assessment, fields Impact on Other Batches, Impact Justification" per
+    # rci_report_trackwise_fields.md), and the route/prompt already labeled
+    # impact_justification "OOS/OOT only" while it only actually existed on the MC
+    # class — meaning validate_trackwise_fields silently dropped it on every real
+    # OOS/OOT request before it ever reached the prompt. See GAPS.md.
+    impact_on_other_batches: Optional[str] = Field(None, alias="Impact on Other Batches")
+    impact_justification: Optional[str] = Field(None, alias="Impact Justification")
 
     class Config:
         populate_by_name = True
@@ -212,6 +306,34 @@ class RciReportOOSTrackwiseFields(OOSTrackwiseFields):
 class RciReportMarketComplaintTrackwiseFields(MarketComplaintTrackwiseFields):
     """Additional fields RCI Report generation needs for Market Complaint events."""
     sub_area: Optional[str] = Field(None, alias="Sub Area")
+
+    # "Affected Batches" grid (Deviation/OOS/OOT) and "Batches Details" grid (MC) —
+    # confirmed live DB: text[] on both, populated for the affected/campaign batch(es).
+    # Never modeled until this was flagged missing from Initial Impact Assessment's
+    # material_product_impacts (2026-08-03) — see GAPS.md.
+    affected_batches_product_material_name: List[str] = Field(
+        default_factory=list, alias="Affected Batches Product Material Name"
+    )
+    affected_batches_batch_ar_number: List[str] = Field(
+        default_factory=list, alias="Affected Batches Batch AR Number"
+    )
+    batches_details_product_or_material_name: List[str] = Field(
+        default_factory=list, alias="Batches Details Product Or Material Name"
+    )
+    batches_details_batch_no_ar_no: List[str] = Field(
+        default_factory=list, alias="Batches Details Batch No AR No"
+    )
+    # MC's own real "Product Information (1)" grid — was unconfirmed/disabled in the
+    # DE pipeline as of 2026-08-03 (see GAPS.md), now re-enabled and confirmed live:
+    # products_information_product_name_list / products_information_batch_name_list,
+    # both text[]. batches_details_* above is actually OOS/OOT's grid, not MC's —
+    # left in place (harmless) but MC should source from these instead.
+    products_information_product_name_list: List[str] = Field(
+        default_factory=list, alias="Products Information Product Name List"
+    )
+    products_information_batch_name_list: List[str] = Field(
+        default_factory=list, alias="Products Information Batch Name List"
+    )
     broad_category: Optional[str] = Field(None, alias="Broad Category")
     category: Optional[str] = Field(None, alias="Category")
     root_cause_sub_category: Optional[str] = Field(None, alias="Root Cause Sub Category")
@@ -225,6 +347,10 @@ class RciReportMarketComplaintTrackwiseFields(MarketComplaintTrackwiseFields):
     capa_details: Optional[str] = Field(None, alias="CAPA Details")
     capa_effectiveness: Optional[str] = Field(None, alias="CAPA Effectiveness")
     capa_number: List[str] = Field(default_factory=list, alias="CAPA Number")
+    # TW Digital field: "CAPA & Change control – Related links & Related CAPA &
+    # Related Change control" — a distinct linked-record type alongside Related CAPA,
+    # confirmed cited in all three RCI Report Word templates but not previously modeled.
+    related_change_control: List[str] = Field(default_factory=list, alias="Related Change Control")
     related_market: List[str] = Field(default_factory=list, alias="Related Market")
     related_customer: List[str] = Field(default_factory=list, alias="Related Customer")
     market: Optional[str] = Field(None, alias="Market")
@@ -245,8 +371,12 @@ class RciReportMarketComplaintTrackwiseFields(MarketComplaintTrackwiseFields):
     medical_investigation_summary: Optional[str] = Field(None, alias="Medical Investigation Summary")
     medical_impact_analysis: Optional[str] = Field(None, alias="Medical Impact Analysis")
     health_hazard_evaluation: Optional[str] = Field(None, alias="Health Hazard Evaluation")
+    # impact_justification removed from here 2026-08-09 (moved to
+    # RciReportOOSTrackwiseFields) — the templates never cite it as an MC-specific
+    # field, only OOS/OOT; the route/prompt already only ever read it as "OOS/OOT
+    # only". impact_on_other_batches stays here — the MC template independently
+    # cites "Impact on Other Batches" under Preliminary Investigation. See GAPS.md.
     impact_on_other_batches: Optional[str] = Field(None, alias="Impact on Other Batches")
-    impact_justification: Optional[str] = Field(None, alias="Impact Justification")
 
     class Config:
         populate_by_name = True

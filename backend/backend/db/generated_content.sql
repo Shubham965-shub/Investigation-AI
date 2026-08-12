@@ -110,13 +110,41 @@ CREATE TABLE IF NOT EXISTS investigation_task_critique_reports (
 
 CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id ON investigation_task_critique_reports(deviation_id);
 
+-- Append-only audit log of every attempt's generated recommendation set
+-- (2026-08-07, per the user) — investigation_task_critique_reports above
+-- only ever holds the CURRENT attempt (replaced in place), so without this,
+-- attempt 1's and 2's recommendations are gone the moment attempt 2/3 is
+-- uploaded. One row per (deviation_id, task_index, attempt_number); never
+-- updated after insert. Not read by compute_section_state or any live
+-- business rule — purely a history/audit trail alongside the report row.
+CREATE TABLE IF NOT EXISTS investigation_task_critique_recommendation_history (
+    id BIGSERIAL PRIMARY KEY,
+    deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),
+    task_index INTEGER NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    summary TEXT,
+    recommendations JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (deviation_id, task_index, attempt_number)
+);
+
 -- RC & CAPA Critique (module step 6) — one shared upload cycle for the whole
 -- investigation (not per-RCI-section like Task Critique). Each uploaded
 -- report is critiqued into two fixed categories (rc_impact/capa) by ds's
--- POST /critique/analyse-task-report, each with its own summary/strengths
--- text and recommendation list. Same 3-upload-cap + all-rejected-means-next-
--- upload-is-gospel rule as Task Critique (per the user, 2026-08-06) — see
--- db/critique_state.py's compute_upload_state, shared by both modules.
+-- POST /critique/analyse-task-report. Same 3-upload-cap + all-rejected-means-
+-- next-upload-is-gospel rule as Task Critique (per the user, 2026-08-06) —
+-- see db/critique_state.py's compute_upload_state, shared by both modules.
+-- Never replaced in place — each upload is a fresh INSERT, so every
+-- attempt's row (and its recommendations) is naturally kept, unlike Task
+-- Critique's single upserted row. Each category's summary/strengths/
+-- recommendations live directly on this row as separate rc_*/capa_* columns
+-- (2026-08-07, per the user: match Task Critique's "one row, recommendations
+-- as an inline JSONB array" shape) rather than normalized child tables —
+-- recommendation element shape is identical to Task Critique's ({id,
+-- description, decision, reason, decided_at}), except ids are only unique
+-- per report, not globally: rc_recommendations run 0..len(rc)-1,
+-- capa_recommendations continue numbering from there (see
+-- rc_capa_critique_queries.py's save_critiques/set_recommendation_decision).
 CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     id SERIAL PRIMARY KEY,
     deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),
@@ -124,6 +152,12 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     file_name TEXT NOT NULL,
     file_bytes BYTEA NOT NULL,
     is_gospel BOOLEAN NOT NULL DEFAULT FALSE,
+    rc_summary TEXT,
+    rc_strengths TEXT,
+    rc_recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    capa_summary TEXT,
+    capa_strengths TEXT,
+    capa_recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- ds's rubric-based /score/report, as percentages — set once this report
     -- becomes final (gospel or 3rd attempt), same trigger/pattern as Task
     -- Critique's task_score (2026-08-07, per the user). rc_score is the
@@ -142,26 +176,3 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_deviation_id ON investigation_rc_capa_reports(deviation_id);
-
-CREATE TABLE IF NOT EXISTS investigation_rc_capa_critiques (
-    id SERIAL PRIMARY KEY,
-    report_id INTEGER NOT NULL REFERENCES investigation_rc_capa_reports(id) ON DELETE CASCADE,
-    category TEXT NOT NULL,
-    summary TEXT,
-    strengths TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_critiques_report_id ON investigation_rc_capa_critiques(report_id);
-
-CREATE TABLE IF NOT EXISTS investigation_rc_capa_recommendations (
-    id SERIAL PRIMARY KEY,
-    critique_id INTEGER NOT NULL REFERENCES investigation_rc_capa_critiques(id) ON DELETE CASCADE,
-    description TEXT NOT NULL,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    decision TEXT NOT NULL DEFAULT 'pending',
-    reason TEXT,
-    decided_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_recommendations_critique_id ON investigation_rc_capa_recommendations(critique_id);

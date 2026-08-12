@@ -26,6 +26,7 @@ from src.agents.archetypes.routes import router as router_archetypes
 from src.agents.capa_depth_effectiveness.api.routes.capa_depth_effectiveness_route import (
     router as router_capa_depth_effectiveness,
 )
+from src.agents.rci_report.api.routes.rci_report_route import router as router_rci_report
 from src.prompt_registry.service import PromptRegistry
 from src.prompt_registry.routes import router as router_prompts
 from src.db.pool import close_pool, create_pool
@@ -82,5 +83,6 @@ def create_app() -> FastAPI:
     api_instance.include_router(router_scoring)
     api_instance.include_router(router_archetypes)
     api_instance.include_router(router_capa_depth_effectiveness)
+    api_instance.include_router(router_rci_report)
 
     return api_instance

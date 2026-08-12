@@ -11,10 +11,15 @@ Creation's own persistence into it also depends on this same file being run.
 task_index is the 0-based position of a task within whatever document
 services/rci_plan_extraction.py most recently parsed for this investigation.
 
-Only one row per task is ever kept — each upload replaces it in place
-(2026-08-06, per the user: no need to retain previous/rejected attempts'
-files or critiques). Recommendations live inline as a JSONB array rather than
-a child table (see generated_content.sql's comment).
+Only one row per task is ever kept in investigation_task_critique_reports —
+each upload replaces it in place (2026-08-06, per the user: no need to retain
+previous/rejected attempts' files or critiques). Recommendations live inline
+as a JSONB array rather than a child table (see generated_content.sql's
+comment). Every attempt's generated recommendation set is still logged
+separately, append-only, in investigation_task_critique_recommendation_history
+(2026-08-07, per the user) — keyed by (deviation_id, task_index,
+attempt_number) — for audit/history purposes only; it is never read by
+compute_section_state or any other business rule.
 """
 from __future__ import annotations
 
@@ -130,6 +135,30 @@ async def save_critique(report_id: int, summary: Optional[str], task_score: Opti
             summary,
             task_score,
             json.dumps(recs),
+        )
+
+
+async def insert_recommendation_history(
+    deviation_id: int, task_index: int, attempt_number: int, summary: Optional[str], recommendations: List[str]
+) -> None:
+    """Append-only audit log — separate from investigation_task_critique_reports,
+    which only ever holds the current attempt (2026-08-07, per the user).
+    Not read by any business rule; ON CONFLICT DO NOTHING makes this safe to
+    call more than once for the same attempt without erroring."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO investigation_task_critique_recommendation_history
+                (deviation_id, task_index, attempt_number, summary, recommendations)
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+            ON CONFLICT (deviation_id, task_index, attempt_number) DO NOTHING
+            """,
+            deviation_id,
+            task_index,
+            attempt_number,
+            summary,
+            json.dumps(recommendations),
         )
 
 

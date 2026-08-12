@@ -1,0 +1,96 @@
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+from src.agents.critique.api.schemas import CAPAItemDetail, TaskAssignmentItem
+from src.agents.rci_plan.schemas import RciSectionItem
+from src.agents.rci_report.api.schemas.request import (
+    AcceptedCAPAProposal,
+    AcceptedRCConclusion,
+    RciReportGenerationRequest,
+)
+from src.agents.rci_report.api.services.text_cleaning import strip_audit_log_prefix
+
+
+@dataclass(frozen=True)
+class RciReportContext:
+    """Built once per request, read (never written) by up to 9 concurrent
+    Wave-1 tasks. Frozen so "no shared mutable state" is a compile-time
+    guarantee (FrozenInstanceError), not just a convention — the direct fix
+    for the one real correctness risk of concurrent section generation.
+    """
+    event_type: str
+    deviation_id: Optional[str]
+    trackwise_fields: Dict[str, Any]  # snake_case keys (by_alias=False), matches live DB column names
+    rci_plan_sections: List[RciSectionItem]
+    task_critique: List[TaskAssignmentItem]
+    accepted_rc_conclusion: AcceptedRCConclusion
+    accepted_capa: AcceptedCAPAProposal
+    mc_confirmed: Optional[bool]
+    history_lookback_months: int
+    manual_entries: Dict[str, str]
+    # Pre-cleaned once here so no downstream prompt-builder re-derives this.
+    root_cause_conclusion_text_clean: str
+    correction_remedial_text_clean: str
+    impact_details_text_clean: str
+
+    def tw(self, key: str, default: str = "") -> str:
+        value = self.trackwise_fields.get(key)
+        return str(value) if value not in (None, "") else default
+
+    def effectiveness_plan_evidence_text(self, capa_item: CAPAItemDetail) -> str:
+        """Evidence for ONE row of Section 11 (CAPA Effectiveness Check Plan),
+        scoped to exactly one accepted CAPA action — never capa_overall_text
+        (a whole-proposal summary, not scoped to any one action; including it
+        previously bled every other action's content back into a supposedly
+        single-item plan, found and fixed 2026-08-06).
+
+        Deliberately does NOT reuse capa_depth_effectiveness's evidence
+        contract (a redacted copy of an already-completed report) — rci_report
+        never has a completed report to read, so this is built entirely from
+        upstream artifacts this module actually has: the accepted RC
+        conclusion, this one CAPA action, and named individuals from
+        TrackWise (deviation_owner/observed_by) for the responsibility field,
+        which the CAPA action's own `responsibility` is often just a
+        department, not a person (2026-08-06 finding).
+        """
+        named_individuals = "\n".join(
+            filter(None, [
+                f"Deviation Owner: {self.tw('deviation_owner')}" if self.tw("deviation_owner") else None,
+                f"Observed By: {self.tw('observed_by')}" if self.tw("observed_by") else None,
+                f"Analyst Name: {self.tw('analyst_name')}" if self.tw("analyst_name") else None,
+            ])
+        ) or "(none stated)"
+        return (
+            f"Root Cause Conclusion:\n{self.accepted_rc_conclusion.rc_conclusion_text}\n\n"
+            f"This CAPA Action:\n- {capa_item.description} "
+            f"(responsibility: {capa_item.responsibility or 'not stated'}, "
+            f"due: {capa_item.due_date or 'not stated'})\n\n"
+            f"Named Individuals (from TrackWise, for responsibility if the CAPA action "
+            f"itself only states a department):\n{named_individuals}"
+        )
+
+
+def build_report_context(request: RciReportGenerationRequest) -> RciReportContext:
+    """Pure, synchronous — no I/O. Called once at the top of the route, before
+    any asyncio.gather wave."""
+    return RciReportContext(
+        event_type=request.event_type,
+        deviation_id=request.deviation_id,
+        trackwise_fields=request.trackwise_fields,
+        rci_plan_sections=request.rci_plan_sections,
+        task_critique=request.task_critique,
+        accepted_rc_conclusion=request.accepted_rc_conclusion,
+        accepted_capa=request.accepted_capa,
+        mc_confirmed=request.mc_confirmed,
+        history_lookback_months=request.history_lookback_months,
+        manual_entries=request.manual_entries,
+        root_cause_conclusion_text_clean=strip_audit_log_prefix(
+            request.trackwise_fields.get("root_cause_conclusion") or ""
+        ),
+        correction_remedial_text_clean=strip_audit_log_prefix(
+            request.trackwise_fields.get("correction_or_remedial_action") or ""
+        ),
+        impact_details_text_clean=strip_audit_log_prefix(
+            request.trackwise_fields.get("impact_details") or ""
+        ),
+    )
