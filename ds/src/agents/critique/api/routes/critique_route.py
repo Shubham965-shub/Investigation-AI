@@ -14,6 +14,7 @@ from src.agents.critique.api.schemas import (
 from src.agents.critique.api.services.rci_report_extraction import extract_full_document_text
 from src.agents.critique.api.services.rci_critique_service import critique_in_batches
 from src.agents.critique.api.services.reformatter import reformat_to_investigation_plan_payload
+from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.api.services.llm_extraction import (
     convert_docx_to_pdf, extract_section_11, extract_section_12,
     extract_section_21, extract_section_22, merge_sections,
@@ -228,15 +229,23 @@ async def extract(file: UploadFile = File(...)) -> JSONResponse:
 )
 async def critique_rc_conclusion_and_capa(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
 ) -> RCIReportCritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         rc_result, capa_result = await asyncio.gather(
             llm_instance.get_structured_response(
                 system_prompt=rc_conclusion_system_prompt + "\n" + guard_rail_text,
@@ -272,15 +281,23 @@ async def critique_rc_conclusion_and_capa(
 )
 async def critique_rc_conclusion(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
 ) -> RCConclusionCritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         result = await llm_instance.get_structured_response(
             system_prompt=rc_conclusion_system_prompt + "\n" + guard_rail_text,
             user_prompt=user_prompt,
@@ -305,15 +322,23 @@ async def critique_rc_conclusion(
 )
 async def critique_capa(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
 ) -> CAPACritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         result = await llm_instance.get_structured_response(
             system_prompt=capa_system_prompt + "\n" + guard_rail_text,
             user_prompt=user_prompt,

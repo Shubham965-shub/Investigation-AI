@@ -27,7 +27,10 @@ router = APIRouter(prefix="/critique", tags=["critique"])
     ),
 )
 async def analyse_task_report(
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
+    event_type: str = "",
+    task_description: str = "",
 ) -> TaskReportCritiqueResponse:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix != ".docx":
@@ -42,7 +45,12 @@ async def analyse_task_report(
             shutil.copyfileobj(file.file, tmp)
             temp_path = Path(tmp.name)
 
-        initial_state = TaskReportCritiqueState(file_path=str(temp_path))
+        initial_state = TaskReportCritiqueState(
+            file_path=str(temp_path),
+            problem_statement=problem_statement,
+            event_type=event_type,
+            task_description=task_description,
+        )
         final_state = await task_report_critique_graph.ainvoke(initial_state)
 
         result = final_state.get("final_result")

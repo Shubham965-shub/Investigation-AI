@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from backend.clients.ds_client import _raise_for_upstream_error, get_client
 from backend.db.critique_state import MAX_UPLOADS
 from backend.db.field_mapping import resolved_event_type
+from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
 from backend.db.task_critique_queries import (
@@ -79,6 +80,18 @@ def _find_task(sections: List[Dict[str, Any]], task_index: int) -> Dict[str, Any
         if section["task_index"] == task_index:
             return section
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_TASK_NOT_FOUND_DETAIL)
+
+
+def _describe_task(section: Dict[str, Any]) -> str:
+    """Describes what this specific RCI-plan task/section is investigating (e.g.
+    "Analyst Verification", "Instrument Calibration Check") so DS can check the
+    uploaded report actually addresses this task, not just the overall investigation."""
+    parts = [f"Task: {section['title']}"]
+    if section.get("correlation"):
+        parts.append(f"Correlation: {section['correlation']}")
+    if section.get("tasks"):
+        parts.append("Checklist items:\n" + "\n".join(f"- {t}" for t in section["tasks"]))
+    return "\n".join(parts)
 
 
 def _build_section_response(section: Dict[str, Any]) -> TaskCritiqueSection:
@@ -163,7 +176,7 @@ async def upload_source_document(record_id: str, file: UploadFile) -> TaskCritiq
 
 @router.post("/{record_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
 async def upload_task_report(record_id: str, task_index: int, file: UploadFile) -> TaskCritiqueSection:
-    deviation_id, _row, event_type = await _deviation_id_and_row(record_id)
+    deviation_id, row, event_type = await _deviation_id_and_row(record_id)
     docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
     if docx_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No RCI Plan document found for this investigation yet")
@@ -200,13 +213,24 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # fixed 2026-08-06 by moving that one to its own path,
     # /critique/critique-rc-conclusion-and-capa (see routers/rc_capa_critique.py,
     # which already used the two even-more-specific split endpoints and so
-    # was never affected by this collision). No event_type param — this
-    # endpoint only takes the file. Called BEFORE persisting anything, so a
-    # transient DS failure doesn't burn one of the 3 real upload attempts.
+    # was never affected by this collision). Called BEFORE persisting anything,
+    # so a transient DS failure doesn't burn one of the 3 real upload attempts.
+    # problem_statement + task_description let DS reject an irrelevant/mismatched
+    # upload with a 422 before running any critique LLM calls — task_description
+    # catches the narrower case of the right investigation's report being uploaded
+    # to the wrong task/section (see ds's relevance_validation.py).
+    problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+    task_description = _describe_task(section)
+
     client = get_client()
     try:
         response = await client.post(
             "/critique/analyse-task-report",
+            params={
+                "problem_statement": problem_statement,
+                "event_type": event_type,
+                "task_description": task_description,
+            },
             files={"file": (file.filename, file_bytes, file.content_type)},
         )
         response.raise_for_status()
