@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class TaskReportCritiqueState:
     file_path: str
+    problem_statement: str = ""
+    event_type: str = ""
+    task_description: str = ""
     # Raw extraction from docx
     raw_paragraphs: List[Dict[str, Any]] = field(default_factory=list)
     raw_tables: List[Dict[str, Any]] = field(default_factory=list)

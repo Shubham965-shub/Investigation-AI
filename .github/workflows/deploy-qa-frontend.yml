@@ -1,0 +1,66 @@
+# CD: frontend → Azure Static Web Apps. Branch picks the stack:
+#   main  → investigationai-fe-qa-v2    (UAT, talks to investigationai-be-qa)
+#   stage → investigationai-fe-stage-v2 (dev-test, talks to investigationai-be-stage)
+#
+# frontend/.env is NOT in git, so every build-time value must be provided
+# here (Vite env vars are baked in at build time). npm ci needs
+# NODE_AUTH_TOKEN (secret) to install private @strides-pharma-science-ltd
+# packages from GitHub Packages. Deploys the prebuilt dist/ with the SWA
+# deployment token.
+name: Deploy frontend (main→UAT, stage→dev)
+
+on:
+  push:
+    branches: [main, stage]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-qa-frontend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  BE_HOST: ${{ github.ref_name == 'main' && 'investigationai-be-qa.redtree-0b17d746.centralindia.azurecontainerapps.io' || 'investigationai-be-stage.redtree-0b17d746.centralindia.azurecontainerapps.io' }}
+  VITE_FEEDBACK_API_BASE_URL: https://feedback-service.graysand-fe5571c1.centralindia.azurecontainerapps.io/api/v1
+  # PostHog project tokens are client-side by design — they ship in the bundle.
+  VITE_POSTHOG_PROJECT_TOKEN: phc_nSFXA6dYnM6N2sRHTJxqPHuhf8yzwa7bkQsBvfAiYuMV
+  VITE_POSTHOG_HOST: https://posthog.strideslighthouse.com
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@strides-pharma-science-ltd"
+
+      - name: Build
+        working-directory: frontend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          VITE_API_BASE_URL: https://${{ env.BE_HOST }}/api
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assert target API URL baked into bundle
+        run: |
+          grep -rql "$BE_HOST" frontend/dist/assets
+          ! grep -rq "localhost:8000" frontend/dist/assets
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ github.ref_name == 'main' && secrets.AZURE_STATIC_WEB_APPS_API_TOKEN || secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_STAGE }}
+          action: upload
+          app_location: frontend/dist
+          skip_app_build: true
+          output_location: ""

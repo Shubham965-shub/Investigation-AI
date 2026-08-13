@@ -18,6 +18,8 @@ from src.agents.scoring.api.schemas import (
     CheckpointScore,
     CheckpointVerdict,
     GroupScore,
+    InfoRow,
+    InfoTable,
     ScoringReportResponse,
     SectionScore,
 )
@@ -115,6 +117,37 @@ def _group_score(label: str, sections: List[SectionScore]) -> Optional[GroupScor
     )
 
 
+def build_score_info(section_scores: Dict[str, SectionScore]) -> List[InfoTable]:
+    """Full per-section breakdown table — every checkpoint (not just the ones
+    that lost marks), same shape as the marking-checklist spreadsheet. Built
+    purely from data already in `section_scores` — no LLM call."""
+    tables: List[InfoTable] = []
+    for section in section_scores.values():
+        rows = [
+            InfoRow(
+                id=cp.id,
+                checkpoint=cp.checkpoint_text,
+                max=cp.max_marks,
+                verdict=cp.verdict,
+                score=cp.marks_awarded,
+                rationale=cp.rationale,
+                evidence_quote=cp.evidence_quote,
+            )
+            for cp in section.checkpoints
+        ]
+        tables.append(
+            InfoTable(
+                section=section.section,
+                label=section.label,
+                native_max=section.native_max,
+                marks_awarded=section.marks_awarded,
+                percentage=section.percentage,
+                rows=rows,
+            )
+        )
+    return tables
+
+
 def build_report_response(
     section_scores: Dict[str, SectionScore],
     *,
@@ -139,6 +172,7 @@ def build_report_response(
 
     return ScoringReportResponse(
         score=int(round(overall_pct)),
+        info=build_score_info(section_scores),
         event_type=event_type,
         detected_sections=detected,
         overall_percentage=overall_pct,

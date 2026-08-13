@@ -11,6 +11,7 @@ from backend.clients.ds_client import _raise_for_upstream_error, get_client
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.critique_state import MAX_UPLOADS
 from backend.db.field_mapping import resolved_event_type
+from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rc_capa_critique_queries import (
     compute_rc_capa_state,
@@ -33,12 +34,18 @@ router = APIRouter(prefix="/rc-capa-critique", tags=["RC & CAPA Critique"])
 
 
 async def _call_critique_endpoint(
-    client: httpx.AsyncClient, path: str, event_type: str, filename: str | None, file_bytes: bytes, content_type: str | None
+    client: httpx.AsyncClient,
+    path: str,
+    event_type: str,
+    problem_statement: str,
+    filename: str | None,
+    file_bytes: bytes,
+    content_type: str | None,
 ) -> Dict[str, Any]:
     try:
         response = await client.post(
             path,
-            params={"event_type": event_type},
+            params={"event_type": event_type, "problem_statement": problem_statement},
             files={"file": (filename, file_bytes, content_type)},
         )
         response.raise_for_status()
@@ -151,7 +158,7 @@ async def get_rc_capa_critique(record_id: str) -> RcCapaState:
 
 @router.post("/{record_id}/upload", response_model=RcCapaState)
 async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState:
-    deviation_id, _row, event_type = await _deviation_id_and_row(record_id)
+    deviation_id, row, event_type = await _deviation_id_and_row(record_id)
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
 
@@ -180,10 +187,14 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     # /critique/analyse-task-report instead, see routers/task_critique.py) —
     # called BEFORE persisting anything, so a transient DS failure doesn't
     # burn one of the 3 real upload attempts.
+    # problem_statement lets DS reject an irrelevant/mismatched upload with a
+    # 422 before running any critique LLM calls (see ds's relevance_validation.py).
+    problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+
     client = get_client()
     rc_conclusion, capa = await asyncio.gather(
-        _call_critique_endpoint(client, "/critique/critique-rc-conclusion", event_type, file.filename, file_bytes, file.content_type),
-        _call_critique_endpoint(client, "/critique/critique-capa", event_type, file.filename, file_bytes, file.content_type),
+        _call_critique_endpoint(client, "/critique/critique-rc-conclusion", event_type, problem_statement, file.filename, file_bytes, file.content_type),
+        _call_critique_endpoint(client, "/critique/critique-capa", event_type, problem_statement, file.filename, file_bytes, file.content_type),
     )
 
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)

@@ -1,0 +1,54 @@
+# CD: backend → Azure Container Apps. Branch picks the stack:
+#   main  → investigationai-be-qa    (UAT)
+#   stage → investigationai-be-stage (dev-test)
+#
+# Image build+push authenticates with ACR admin creds (ACR_USERNAME/PASSWORD
+# secrets). The container-app update authenticates as a service principal with
+# Contributor on QA-Lighthouse (AZURE_CREDENTIALS secret, azure/login creds JSON).
+name: Deploy backend (main→UAT, stage→dev)
+
+on:
+  push:
+    branches: [main, stage]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-qa-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: investigationaiacr.azurecr.io/investigationai-backend:${{ github.sha }}
+  RG: QA-Lighthouse
+  APP: ${{ github.ref_name == 'main' && 'investigationai-be-qa' || 'investigationai-be-stage' }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: investigationaiacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        run: |
+          docker build -t "$IMAGE" backend
+          docker push "$IMAGE"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update container app
+        run: az containerapp update -n "$APP" -g "$RG" --image "$IMAGE"
