@@ -12,6 +12,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from markitdown import MarkItDown
 
+from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.graph.schemas import (
     AllTaskCritiquesResult,
     ExtractionResult,
@@ -226,6 +227,22 @@ async def parse_document(state: TaskReportCritiqueState) -> Dict[str, Any]:
         "raw_tables": tables,
         "image_context_map": image_context_map,
     }
+
+
+async def validate_relevance(state: TaskReportCritiqueState) -> Dict[str, Any]:
+    """Fail fast if the uploaded document doesn't genuinely pertain to the given
+    problem statement, before running the expensive extraction/critique LLM calls."""
+    llm: LLMClient = await get_llm_client()
+    document_text = "\n".join(p["text"] for p in state.raw_paragraphs)
+    await validate_document_relevance(
+        llm,
+        problem_statement=state.problem_statement,
+        event_type=state.event_type,
+        document_text=document_text,
+        document_label="investigation task report",
+        task_context=state.task_description,
+    )
+    return {}
 
 
 async def _extract_via_file_upload(

@@ -81,9 +81,37 @@ class GroupScore(BaseModel):
     percentage: float
 
 
+class InfoRow(BaseModel):
+    """One row of the score breakdown table — mirrors the marking-checklist
+    spreadsheet columns (ID / Checkpoint / Max / Verdict / Score / Rationale / Evidence)."""
+
+    id: str
+    checkpoint: str
+    max: float
+    verdict: str
+    score: float
+    rationale: str
+    evidence_quote: str = ""
+
+
+class InfoTable(BaseModel):
+    """The breakdown table for one scored section, header + rows — same shape as
+    the checklist spreadsheet (e.g. "Task Report Execution (/40)" → "33.0 (82.5%)")."""
+
+    section: str                 # task_report | rc | impact | capa
+    label: str
+    native_max: float
+    marks_awarded: float
+    percentage: float
+    rows: List[InfoRow]
+
+
 class ScoringReportResponse(BaseModel):
     # Headline integer score for the FE (rounded overall percentage, 0–100).
     score: int
+    # Full breakdown table per scored section — built deterministically from
+    # `sections` (see rubric.aggregation.build_score_info), one table per section.
+    info: List[InfoTable]
     event_type: Optional[str] = None
     detected_sections: List[str]
     # Full-precision percentage (float) behind `score`:
