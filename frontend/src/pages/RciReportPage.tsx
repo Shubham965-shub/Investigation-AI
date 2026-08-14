@@ -122,7 +122,7 @@ export function RciReportPage() {
         <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.85 }}>
           Root Cause Investigation Report
         </p>
-        <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>Record Details — REC-{recordId}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>Record Details — RCI Record-{recordId}</p>
         <span
           style={{
             alignSelf: "flex-start",
