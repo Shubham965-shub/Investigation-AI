@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -41,11 +42,16 @@ async def _call_critique_endpoint(
     filename: str | None,
     file_bytes: bytes,
     content_type: str | None,
+    previous_recommendations: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     try:
         response = await client.post(
             path,
-            params={"event_type": event_type, "problem_statement": problem_statement},
+            params={
+                "event_type": event_type,
+                "problem_statement": problem_statement,
+                "previous_recommendations": json.dumps(previous_recommendations or []),
+            },
             files={"file": (filename, file_bytes, content_type)},
         )
         response.raise_for_status()
@@ -191,10 +197,31 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     # 422 before running any critique LLM calls (see ds's relevance_validation.py).
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
 
+    # Carry forward the previous attempt's accepted-but-still-pending recommendations (per
+    # category) so DS can check whether this new upload actually addresses them (2026-08-13, per
+    # the user — same behavior as Task Critique's carry-forward, but simpler here since every
+    # attempt's row is kept in place already, so the decisions are already right here in
+    # `reports` — no separate history table/lookup needed).
+    previous_rc_recommendations: List[str] = []
+    previous_capa_recommendations: List[str] = []
+    if reports:
+        for critique in reports[-1]["critiques"]:
+            accepted = [r["description"] for r in critique["recommendations"] if r["decision"] == "accepted"]
+            if critique["category"] == "rc_impact":
+                previous_rc_recommendations = accepted
+            elif critique["category"] == "capa":
+                previous_capa_recommendations = accepted
+
     client = get_client()
     rc_conclusion, capa = await asyncio.gather(
-        _call_critique_endpoint(client, "/critique/critique-rc-conclusion", event_type, problem_statement, file.filename, file_bytes, file.content_type),
-        _call_critique_endpoint(client, "/critique/critique-capa", event_type, problem_statement, file.filename, file_bytes, file.content_type),
+        _call_critique_endpoint(
+            client, "/critique/critique-rc-conclusion", event_type, problem_statement,
+            file.filename, file_bytes, file.content_type, previous_recommendations=previous_rc_recommendations,
+        ),
+        _call_critique_endpoint(
+            client, "/critique/critique-capa", event_type, problem_statement,
+            file.filename, file_bytes, file.content_type, previous_recommendations=previous_capa_recommendations,
+        ),
     )
 
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)

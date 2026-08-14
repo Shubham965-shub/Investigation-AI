@@ -219,6 +219,12 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # upload with a 422 before running any critique LLM calls — task_description
     # catches the narrower case of the right investigation's report being uploaded
     # to the wrong task/section (see ds's relevance_validation.py).
+    # deviation_id + task_index (2026-08-14, per the user) let DS look up this
+    # task's previous attempt and check whether its accepted-but-still-pending
+    # recommendations are actually addressed by this upload, regenerating any
+    # that aren't (see ds/src/agents/critique/GAPS.md). Sent as form fields, not
+    # query params like the three above — DS declares them via Form(...), not as
+    # plain scalars, since they arrive alongside the multipart file upload.
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
 
@@ -230,6 +236,10 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
                 "problem_statement": problem_statement,
                 "event_type": event_type,
                 "task_description": task_description,
+            },
+            data={
+                "deviation_id": str(deviation_id),
+                "task_index": str(task_index),
             },
             files={"file": (file.filename, file_bytes, file.content_type)},
         )
