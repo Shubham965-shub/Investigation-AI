@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 _NOT_FOUND_DETAIL = "No investigation found for this record"
 _TASK_NOT_FOUND_DETAIL = "No such task for this investigation"
 
+# Mirrors ds's UNADDRESSED_MARKER (ds/src/agents/critique/graph/nodes.py) so carried-forward
+# recommendations still sort first after this route re-flattens per-sub-task lists.
+_UNADDRESSED_MARKER = "Still unaddressed from the previous review."
+_MAX_RECOMMENDATIONS = 5
+
 router = APIRouter(prefix="/task-critique", tags=["Task Critique"])
 
 
@@ -257,17 +262,23 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # task_critiques: [{task_number, title, recommendations: [str], strengths}],
     # overall_report_summary, total_tasks_analyzed} — dimensions are internal-only
     # on the DS side now; recommendations is already a flat, ready-to-show list.
-    # This task list only ever has one task (upload is per-task), but the
-    # response is still shaped as a list, so flatten defensively.
+    # A single uploaded report can cover several checklist items in this section (one
+    # "Inference:" block per item), so ds returns one task_critiques entry per block —
+    # each already capped at 5 recommendations on its own. Flattening them here can still
+    # exceed 5 combined, so re-cap after flattening, keeping still-unaddressed
+    # carried-forward items first.
     summary: Optional[str] = data.get("overall_report_summary")
     strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
     if strengths and summary:
         summary = f"{summary}\n\nStrengths: {' '.join(strengths)}"
-    recommendations: List[str] = [
+    flattened_recommendations: List[str] = [
         rec
         for task in data.get("task_critiques", [])
         for rec in task.get("recommendations", [])
     ]
+    recommendations: List[str] = sorted(
+        flattened_recommendations, key=lambda r: not r.startswith(_UNADDRESSED_MARKER)
+    )[:_MAX_RECOMMENDATIONS]
 
     report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
     await save_critique(report_id, summary, task_score=None, recommendations=recommendations)
