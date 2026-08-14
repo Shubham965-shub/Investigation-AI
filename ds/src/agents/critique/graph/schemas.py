@@ -57,12 +57,10 @@ class TaskCritiqueDetail(BaseModel):
 
 class AllTaskCritiquesResult(BaseModel):
     task_critiques: List[TaskCritiqueDetail]
-    overall_report_summary: str
 
 
 class TaskReportCritiqueResponse(BaseModel):
     problem_statement: str
     objective: str
     task_critiques: List[TaskCritiqueDetail]
-    overall_report_summary: str
     total_tasks_analyzed: int

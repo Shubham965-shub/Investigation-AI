@@ -30,5 +30,4 @@ class TaskReportCritiqueState:
     previous_recommendations: List[str] = field(default_factory=list)
     # Final critique output
     task_critiques: List[Dict[str, Any]] = field(default_factory=list)
-    overall_report_summary: str = ""
     final_result: Optional[Dict[str, Any]] = None

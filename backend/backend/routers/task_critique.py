@@ -274,7 +274,7 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         ) from exc
 
     data = response.json()
-    # TaskReportCritiqueResponse (v4): {problem_statement, objective,
+    # TaskReportCritiqueResponse (v8): {problem_statement, objective,
     # task_critiques: [{task_number, title, recommendations: [str], strengths}],
     # overall_report_summary, total_tasks_analyzed} — dimensions are internal-only
     # on the DS side now; recommendations is already a flat, ready-to-show list.
@@ -297,10 +297,11 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # each already capped at 5 recommendations on its own. Flattening them here can still
     # exceed 5 combined, so re-cap after flattening, keeping still-unaddressed
     # carried-forward items first.
-    summary: Optional[str] = data.get("overall_report_summary")
+    # The displayed "Summary Of the Report" is positive-only (what's working well), built
+    # from every task's `strengths` — gaps are already surfaced separately via
+    # `recommendations`, so DS no longer generates a gap-focused summary at all.
     strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
-    if strengths and summary:
-        summary = f"{summary}\n\nStrengths: {' '.join(strengths)}"
+    summary: Optional[str] = " ".join(strengths) if strengths else None
     flattened_recommendations: List[str] = [
         rec
         for task in data.get("task_critiques", [])
