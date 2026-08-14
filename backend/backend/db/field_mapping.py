@@ -119,10 +119,13 @@ def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = F
     fields = _type_specific_trackwise_fields(row, qe_type, extended=extended)
     # Universal, regardless of event type (2026-08-07, per the user) —
     # dim_investigator.investigator via fact_qms_event.investigator_key, and
-    # dim_rci.reference_number via fact_qms_event.rci_key. Neither was
-    # previously joined into fetch_investigation_row's query at all, so
-    # rci_plan_export.py had no real source for either and left them blank/
-    # fell back to the differently-scoped "Deviation Owner" (dim_event.owner_name).
+    # dim_rci.rci_key via fact_qms_event.rci_key — the genuine Trackwise RCI
+    # ID (2026-08-14, per the user: confirmed distinct from dim_rci.
+    # reference_number, which is just deviation_id as a string and was
+    # wrongly used here until now). Neither was previously joined into
+    # fetch_investigation_row's query at all, so rci_plan_export.py had no
+    # real source for either and left them blank/fell back to the
+    # differently-scoped "Deviation Owner" (dim_event.owner_name).
     if fields:
         fields["Investigator"] = _val(row, "investigator")
         fields["RCI Number"] = _val(row, "rci_number")

@@ -69,7 +69,7 @@ SELECT
     eq.instrument_equipment,
     eq.instrument_equipment_id,
     di.investigator,
-    r.reference_number AS rci_number
+    r.rci_key AS rci_number
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
@@ -119,3 +119,25 @@ async def fetch_investigation_statuses(deviation_ids: List[int]) -> Dict[int, st
     async with pool.acquire() as conn:
         status_rows = await conn.fetch(_INVESTIGATION_STATUS_QUERY, deviation_ids)
         return {r["deviation_id"]: r["status"] for r in status_rows}
+
+
+# Every investigator who has ever appeared on any investigation, open or
+# closed or cancelled — not scoped to "active" (2026-08-13, per the user,
+# revising the initial "active investigations only" scope). Joined through
+# fact_qms_event (not a bare SELECT DISTINCT investigator FROM dim_investigator)
+# so this only ever returns investigators actually referenced by a real
+# investigation, not any unused/orphaned dim_investigator row.
+_ALL_INVESTIGATORS_QUERY = """
+SELECT DISTINCT di.investigator
+FROM fact_qms_event f
+JOIN dim_investigator di ON di.investigator_key = f.investigator_key
+WHERE di.investigator IS NOT NULL
+ORDER BY di.investigator
+"""
+
+
+async def fetch_all_investigators() -> List[str]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_ALL_INVESTIGATORS_QUERY)
+        return [r["investigator"] for r in rows]
