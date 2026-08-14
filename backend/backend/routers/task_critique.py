@@ -278,15 +278,6 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # task_critiques: [{task_number, title, recommendations: [str], strengths}],
     # overall_report_summary, total_tasks_analyzed} — dimensions are internal-only
     # on the DS side now; recommendations is already a flat, ready-to-show list.
-<<<<<<< Updated upstream
-    # A single uploaded report can cover several checklist items in this section (one
-    # "Inference:" block per item), so ds returns one task_critiques entry per block —
-    # each already capped at 5 recommendations on its own. Flattening them here can still
-    # exceed 5 combined, so re-cap after flattening, keeping still-unaddressed
-    # carried-forward items first.
-=======
-    # This task list only ever has one task (upload is per-task), but the
-    # response is still shaped as a list, so flatten defensively.
     if data.get("total_tasks_analyzed", 0) == 0:
         # ds found no real tasks to critique at all — the local format check
         # (task_report_format.py) already blocks most wrong documents, but a
@@ -301,7 +292,11 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
             detail="This document doesn't match the required task report format — please upload the correct report.",
         )
 
->>>>>>> Stashed changes
+    # A single uploaded report can cover several checklist items in this section (one
+    # "Inference:" block per item), so ds returns one task_critiques entry per block —
+    # each already capped at 5 recommendations on its own. Flattening them here can still
+    # exceed 5 combined, so re-cap after flattening, keeping still-unaddressed
+    # carried-forward items first.
     summary: Optional[str] = data.get("overall_report_summary")
     strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
     if strengths and summary:
