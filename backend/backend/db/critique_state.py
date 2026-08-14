@@ -50,6 +50,26 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "latest": latest,
         }
 
+    if latest.get("critique_failed"):
+        # Rejected outright — wrong report format, or DS found nothing real to
+        # critique (see task_report_format.py / the total_tasks_analyzed==0
+        # check in routers/task_critique.py) — never a genuine critique, so it
+        # must not lock the section or block a reupload (2026-08-14, per the
+        # user: uploading the wrong file must still leave the door open to
+        # upload the correct one). Falls through to here rather than the
+        # "not recs" branch below, which would otherwise treat this the same
+        # as "critique not back yet" and never let go — RC & CAPA reports have
+        # no critique_failed column, so `.get` is always falsy there and this
+        # branch is unreachable for that caller.
+        return {
+            "status": "in_progress",
+            "upload_count": upload_count,
+            "locked": False,
+            "can_upload": True,
+            "next_upload_is_final": False,
+            "latest": latest,
+        }
+
     recs = latest["recommendations"]
     if not recs:
         # Critique not back yet (or DS not wired up yet) — nothing to decide.
@@ -85,14 +105,31 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "next_upload_is_final": False,
             "latest": latest,
         }
+    if decisions == {"rejected"}:
+        # Every recommendation rejected — the already-uploaded report is
+        # immediately treated as final and locked (2026-08-14, per the user),
+        # rather than requiring a further no-critique "gospel" upload. The
+        # report itself was still genuinely critiqued (unlike a real gospel
+        # upload), so `is_gospel` on the row stays False — callers score it
+        # the same way a gospel/3rd-attempt report gets scored.
+        return {
+            "status": "complete",
+            "upload_count": upload_count,
+            "locked": True,
+            "can_upload": False,
+            "next_upload_is_final": False,
+            "latest": latest,
+        }
     if "rejected" in decisions:
-        all_rejected = decisions == {"rejected"}
+        # Mixed accept/reject, not all rejected — reupload stays optional
+        # (not required); the next upload would be a normal, freshly-critiqued
+        # attempt, not gospel.
         return {
             "status": "in_progress",
             "upload_count": upload_count,
             "locked": False,
             "can_upload": True,
-            "next_upload_is_final": all_rejected,
+            "next_upload_is_final": False,
             "latest": latest,
         }
     # Everything's been decided and none were rejected — nothing left to

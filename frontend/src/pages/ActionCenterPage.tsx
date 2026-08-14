@@ -6,6 +6,7 @@ import { FilterSelect } from "../components/FilterSelect";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
+import { useAuth } from "../auth/AuthContext";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
 import iconOnTrack from "../assets/icons/status-on-track.svg";
 import iconDelay from "../assets/icons/status-delay.svg";
@@ -148,6 +149,7 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 }
 
 export function ActionCenterPage() {
+  const { viewAsInvestigator } = useAuth();
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -164,8 +166,26 @@ export function ActionCenterPage() {
   // matches the simple dropdown pattern the rest of this page uses. Computed
   // into an actual "start_date_from" date at fetch time.
   const [startPreset, setStartPreset] = useState("");
+  // Default view excludes cancelled investigations entirely (2026-08-13, per
+  // the user) — toggled on via a button rather than mixed into the normal
+  // list.
+  const [showCancelled, setShowCancelled] = useState(false);
+  // Page-wide filter (2026-08-14, per the user) — unlike showCancelled above,
+  // this narrows stat cards/chart/pending actions AND the investigations
+  // table alike, same as site/department/product/investigator/date.
+  const [criticalityFilter, setCriticalityFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+
+  // Demo "view as" control from the account menu (2026-08-14, per the user) —
+  // reuses the existing investigator filter to reproduce that investigator's
+  // whole-page view (stat cards/chart/pending actions/table alike) rather
+  // than adding a separate scoping mechanism. Runs whenever the header
+  // selection changes, including back to null (clears the filter).
+  useEffect(() => {
+    setInvestigatorFilter(viewAsInvestigator ?? "");
+    setPage(1);
+  }, [viewAsInvestigator]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
@@ -181,6 +201,8 @@ export function ActionCenterPage() {
       product: productFilter || undefined,
       investigator: investigatorFilter || undefined,
       startDateFrom,
+      status: showCancelled ? "cancelled" : "open",
+      criticality: (criticalityFilter as "critical" | "non_critical") || undefined,
     })
       .then((data) => {
         if (!cancelled) setSummary(data);
@@ -194,7 +216,7 @@ export function ActionCenterPage() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, startPreset]);
+  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, startPreset, showCancelled, criticalityFilter]);
 
   // Only show the full-page skeleton on the very first load. Once we have a
   // summary, a filter-driven refetch just dims the existing content in place
@@ -233,7 +255,12 @@ export function ActionCenterPage() {
         compareForSort(getSortValue(a, sortColumn), getSortValue(b, sortColumn), sortDirection)
       )
     : visibleInvestigations;
-  const statusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
+  const rawStatusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
+  // Investigator view (2026-08-14, per the user) — once the table is scoped
+  // to one specific investigator (via the filter dropdown or the header's
+  // "view as" demo control), the Unassigned bucket card no longer applies,
+  // so only Overdue/Delay/On Track show.
+  const statusCards = investigatorFilter ? rawStatusCards.filter((c) => c.key !== "unassigned") : rawStatusCards;
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
   const totalPages = Math.max(1, Math.ceil(sortedInvestigations.length / PAGE_SIZE));
@@ -296,7 +323,7 @@ export function ActionCenterPage() {
         </div>
       </section>
 
-      <div className="ac-status-row">
+      <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
         {statusCards.map(renderStatusCard)}
       </div>
 
@@ -410,6 +437,27 @@ export function ActionCenterPage() {
               options={["7", "30", "180"]}
               formatOption={(v) => (v === "7" ? "Last week" : v === "30" ? "Last month" : "Last 6 months")}
             />
+            <FilterSelect
+              className="ac-filter-pill"
+              value={criticalityFilter}
+              onChange={(v) => {
+                setCriticalityFilter(v);
+                setPage(1);
+              }}
+              defaultLabel="All Criticality"
+              options={["critical", "non_critical"]}
+              formatOption={(v) => (v === "critical" ? "Critical" : "Non-Critical")}
+            />
+            <button
+              type="button"
+              className={`ac-filter-pill${showCancelled ? " active" : ""}`}
+              onClick={() => {
+                setShowCancelled((v) => !v);
+                setPage(1);
+              }}
+            >
+              {showCancelled ? "Showing Cancelled" : "Show Cancelled"}
+            </button>
           </div>
         </div>
 

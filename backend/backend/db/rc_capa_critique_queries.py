@@ -31,6 +31,12 @@ def _parse_recommendations(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
+def _parse_score_breakdown(raw: Any) -> List[Dict[str, Any]]:
+    if raw is None:
+        return []
+    return raw if isinstance(raw, list) else json.loads(raw)
+
+
 async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
     """Returns all reports for this investigation ordered by attempt_number
     — compute_rc_capa_state below only looks at the last one, but the full
@@ -43,7 +49,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 SELECT id, attempt_number, file_name, is_gospel,
                        rc_summary, rc_strengths, rc_recommendations,
                        capa_summary, capa_strengths, capa_recommendations,
-                       rc_score, capa_score, total_score, uploaded_at
+                       rc_score, capa_score, total_score, score_breakdown, uploaded_at
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
                 """,
@@ -61,6 +67,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 "rc_score": r["rc_score"],
                 "capa_score": r["capa_score"],
                 "total_score": r["total_score"],
+                "score_breakdown": _parse_score_breakdown(r["score_breakdown"]),
                 "uploaded_at": r["uploaded_at"],
                 "critiques": [
                     {
@@ -151,16 +158,21 @@ async def save_critiques(
 
 
 async def set_rc_capa_scores(
-    report_id: int, rc_score: Optional[int], capa_score: Optional[int], total_score: Optional[int]
+    report_id: int,
+    rc_score: Optional[int],
+    capa_score: Optional[int],
+    total_score: Optional[int],
+    score_breakdown: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_rc_capa_reports SET rc_score = $2, capa_score = $3, total_score = $4 WHERE id = $1",
+            "UPDATE investigation_rc_capa_reports SET rc_score = $2, capa_score = $3, total_score = $4, score_breakdown = $5::jsonb WHERE id = $1",
             report_id,
             rc_score,
             capa_score,
             total_score,
+            json.dumps(score_breakdown) if score_breakdown is not None else None,
         )
 
 
