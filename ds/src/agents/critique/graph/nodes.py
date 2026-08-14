@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -538,11 +539,25 @@ async def critique_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     )
 
     for critique in result.task_critiques:
-        # Still-unaddressed carried-forward recommendations take priority over new ones within
-        # the 5-item cap — a code-side backstop in case the LLM doesn't fully honor the prompt's
-        # own ordering instruction.
         critique.recommendations.sort(key=lambda r: not r.startswith(UNADDRESSED_MARKER))
-        critique.recommendations = critique.recommendations[:5]
+
+    # Cap is per REPORT, not per task: a single uploaded report can be split into several
+    # task_critiques entries (one per "Inference:" block found by extract_tasks), but only 5
+    # recommendations total should ever surface for the whole report — the prompt already
+    # instructs the model to budget across all tasks combined, this is just a code-side backstop
+    # in case it doesn't fully honor that. Still-unaddressed carried-forward items take priority,
+    # preserving each task's own carried-forward-first order via a stable sort.
+    tagged = [
+        (task_idx, rec)
+        for task_idx, critique in enumerate(result.task_critiques)
+        for rec in critique.recommendations
+    ]
+    tagged.sort(key=lambda pair: not pair[1].startswith(UNADDRESSED_MARKER))
+    kept_by_task: Dict[int, List[str]] = defaultdict(list)
+    for task_idx, rec in tagged[:5]:
+        kept_by_task[task_idx].append(rec)
+    for task_idx, critique in enumerate(result.task_critiques):
+        critique.recommendations = kept_by_task.get(task_idx, [])
 
     logger.info("critique_tasks: critiqued %d tasks", len(result.task_critiques))
     return {
