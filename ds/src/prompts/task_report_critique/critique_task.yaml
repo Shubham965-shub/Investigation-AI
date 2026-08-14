@@ -581,7 +581,11 @@ versions:
       combined), not per task; one uploaded report can be split into several tasks by
       extract_tasks, and asking for up to 5 per task meant the model generated recommendations
       that were always going to be discarded once the caller flattens all tasks back together
-      (see ds/src/agents/critique/graph/nodes.py's post-LLM global cap, 2026-08-14, per the user)
+      (see ds/src/agents/critique/graph/nodes.py's post-LLM global cap, 2026-08-14, per the user).
+      Edited in place (2026-08-14, per the user) to drop the overall_report_summary output
+      instruction — the backend's "Summary Of the Report" card is positive-only and now builds
+      its text from per-task `strengths` alone, so this gap-focused field had no remaining
+      reader; removed from the schema (graph/schemas.py) too rather than left dormant.
     created_at: '2026-08-14T00:00:00+00:00'
     template: |
       You are a senior pharmaceutical quality assurance expert critiquing an investigation task report.
@@ -727,7 +731,5 @@ versions:
       - strengths: 1-2 sentences, in simple language, on what the investigator did well in this task.
         Be genuine and specific, not generic praise. Keep positive observations out of
         `recommendations` entirely — every entry there must point to a gap or improvement.
-
-      overall_report_summary: 2–3 sentences on the most significant collective gaps across the report.
 
       Return ONLY valid JSON matching the schema. No markdown fences.

@@ -562,7 +562,6 @@ async def critique_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     logger.info("critique_tasks: critiqued %d tasks", len(result.task_critiques))
     return {
         "task_critiques": [c.model_dump() for c in result.task_critiques],
-        "overall_report_summary": result.overall_report_summary,
     }
 
 
@@ -574,7 +573,6 @@ async def format_result(state: TaskReportCritiqueState) -> Dict[str, Any]:
         problem_statement=state.report_metadata.get("problem_statement", ""),
         objective=state.report_metadata.get("objective", ""),
         task_critiques=[TaskCritiqueDetail.model_validate(c) for c in state.task_critiques],
-        overall_report_summary=state.overall_report_summary,
         total_tasks_analyzed=len(state.task_critiques),
     )
     return {"final_result": final.model_dump()}
