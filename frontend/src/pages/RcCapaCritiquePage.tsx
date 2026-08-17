@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   decideRcCapaRecommendation,
+  getProblemStatementRecord,
   getRcCapaCritique,
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
@@ -12,12 +13,19 @@ import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileDropzone } from "../components/FileDropzone";
+import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
+import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
 const CATEGORY_LABEL: Record<RcCapaCritique["category"], string> = {
   rc_impact: "RC Impact Assessment Critique",
   capa: "CAPA Critique",
+};
+
+const CATEGORY_GUIDELINES: Record<RcCapaCritique["category"], () => ReactElement> = {
+  rc_impact: RcConclusionGuidelines,
+  capa: CapaProposalGuidelines,
 };
 
 export function RcCapaCritiquePage() {
@@ -28,8 +36,8 @@ export function RcCapaCritiquePage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [state, setState] = useState<RcCapaState | null>(null);
+  const [problemStatement, setProblemStatement] = useState<string | null>(null);
 
-  const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -49,9 +57,10 @@ export function RcCapaCritiquePage() {
     setDbError(null);
     (async () => {
       try {
-        const data = await getRcCapaCritique(recordId);
+        const [data, psRecord] = await Promise.all([getRcCapaCritique(recordId), getProblemStatementRecord(recordId)]);
         if (cancelled) return;
         setState(data);
+        setProblemStatement(psRecord?.problem_statement ?? null);
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
       } finally {
@@ -88,14 +97,12 @@ export function RcCapaCritiquePage() {
     );
   }
 
-  async function handleCritique() {
-    if (!pickedFile) return;
+  async function handleUpload(file: File) {
     setUploading(true);
     setUploadError(null);
     try {
-      const updated = await uploadRcCapaCritiqueReport(recordId!, pickedFile);
+      const updated = await uploadRcCapaCritiqueReport(recordId!, file);
       setState(updated);
-      setPickedFile(null);
     } catch (err) {
       setUploadError(err instanceof ApiError ? String(err.detail) : "Failed to critique the uploaded report");
     } finally {
@@ -139,6 +146,7 @@ export function RcCapaCritiquePage() {
     try {
       const updated = await pushRcCapaToSitReview(recordId!);
       setState(updated);
+      navigate(`/records/${recordId}/rci-report`);
     } catch (err) {
       setPushError(err instanceof ApiError ? String(err.detail) : "Failed to push for SIT review");
     } finally {
@@ -152,6 +160,14 @@ export function RcCapaCritiquePage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {problemStatement && (
+        <div className="card">
+          <p className="card-title">Problem Statement</p>
+          <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
+          </div>
+        </div>
+      )}
       <div className="card-header">
         <p className="card-title">RC & CAPA Critique</p>
         {waitingForSitReview ? (
@@ -231,8 +247,8 @@ export function RcCapaCritiquePage() {
                 </svg>
               </div>
               <div style={{ textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)" }}>
-                  RC & CAPA CRITIQUE SCORE
+                <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
                 </p>
                 <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{report.total_score}%</p>
               </div>
@@ -242,8 +258,8 @@ export function RcCapaCritiquePage() {
           {report && (report.rc_score != null || report.capa_score != null) && (
             <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap" }}>
               {[
-                { label: "RC CRITIQUE SCORE", value: report.rc_score },
-                { label: "CAPA CRITIQUE SCORE", value: report.capa_score },
+                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
+                { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
               ]
                 .filter((s) => s.value != null)
                 .map((s) => (
@@ -280,8 +296,8 @@ export function RcCapaCritiquePage() {
                       </svg>
                     </div>
                     <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)" }}>
-                        {s.label}
+                      <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
                       </p>
                       <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>{s.value}%</p>
                     </div>
@@ -314,18 +330,13 @@ export function RcCapaCritiquePage() {
           <p className="card-title">{state.upload_count === 0 ? "Upload Report" : "Upload Updated RC & CAPA Critique"}</p>
           <FileDropzone
             disabled={uploading}
-            label={pickedFile ? pickedFile.name : "Drag & Drop or Choose file to upload"}
+            loading={uploading}
             onFileSelected={(file) => {
-              setPickedFile(file);
               setUploadError(null);
+              handleUpload(file);
             }}
           />
           {uploadError && <p className="error-banner">{uploadError}</p>}
-          <div className="footer-actions">
-            <button type="button" className="btn-primary" disabled={!pickedFile || uploading} onClick={handleCritique}>
-              {uploading ? "Critiquing…" : "Critique"}
-            </button>
-          </div>
         </div>
       )}
 
@@ -333,10 +344,14 @@ export function RcCapaCritiquePage() {
 
       {report && !report.is_gospel && report.critiques.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {report.critiques.map((critique) => (
+          {report.critiques.map((critique) => {
+            const CategoryGuidelines = CATEGORY_GUIDELINES[critique.category];
+            return (
             <div key={critique.category} style={{ border: "1px solid var(--color-card-border)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "16px 24px" }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>{CATEGORY_LABEL[critique.category]}</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                  {CATEGORY_LABEL[critique.category]} <CategoryGuidelines />
+                </p>
               </div>
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                 {critique.summary ? (
@@ -348,7 +363,7 @@ export function RcCapaCritiquePage() {
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Critique pending.</p>
                 )}
 
-                {critique.recommendations.length > 0 && (
+                {!isComplete && critique.recommendations.length > 0 && (
                   <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
                     {critique.recommendations.map((rec) => {
@@ -410,7 +425,8 @@ export function RcCapaCritiquePage() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

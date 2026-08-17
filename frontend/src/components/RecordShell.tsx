@@ -34,7 +34,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
         <div>
           <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Investigation AI Assistant</p>
           <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)" }}>
-            Record Details - REC - {recordId}
+            Record Details - RCI Record - {recordId}
           </p>
         </div>
       </div>

@@ -10,7 +10,7 @@ import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
-import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
+import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
 
 const STATUS_LABEL: Record<TaskCritiqueSection["status"], string> = {
@@ -28,6 +28,11 @@ export function TaskCritiqueDetailPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [section, setSection] = useState<TaskCritiqueSection | null | undefined>(undefined);
+  // Same 1-based numbering as the main Task Critique list (index + 1 within
+  // the sections array, not the task_index route param) — carried forward
+  // here so a task's number stays consistent between the two pages
+  // (2026-08-14, per the user).
+  const [sectionNumber, setSectionNumber] = useState<number | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -43,8 +48,9 @@ export function TaskCritiqueDetailPage() {
       try {
         const data = await getTaskCritique(recordId);
         if (cancelled) return;
-        const found = data?.sections.find((s) => s.task_index === taskIndex) ?? null;
-        setSection(found);
+        const foundIndex = data?.sections.findIndex((s) => s.task_index === taskIndex) ?? -1;
+        setSection(foundIndex >= 0 ? data!.sections[foundIndex] : null);
+        setSectionNumber(foundIndex >= 0 ? foundIndex + 1 : null);
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
       } finally {
@@ -138,9 +144,20 @@ export function TaskCritiqueDetailPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="card" style={{ gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button
+            type="button"
+            onClick={() => navigate(`/records/${recordId}/task-critique`)}
+            style={{ background: "none", border: "none" }}
+            aria-label="Back to Task Critique History"
+          >
+            <img src={backChevronIcon} alt="" width={24} height={24} />
+          </button>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>{section.title}</span>
+              <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                {sectionNumber != null ? `${sectionNumber}. ` : ""}
+                {section.title}
+              </span>
               <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
                 ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
               </span>
@@ -149,22 +166,18 @@ export function TaskCritiqueDetailPage() {
               <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
             )}
           </div>
-          <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 160, boxSizing: "border-box" }}>
-            TCD: {section.due_date || "—"}
-          </div>
-          <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, minWidth: 140, boxSizing: "border-box" }}>
-            <img src={investigatorIcon} alt="" width={16} height={16} />
-            <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
-          </div>
+          {section.latest_report && (
+            <>
+              <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 160, boxSizing: "border-box" }}>
+                TCD: {section.due_date || "—"}
+              </div>
+              <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, minWidth: 140, boxSizing: "border-box" }}>
+                <img src={investigatorIcon} alt="" width={16} height={16} />
+                <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
+              </div>
+            </>
+          )}
           <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
-          <button
-            type="button"
-            onClick={() => navigate(`/records/${recordId}/task-critique`)}
-            style={{ background: "none", border: "none" }}
-            aria-label="Back to Task Critique History"
-          >
-            <img src={rowChevronIcon} alt="" width={24} height={24} />
-          </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -177,6 +190,7 @@ export function TaskCritiqueDetailPage() {
           {section.can_upload && (
             <FileDropzone
               disabled={busy}
+              loading={busy}
               label={section.upload_count === 0 ? "Drag & Drop or Choose file to upload" : "Drag & Drop or Choose an updated report to upload"}
               onFileSelected={handleUpload}
             />
@@ -205,7 +219,7 @@ export function TaskCritiqueDetailPage() {
                   </p>
                 )}
 
-                {report.recommendations.length > 0 && (
+                {!section.locked && report.recommendations.length > 0 && (
                   <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
                     {report.recommendations.map((rec) => {

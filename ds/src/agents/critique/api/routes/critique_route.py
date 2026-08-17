@@ -1,8 +1,10 @@
+import json
 import re
 import shutil
 import tempfile
 import asyncio
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, HTTPException, File, UploadFile, status
 from fastapi.responses import JSONResponse
@@ -14,6 +16,7 @@ from src.agents.critique.api.schemas import (
 from src.agents.critique.api.services.rci_report_extraction import extract_full_document_text
 from src.agents.critique.api.services.rci_critique_service import critique_in_batches
 from src.agents.critique.api.services.reformatter import reformat_to_investigation_plan_payload
+from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.api.services.llm_extraction import (
     convert_docx_to_pdf, extract_section_11, extract_section_12,
     extract_section_21, extract_section_22, merge_sections,
@@ -53,20 +56,63 @@ _RECURRENCE_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Fixed leading phrase a regenerated recommendation uses when a previously accepted item is
+# still not addressed by the current document (see rc_conclusion_system.txt/capa_system.txt).
+# Matches Task Critique's identical marker (ds/src/agents/critique/graph/nodes.py) for a
+# consistent investigator-facing wording across both features.
+UNADDRESSED_MARKER = "Still unaddressed from the previous review."
+_PREVIOUS_RECOMMENDATIONS_SENTINEL = "<<<PREVIOUS_RECOMMENDATIONS>>>"
+
+
+def _parse_previous_recommendations(raw: str) -> List[str]:
+    """previous_recommendations arrives as a JSON-encoded list of strings (see
+    backend/backend/routers/rc_capa_critique.py's _call_critique_endpoint). Best-effort: any
+    parse failure or wrong shape degrades to no previous recommendations rather than failing
+    the request."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return parsed if isinstance(parsed, list) and all(isinstance(r, str) for r in parsed) else []
+
+
+def _render_previous_recommendations(previous: List[str]) -> str:
+    return "\n".join(f"- {rec}" for rec in previous) if previous else "None."
+
+
+def _with_previous_recommendations(system_prompt: str, previous: List[str]) -> str:
+    """Fills in the PREVIOUSLY ACCEPTED RECOMMENDATIONS sentinel via a plain string replace
+    (not .format()) since these prompt files contain literal JSON braces in their own output
+    schema examples, which .format() would choke on."""
+    return system_prompt.replace(_PREVIOUS_RECOMMENDATIONS_SENTINEL, _render_previous_recommendations(previous))
+
+
+def _prioritize_and_cap(recommendations: List[str], limit: int = 5) -> List[str]:
+    """Still-unaddressed carried-forward recommendations take priority over new ones within the
+    cap — a code-side backstop in case the model doesn't fully honor the prompt's own ordering
+    instruction. Stable sort preserves relative order within each group."""
+    return sorted(recommendations, key=lambda r: not r.startswith(UNADDRESSED_MARKER))[:limit]
+
+
 def _suppress_recurrence_claims_without_citation(rc_result: RCConclusionCritiqueResponse) -> RCConclusionCritiqueResponse:
     """Drop any recommendation claiming a prior/recurring event was ignored unless it cites a
     concrete deviation/event reference. The prompt instructs the model not to raise this unless
     history genuinely revealed a prior event; this enforces that at the code layer for the mini
-    model, which sometimes asserts recurrence language without a real citation."""
-    rc_result.recommendations = [
+    model, which sometimes asserts recurrence language without a real citation. Carried-forward
+    unaddressed items are exempt — they were already vetted on a previous attempt."""
+    rc_result.recommendations = _prioritize_and_cap([
         rec for rec in rc_result.recommendations
-        if not (_RECURRENCE_CLAIM_RE.search(rec) and not _DEVIATION_REF_RE.search(rec))
-    ][:5]
+        if rec.startswith(UNADDRESSED_MARKER)
+        or not (_RECURRENCE_CLAIM_RE.search(rec) and not _DEVIATION_REF_RE.search(rec))
+    ])
     return rc_result
 
 def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueResponse:
-    """Hard cap at 5 recommendations in case the model over-generates despite the prompt limit."""
-    capa_result.recommendations = capa_result.recommendations[:5]
+    """Hard cap at 5 recommendations (still-unaddressed carried-forward ones first) in case the
+    model over-generates despite the prompt limit."""
+    capa_result.recommendations = _prioritize_and_cap(capa_result.recommendations)
     return capa_result
 
 
@@ -228,23 +274,37 @@ async def extract(file: UploadFile = File(...)) -> JSONResponse:
 )
 async def critique_rc_conclusion_and_capa(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
+    previous_rc_recommendations: str = "",
+    previous_capa_recommendations: str = "",
 ) -> RCIReportCritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         rc_result, capa_result = await asyncio.gather(
             llm_instance.get_structured_response(
-                system_prompt=rc_conclusion_system_prompt + "\n" + guard_rail_text,
+                system_prompt=_with_previous_recommendations(
+                    rc_conclusion_system_prompt, _parse_previous_recommendations(previous_rc_recommendations)
+                ) + "\n" + guard_rail_text,
                 user_prompt=user_prompt,
                 structure=RCConclusionCritiqueResponse,
             ),
             llm_instance.get_structured_response(
-                system_prompt=capa_system_prompt + "\n" + guard_rail_text,
+                system_prompt=_with_previous_recommendations(
+                    capa_system_prompt, _parse_previous_recommendations(previous_capa_recommendations)
+                ) + "\n" + guard_rail_text,
                 user_prompt=user_prompt,
                 structure=CAPACritiqueResponse,
             ),
@@ -272,17 +332,28 @@ async def critique_rc_conclusion_and_capa(
 )
 async def critique_rc_conclusion(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
+    previous_recommendations: str = "",
 ) -> RCConclusionCritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         result = await llm_instance.get_structured_response(
-            system_prompt=rc_conclusion_system_prompt + "\n" + guard_rail_text,
+            system_prompt=_with_previous_recommendations(
+                rc_conclusion_system_prompt, _parse_previous_recommendations(previous_recommendations)
+            ) + "\n" + guard_rail_text,
             user_prompt=user_prompt,
             structure=RCConclusionCritiqueResponse,
         )
@@ -305,17 +376,28 @@ async def critique_rc_conclusion(
 )
 async def critique_capa(
     event_type: str,
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
+    previous_recommendations: str = "",
 ) -> CAPACritiqueResponse:
     _require_docx(file)
     temp_path = None
     try:
         temp_path, full_doc_text = await _save_and_extract(file)
+        llm_instance = LLMClient()
+        await validate_document_relevance(
+            llm_instance,
+            problem_statement=problem_statement,
+            event_type=event_type,
+            document_text=full_doc_text,
+            document_label="task report",
+        )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
-        llm_instance = LLMClient()
         result = await llm_instance.get_structured_response(
-            system_prompt=capa_system_prompt + "\n" + guard_rail_text,
+            system_prompt=_with_previous_recommendations(
+                capa_system_prompt, _parse_previous_recommendations(previous_recommendations)
+            ) + "\n" + guard_rail_text,
             user_prompt=user_prompt,
             structure=CAPACritiqueResponse,
         )

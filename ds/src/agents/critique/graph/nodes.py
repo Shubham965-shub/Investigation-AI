@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -12,6 +13,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from markitdown import MarkItDown
 
+from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.graph.schemas import (
     AllTaskCritiquesResult,
     ExtractionResult,
@@ -23,11 +25,16 @@ from src.agents.critique.graph.schemas import (
 from src.agents.critique.graph.state import TaskReportCritiqueState
 from src.llm.client import LLMClient
 from src.prompt_registry.service import PromptRegistry
-from src.utils.deps import get_llm_client, get_prompt_registry
+from src.utils.deps import get_db_pool, get_llm_client, get_prompt_registry
 
 _markitdown = MarkItDown()
 
 logger = logging.getLogger(__name__)
+
+# Fixed leading phrase a regenerated recommendation uses when the previous attempt's accepted
+# item is still not addressed by the new report (see critique_task.yaml v6). Also the marker
+# critique_tasks' post-LLM cap looks for to prioritize these over brand-new recommendations.
+UNADDRESSED_MARKER = "Still unaddressed from the previous review."
 
 # ── Markitdown + inference-count extraction helpers ───────────────────────────
 
@@ -228,6 +235,22 @@ async def parse_document(state: TaskReportCritiqueState) -> Dict[str, Any]:
     }
 
 
+async def validate_relevance(state: TaskReportCritiqueState) -> Dict[str, Any]:
+    """Fail fast if the uploaded document doesn't genuinely pertain to the given
+    problem statement, before running the expensive extraction/critique LLM calls."""
+    llm: LLMClient = await get_llm_client()
+    document_text = "\n".join(p["text"] for p in state.raw_paragraphs)
+    await validate_document_relevance(
+        llm,
+        problem_statement=state.problem_statement,
+        event_type=state.event_type,
+        document_text=document_text,
+        document_label="investigation task report",
+        task_context=state.task_description,
+    )
+    return {}
+
+
 async def _extract_via_file_upload(
     state: TaskReportCritiqueState,
     llm: LLMClient,
@@ -325,6 +348,91 @@ async def extract_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     }
 
 
+def _parse_json_column(raw: Any) -> Any:
+    """asyncpg returns JSONB columns as text unless a codec is registered (none is, for this
+    pool) — normalize to the parsed value either way."""
+    if raw is None:
+        return None
+    return raw if not isinstance(raw, str) else json.loads(raw)
+
+
+async def fetch_previous_recommendations(state: TaskReportCritiqueState) -> Dict[str, Any]:
+    """Look up the previous attempt's recommendations for this (deviation_id, task_index) and
+    keep only the ones the investigator accepted, so critique_tasks can check whether this new
+    report actually addresses them.
+
+    deviation_id/task_index aren't sent by the backend yet (see
+    ds/src/agents/critique/GAPS.md) — until they are, this always returns an empty list, and the
+    rest of the graph behaves exactly as it did before this node existed.
+
+    Cross-references two tables because investigation_task_critique_recommendation_history never
+    gets a decision written into it (it's logged at generation time, before any decision is
+    made), while investigation_task_critique_reports' current row still holds the previous
+    attempt's final decisions — the backend calls this endpoint before it overwrites that row for
+    the new attempt. Both lists come from the same ordered recommendations list written in the
+    same backend call, so they're zipped by index.
+
+    Best-effort throughout: any DB error, missing row, or shape mismatch degrades to an empty
+    list rather than failing the critique request.
+    """
+    if state.deviation_id is None or state.task_index is None:
+        return {"previous_recommendations": []}
+
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            history_row = await conn.fetchrow(
+                """
+                SELECT recommendations FROM investigation_task_critique_recommendation_history
+                WHERE deviation_id = $1 AND task_index = $2
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                state.deviation_id,
+                state.task_index,
+            )
+            report_row = await conn.fetchrow(
+                """
+                SELECT recommendations FROM investigation_task_critique_reports
+                WHERE deviation_id = $1 AND task_index = $2
+                """,
+                state.deviation_id,
+                state.task_index,
+            )
+    except Exception:
+        logger.warning(
+            "fetch_previous_recommendations: DB lookup failed for deviation_id=%s task_index=%s",
+            state.deviation_id, state.task_index, exc_info=True,
+        )
+        return {"previous_recommendations": []}
+
+    if history_row is None or report_row is None:
+        return {"previous_recommendations": []}
+
+    history_recs = _parse_json_column(history_row["recommendations"])
+    report_recs = _parse_json_column(report_row["recommendations"])
+    if not isinstance(history_recs, list) or not isinstance(report_recs, list):
+        return {"previous_recommendations": []}
+    if len(history_recs) != len(report_recs):
+        logger.warning(
+            "fetch_previous_recommendations: history/report recommendation count mismatch "
+            "(%d vs %d) for deviation_id=%s task_index=%s — skipping carry-forward",
+            len(history_recs), len(report_recs), state.deviation_id, state.task_index,
+        )
+        return {"previous_recommendations": []}
+
+    accepted = [
+        description
+        for description, report_item in zip(history_recs, report_recs)
+        if isinstance(report_item, dict) and report_item.get("decision") == "accepted"
+    ]
+    logger.info(
+        "fetch_previous_recommendations: %d/%d previous recommendations were accepted for "
+        "deviation_id=%s task_index=%s",
+        len(accepted), len(report_recs), state.deviation_id, state.task_index,
+    )
+    return {"previous_recommendations": accepted}
+
+
 async def analyze_images(state: TaskReportCritiqueState) -> Dict[str, Any]:
     """Run vision analysis on each image concurrently via /v1/chat/completions."""
     if not state.image_context_map:
@@ -412,10 +520,17 @@ async def critique_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
             "visual_observations": _build_visual_obs_for_task(task, state.image_analyses),
         })
 
+    previous_recommendations_text = (
+        "\n".join(f"- {rec}" for rec in state.previous_recommendations)
+        if state.previous_recommendations
+        else "None."
+    )
+
     prompt = registry.get("task_report_critique/critique_task").format(
         problem_statement=state.report_metadata.get("problem_statement", ""),
         objective=state.report_metadata.get("objective", ""),
         tasks_json=json.dumps(tasks_with_visuals, ensure_ascii=False, indent=2),
+        previous_recommendations=previous_recommendations_text,
     )
 
     result: AllTaskCritiquesResult = await llm.get_structured_chat_response(
@@ -424,13 +539,29 @@ async def critique_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     )
 
     for critique in result.task_critiques:
-        critique.recommendations = critique.recommendations[:5]
+        critique.recommendations.sort(key=lambda r: not r.startswith(UNADDRESSED_MARKER))
 
+    # Cap is per REPORT, not per task: a single uploaded report can be split into several
+    # task_critiques entries (one per "Inference:" block found by extract_tasks), but only 5
+    # recommendations total should ever surface for the whole report — the prompt already
+    # instructs the model to budget across all tasks combined, this is just a code-side backstop
+    # in case it doesn't fully honor that. Still-unaddressed carried-forward items take priority,
+    # preserving each task's own carried-forward-first order via a stable sort.
+    tagged = [
+        (task_idx, rec)
+        for task_idx, critique in enumerate(result.task_critiques)
+        for rec in critique.recommendations
+    ]
+    tagged.sort(key=lambda pair: not pair[1].startswith(UNADDRESSED_MARKER))
+    kept_by_task: Dict[int, List[str]] = defaultdict(list)
+    for task_idx, rec in tagged[:5]:
+        kept_by_task[task_idx].append(rec)
+    for task_idx, critique in enumerate(result.task_critiques):
+        critique.recommendations = kept_by_task.get(task_idx, [])
 
     logger.info("critique_tasks: critiqued %d tasks", len(result.task_critiques))
     return {
         "task_critiques": [c.model_dump() for c in result.task_critiques],
-        "overall_report_summary": result.overall_report_summary,
     }
 
 
@@ -442,7 +573,6 @@ async def format_result(state: TaskReportCritiqueState) -> Dict[str, Any]:
         problem_statement=state.report_metadata.get("problem_statement", ""),
         objective=state.report_metadata.get("objective", ""),
         task_critiques=[TaskCritiqueDetail.model_validate(c) for c in state.task_critiques],
-        overall_report_summary=state.overall_report_summary,
         total_tasks_analyzed=len(state.task_critiques),
     )
     return {"final_result": final.model_dump()}

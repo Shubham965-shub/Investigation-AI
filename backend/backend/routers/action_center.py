@@ -118,6 +118,21 @@ async def get_action_center_summary(
     investigator: Optional[str] = Query(None),
     start_date_from: Optional[datetime.date] = Query(None, description="Only investigations opened on/after this date"),
     start_date_to: Optional[datetime.date] = Query(None, description="Only investigations opened on/before this date"),
+    criticality: Optional[str] = Query(
+        None,
+        description="'critical' or 'non_critical' (2026-08-14, per the user) — applies page-wide (stat "
+        "cards/chart/pending actions/investigations table alike), same as site/department/product/"
+        "investigator/date, unlike the table-only `status` filter above. 'non_critical' matches anything "
+        "not exactly dim_event.criticality = 'Critical' (including NULL), mirroring the existing "
+        "criticality != 'Critical' check already used for the status cards/pending actions below.",
+    ),
+    status: Optional[str] = Query(
+        None,
+        description="'open' (default, omitted, or any other value) or 'cancelled' — which set the "
+        "investigations list itself contains (2026-08-13, per the user: cancelled investigations "
+        "should no longer appear in the normal/default view at all, only behind an explicit toggle). "
+        "Stat cards/chart/pending actions are unaffected either way — they've always been open-only.",
+    ),
 ) -> ActionCenterSummary:
     rows = await fetch_open_investigations()
     cancelled_rows = await fetch_cancelled_investigations()
@@ -227,6 +242,10 @@ async def get_action_center_summary(
         scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["department"] == department]
     if product:
         scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["product"] == product]
+    if criticality == "critical":
+        scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["criticality"] == "Critical"]
+    elif criticality == "non_critical":
+        scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["criticality"] != "Critical"]
     if start_date_from is not None:
         scoped_for_investigator_options = [
             i for i in scoped_for_investigator_options if i["date_opened"] and i["date_opened"] >= start_date_from
@@ -262,6 +281,10 @@ async def get_action_center_summary(
             enriched = [i for i in enriched if not i["investigator"]]
         else:
             enriched = [i for i in enriched if i["investigator"] == investigator]
+    if criticality == "critical":
+        enriched = [i for i in enriched if i["criticality"] == "Critical"]
+    elif criticality == "non_critical":
+        enriched = [i for i in enriched if i["criticality"] != "Critical"]
     if start_date_from is not None:
         enriched = [i for i in enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:
@@ -281,6 +304,10 @@ async def get_action_center_summary(
             cancelled_enriched = [i for i in cancelled_enriched if not i["investigator"]]
         else:
             cancelled_enriched = [i for i in cancelled_enriched if i["investigator"] == investigator]
+    if criticality == "critical":
+        cancelled_enriched = [i for i in cancelled_enriched if i["criticality"] == "Critical"]
+    elif criticality == "non_critical":
+        cancelled_enriched = [i for i in cancelled_enriched if i["criticality"] != "Critical"]
     if start_date_from is not None:
         cancelled_enriched = [i for i in cancelled_enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:
@@ -444,50 +471,52 @@ async def get_action_center_summary(
         for label in chart_labels
     ]
 
-    investigations = [
-        InvestigationRow(
-            id=i["id"],
-            title=i["title"],
-            event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
-            investigator=i["investigator"],
-            start_date=_fmt_date(i["date_opened"]),
-            due_date=_fmt_date(i["due_date"]),
-            updated_at=_fmt_date(i["updated_at"]),
-            stage=i["stage"],
-            total_stages=len(MODULE_LABELS),
-            bucket=i["bucket"],
-            site=i["site"],
-            department=i["department"],
-            product=i["product"],
-            is_cancelled=i["is_cancelled"],
-        )
-        for i in enriched
-    ]
-
-    # Cancelled investigations always land after every open one — appending
-    # here (rather than merging into `enriched` above) is what keeps them
-    # off Total Investigations/stat pills/status cards/chart while still
-    # letting the frontend's client-side pagination put them on the last
-    # page(s) for free (it just slices this list in order).
-    investigations += [
-        InvestigationRow(
-            id=i["id"],
-            title=i["title"],
-            event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
-            investigator=i["investigator"],
-            start_date=_fmt_date(i["date_opened"]),
-            due_date=_fmt_date(i["due_date"]),
-            updated_at=_fmt_date(i["updated_at"]),
-            stage=0,
-            total_stages=len(MODULE_LABELS),
-            bucket=i["bucket"],
-            site=i["site"],
-            department=i["department"],
-            product=i["product"],
-            is_cancelled=True,
-        )
-        for i in cancelled_enriched
-    ]
+    # Only one of these two sets is ever returned as `investigations` — which
+    # one depends on the `status` param (2026-08-13, per the user: cancelled
+    # investigations must not appear in the normal/default view at all).
+    # Stat cards/chart/pending actions are computed from `enriched` alone
+    # above, regardless of `status`, so they stay open-only either way — the
+    # toggle only changes what the investigations table itself shows.
+    if status == "cancelled":
+        investigations = [
+            InvestigationRow(
+                id=i["id"],
+                title=i["title"],
+                event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
+                investigator=i["investigator"],
+                start_date=_fmt_date(i["date_opened"]),
+                due_date=_fmt_date(i["due_date"]),
+                updated_at=_fmt_date(i["updated_at"]),
+                stage=0,
+                total_stages=len(MODULE_LABELS),
+                bucket=i["bucket"],
+                site=i["site"],
+                department=i["department"],
+                product=i["product"],
+                is_cancelled=True,
+            )
+            for i in cancelled_enriched
+        ]
+    else:
+        investigations = [
+            InvestigationRow(
+                id=i["id"],
+                title=i["title"],
+                event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
+                investigator=i["investigator"],
+                start_date=_fmt_date(i["date_opened"]),
+                due_date=_fmt_date(i["due_date"]),
+                updated_at=_fmt_date(i["updated_at"]),
+                stage=i["stage"],
+                total_stages=len(MODULE_LABELS),
+                bucket=i["bucket"],
+                site=i["site"],
+                department=i["department"],
+                product=i["product"],
+                is_cancelled=i["is_cancelled"],
+            )
+            for i in enriched
+        ]
 
     return ActionCenterSummary(
         total_investigations=total,

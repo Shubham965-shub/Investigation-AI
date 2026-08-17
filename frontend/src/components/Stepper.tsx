@@ -8,8 +8,6 @@ export interface StepDef {
   path: string | null;
 }
 
-// Step 7 isn't implemented yet (see project memory: on hold) — path is
-// null so the stepper renders it but it isn't navigable.
 export const RECORD_STEPS: StepDef[] = [
   { key: "problem-statement", label: "Problem Statement", path: "problem-statement" },
   { key: "evidence-collection", label: "Evidence Collection", path: "evidence-collection" },
@@ -17,7 +15,7 @@ export const RECORD_STEPS: StepDef[] = [
   { key: "rci-plan", label: "RCI Plan Creation", path: "rci-plan" },
   { key: "task-critique", label: "Task Critique", path: "task-critique" },
   { key: "rc-capa-critique", label: "RC & CAPA Critique", path: "rc-capa-critique" },
-  { key: "rci-report", label: "RCI Report", path: null },
+  { key: "rci-report", label: "RCI Report", path: "rci-report" },
 ];
 
 function circleStyle(status: StepStatus): React.CSSProperties {

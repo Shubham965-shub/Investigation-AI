@@ -9,10 +9,12 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from backend.clients.ds_client import _raise_for_upstream_error, get_client
 from backend.db.critique_state import MAX_UPLOADS
 from backend.db.field_mapping import resolved_event_type
+from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
 from backend.db.task_critique_queries import (
     compute_section_state,
+    fetch_report_file_bytes,
     fetch_reports_by_task_index,
     insert_recommendation_history,
     save_critique,
@@ -28,11 +30,17 @@ from backend.schemas.task_critique import (
     TaskCritiqueSection,
 )
 from backend.services.rci_plan_extraction import extract_task_sections
+from backend.services.task_report_format import missing_task_report_markers
 
 logger = logging.getLogger(__name__)
 
 _NOT_FOUND_DETAIL = "No investigation found for this record"
 _TASK_NOT_FOUND_DETAIL = "No such task for this investigation"
+
+# Mirrors ds's UNADDRESSED_MARKER (ds/src/agents/critique/graph/nodes.py) so carried-forward
+# recommendations still sort first after this route re-flattens per-sub-task lists.
+_UNADDRESSED_MARKER = "Still unaddressed from the previous review."
+_MAX_RECOMMENDATIONS = 5
 
 router = APIRouter(prefix="/task-critique", tags=["Task Critique"])
 
@@ -52,10 +60,11 @@ async def _get_source_document(deviation_id: int, record_id: str) -> Tuple[Optio
 
 async def _score_task_report(
     event_type: str, filename: Optional[str], file_bytes: bytes, content_type: Optional[str]
-) -> Optional[int]:
+) -> "Tuple[Optional[int], List[Dict[str, Any]]]":
     """Scores the final (locked) report against DS's rubric-based /score/report
-    endpoint (out of 40 for task_report_execution) and returns that section's
-    percentage, rounded, for storage in task_score. Best-effort — a scoring
+    endpoint (out of 40 for task_report_execution) and returns
+    (percentage rounded for task_score, the full `info` breakdown table list —
+    see schemas/scoring.py — for score_breakdown). Best-effort — a scoring
     failure must not undo an upload that already succeeded and persisted."""
     client = get_client()
     try:
@@ -67,11 +76,13 @@ async def _score_task_report(
         response.raise_for_status()
     except httpx.HTTPError:
         logger.warning("Task report scoring failed for %s", filename, exc_info=True)
-        return None
-    task_report_execution = response.json().get("task_report_execution")
+        return None, []
+    data = response.json()
+    task_report_execution = data.get("task_report_execution")
+    info = data.get("info") or []
     if not task_report_execution:
-        return None
-    return round(task_report_execution["percentage"])
+        return None, info
+    return round(task_report_execution["percentage"]), info
 
 
 def _find_task(sections: List[Dict[str, Any]], task_index: int) -> Dict[str, Any]:
@@ -79,6 +90,18 @@ def _find_task(sections: List[Dict[str, Any]], task_index: int) -> Dict[str, Any
         if section["task_index"] == task_index:
             return section
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_TASK_NOT_FOUND_DETAIL)
+
+
+def _describe_task(section: Dict[str, Any]) -> str:
+    """Describes what this specific RCI-plan task/section is investigating (e.g.
+    "Analyst Verification", "Instrument Calibration Check") so DS can check the
+    uploaded report actually addresses this task, not just the overall investigation."""
+    parts = [f"Task: {section['title']}"]
+    if section.get("correlation"):
+        parts.append(f"Correlation: {section['correlation']}")
+    if section.get("tasks"):
+        parts.append("Checklist items:\n" + "\n".join(f"- {t}" for t in section["tasks"]))
+    return "\n".join(parts)
 
 
 def _build_section_response(section: Dict[str, Any]) -> TaskCritiqueSection:
@@ -163,7 +186,7 @@ async def upload_source_document(record_id: str, file: UploadFile) -> TaskCritiq
 
 @router.post("/{record_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
 async def upload_task_report(record_id: str, task_index: int, file: UploadFile) -> TaskCritiqueSection:
-    deviation_id, _row, event_type = await _deviation_id_and_row(record_id)
+    deviation_id, row, event_type = await _deviation_id_and_row(record_id)
     docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
     if docx_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No RCI Plan document found for this investigation yet")
@@ -182,13 +205,24 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     is_gospel = state["next_upload_is_final"]
     file_bytes = await file.read()
 
+    missing_markers = missing_task_report_markers(file_bytes)
+    if missing_markers:
+        # Rejected outright — no attempt consumed, no critique call (per the
+        # user, 2026-08-12). Real completed reports never literally say "Title
+        # of the task" (that's a blank-template-only label), so it's excluded
+        # from the required markers — see task_report_format.py.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This document doesn't match the required task report format — please upload the correct report.",
+        )
+
     if is_gospel:
         report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
         # A gospel report is final the moment it's uploaded — no critique, no
         # further review possible (per the user, 2026-08-07: score whichever
         # report ends up being the task's final one, gospel or 3rd attempt).
-        task_score = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score)
+        task_score, score_breakdown = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_task_score(report_id, task_score, score_breakdown)
         sections = await _build_sections(deviation_id, docx_bytes)
         return _build_section_response(_find_task(sections, task_index))
 
@@ -200,13 +234,34 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # fixed 2026-08-06 by moving that one to its own path,
     # /critique/critique-rc-conclusion-and-capa (see routers/rc_capa_critique.py,
     # which already used the two even-more-specific split endpoints and so
-    # was never affected by this collision). No event_type param — this
-    # endpoint only takes the file. Called BEFORE persisting anything, so a
-    # transient DS failure doesn't burn one of the 3 real upload attempts.
+    # was never affected by this collision). Called BEFORE persisting anything,
+    # so a transient DS failure doesn't burn one of the 3 real upload attempts.
+    # problem_statement + task_description let DS reject an irrelevant/mismatched
+    # upload with a 422 before running any critique LLM calls — task_description
+    # catches the narrower case of the right investigation's report being uploaded
+    # to the wrong task/section (see ds's relevance_validation.py).
+    # deviation_id + task_index (2026-08-14, per the user) let DS look up this
+    # task's previous attempt and check whether its accepted-but-still-pending
+    # recommendations are actually addressed by this upload, regenerating any
+    # that aren't (see ds/src/agents/critique/GAPS.md). Sent as form fields, not
+    # query params like the three above — DS declares them via Form(...), not as
+    # plain scalars, since they arrive alongside the multipart file upload.
+    problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+    task_description = _describe_task(section)
+
     client = get_client()
     try:
         response = await client.post(
             "/critique/analyse-task-report",
+            params={
+                "problem_statement": problem_statement,
+                "event_type": event_type,
+                "task_description": task_description,
+            },
+            data={
+                "deviation_id": str(deviation_id),
+                "task_index": str(task_index),
+            },
             files={"file": (file.filename, file_bytes, file.content_type)},
         )
         response.raise_for_status()
@@ -219,21 +274,42 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         ) from exc
 
     data = response.json()
-    # TaskReportCritiqueResponse (v4): {problem_statement, objective,
+    # TaskReportCritiqueResponse (v8): {problem_statement, objective,
     # task_critiques: [{task_number, title, recommendations: [str], strengths}],
     # overall_report_summary, total_tasks_analyzed} — dimensions are internal-only
     # on the DS side now; recommendations is already a flat, ready-to-show list.
-    # This task list only ever has one task (upload is per-task), but the
-    # response is still shaped as a list, so flatten defensively.
-    summary: Optional[str] = data.get("overall_report_summary")
+    if data.get("total_tasks_analyzed", 0) == 0:
+        # ds found no real tasks to critique at all — the local format check
+        # (task_report_format.py) already blocks most wrong documents, but a
+        # file can pass that (has the right section labels present somewhere)
+        # and still not be a genuine, parseable task report. Same "reject
+        # outright" rule (2026-08-13, per the user): no attempt consumed, no
+        # persistence — this is the deeper check for cases the local one
+        # can't catch (e.g. the format check alone can't parse actual task
+        # content the way ds's own extraction does).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This document doesn't match the required task report format — please upload the correct report.",
+        )
+
+    # A single uploaded report can cover several checklist items in this section (one
+    # "Inference:" block per item), so ds returns one task_critiques entry per block —
+    # each already capped at 5 recommendations on its own. Flattening them here can still
+    # exceed 5 combined, so re-cap after flattening, keeping still-unaddressed
+    # carried-forward items first.
+    # The displayed "Summary Of the Report" is positive-only (what's working well), built
+    # from every task's `strengths` — gaps are already surfaced separately via
+    # `recommendations`, so DS no longer generates a gap-focused summary at all.
     strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
-    if strengths and summary:
-        summary = f"{summary}\n\nStrengths: {' '.join(strengths)}"
-    recommendations: List[str] = [
+    summary: Optional[str] = " ".join(strengths) if strengths else None
+    flattened_recommendations: List[str] = [
         rec
         for task in data.get("task_critiques", [])
         for rec in task.get("recommendations", [])
     ]
+    recommendations: List[str] = sorted(
+        flattened_recommendations, key=lambda r: not r.startswith(_UNADDRESSED_MARKER)
+    )[:_MAX_RECOMMENDATIONS]
 
     report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
     await save_critique(report_id, summary, task_score=None, recommendations=recommendations)
@@ -243,8 +319,8 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # decided (see critique_state.compute_upload_state) — score it now, since
     # no further upload will ever supersede it.
     if attempt_number >= MAX_UPLOADS:
-        task_score = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score)
+        task_score, score_breakdown = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_task_score(report_id, task_score, score_breakdown)
 
     sections = await _build_sections(deviation_id, docx_bytes)
     return _build_section_response(_find_task(sections, task_index))
@@ -260,7 +336,7 @@ async def decide_recommendation(
     if request.decision == "rejected" and not request.reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required to reject a recommendation")
 
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    deviation_id, _row, event_type = await _deviation_id_and_row(record_id)
     docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
     if docx_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No RCI Plan document found for this investigation yet")
@@ -279,4 +355,18 @@ async def decide_recommendation(
     await set_recommendation_decision(deviation_id, task_index, recommendation_id, request.decision, request.reason)
 
     sections = await _build_sections(deviation_id, docx_bytes)
-    return _build_section_response(_find_task(sections, task_index))
+    section = _find_task(sections, task_index)
+    new_state = compute_section_state(section["report"])
+    if new_state["status"] == "complete" and new_state["latest"]["task_score"] is None:
+        # Rejecting every recommendation just locked this report immediately
+        # (see critique_state.compute_upload_state) rather than waiting on a
+        # further gospel upload — score it now, the same trigger a gospel/
+        # 3rd-attempt upload already gets (2026-08-14, per the user).
+        file_bytes = await fetch_report_file_bytes(new_state["latest"]["id"])
+        if file_bytes is not None:
+            task_score, score_breakdown = await _score_task_report(event_type, new_state["latest"]["file_name"], file_bytes, None)
+            await set_task_score(new_state["latest"]["id"], task_score, score_breakdown)
+            sections = await _build_sections(deviation_id, docx_bytes)
+            section = _find_task(sections, task_index)
+
+    return _build_section_response(section)

@@ -5,7 +5,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from typing import Optional
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from src.agents.critique.graph.graph import task_report_critique_graph
 from src.agents.critique.graph.schemas import TaskReportCritiqueResponse
@@ -27,7 +29,23 @@ router = APIRouter(prefix="/critique", tags=["critique"])
     ),
 )
 async def analyse_task_report(
+    problem_statement: str,
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
+    event_type: str = "",
+    task_description: str = "",
+    deviation_id: Optional[int] = Form(
+        None,
+        description=(
+            "Deviation this upload belongs to. Optional and unused today — once the backend "
+            "starts sending it (together with task_index), DS can look up the previous attempt's "
+            "accepted-but-still-unaddressed recommendations and check them against this report. "
+            "See ds/src/agents/critique/GAPS.md."
+        ),
+    ),
+    task_index: Optional[int] = Form(
+        None,
+        description="0-based task position within the RCI Plan this report is for. See deviation_id.",
+    ),
 ) -> TaskReportCritiqueResponse:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix != ".docx":
@@ -42,7 +60,14 @@ async def analyse_task_report(
             shutil.copyfileobj(file.file, tmp)
             temp_path = Path(tmp.name)
 
-        initial_state = TaskReportCritiqueState(file_path=str(temp_path))
+        initial_state = TaskReportCritiqueState(
+            file_path=str(temp_path),
+            problem_statement=problem_statement,
+            event_type=event_type,
+            task_description=task_description,
+            deviation_id=deviation_id,
+            task_index=task_index,
+        )
         final_state = await task_report_critique_graph.ainvoke(initial_state)
 
         result = final_state.get("final_result")
