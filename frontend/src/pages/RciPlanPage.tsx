@@ -266,7 +266,14 @@ export function RciPlanPage() {
     URL.revokeObjectURL(url);
   }
 
+  // Every task needs both an investigator and a TCD before the plan can be
+  // pushed to Trackwise / proceed to Task Critique (2026-08-16, per the
+  // user) — checked across every section, not just the ones with real
+  // checklist items, since the assignee/TCD fields are always shown.
+  const missingAssignments = (sections ?? []).some((s) => !s.assignee || !s.due_date);
+
   async function handleAcceptAndPush() {
+    if (missingAssignments) return;
     setShowConfirm(false);
     setExportError(null);
     try {
@@ -521,9 +528,26 @@ export function RciPlanPage() {
       </div>
 
       {exportError && <p className="error-banner">{exportError}</p>}
+      {missingAssignments && (
+        <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-warning-text)" }}>
+          Every task needs an Investigator and a TCD (due date) assigned before the RCI Plan can be pushed to Trackwise.
+        </p>
+      )}
 
       <div className="footer-actions">
-        <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10 }} onClick={() => setShowConfirm(true)}>
+        <button
+          type="button"
+          className="btn-primary"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            opacity: missingAssignments ? 0.4 : 1,
+            cursor: missingAssignments ? "default" : "pointer",
+          }}
+          disabled={missingAssignments}
+          onClick={() => setShowConfirm(true)}
+        >
           <img src={exportIcon} alt="" width={16} height={16} />
           {pushed ? "Pushed — downloading…" : "Accept and Push to TW"}
         </button>

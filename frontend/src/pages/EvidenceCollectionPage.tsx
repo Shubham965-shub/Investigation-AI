@@ -163,11 +163,17 @@ export function EvidenceCollectionPage() {
 
   function handleAgreeAndCopy() {
     setShowConfirm(false);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      navigate(`/records/${recordId}/interview-questionnaire`);
-    }, 1500);
+    // Only the agreed-upon (checked) items — an unchecked one was explicitly
+    // deselected as not applicable, so it shouldn't be copied out as
+    // evidence to collect (2026-08-16, per the user).
+    const list = (items ?? []).filter((i) => i.checked).map((i) => `- ${i.description}`).join("\n");
+    navigator.clipboard.writeText(list).then(() => {
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        navigate(`/records/${recordId}/interview-questionnaire`);
+      }, 1500);
+    });
   }
 
   return (
@@ -181,7 +187,7 @@ export function EvidenceCollectionPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card-header">
-          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidence List</p>
+          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidence To Be Collected</p>
           <div style={{ display: "flex", gap: 4, background: "var(--color-open-bg)", padding: 4, borderRadius: 10 }}>
             <button
               type="button"

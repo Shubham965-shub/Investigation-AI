@@ -160,11 +160,17 @@ export function InterviewQuestionnairePage() {
 
   function handleAgreeAndCopy() {
     setShowConfirm(false);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      navigate(`/records/${recordId}/rci-plan`);
-    }, 1500);
+    // Only the agreed-upon (checked) items — an unchecked one was explicitly
+    // deselected as not applicable, so it shouldn't be copied out as a
+    // question to ask (2026-08-16, per the user).
+    const list = (items ?? []).filter((i) => i.checked).map((i) => `- ${i.description}`).join("\n");
+    navigator.clipboard.writeText(list).then(() => {
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        navigate(`/records/${recordId}/rci-plan`);
+      }, 1500);
+    });
   }
 
   return (
