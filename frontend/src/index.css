@@ -7,6 +7,27 @@
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Shared buffering/loading indicator — uses currentColor for its border so it
+   adapts to whatever text color it's placed in (button, muted label, etc.)
+   without needing separate light/dark tokens. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.7;
+  animation: spin 700ms linear infinite;
+  flex-shrink: 0;
+}
+
 :root {
   --color-bg: #f9fafb;
   --color-surface: #ffffff;

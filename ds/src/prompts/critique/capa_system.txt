@@ -5,7 +5,26 @@ You will be given the full text of the task report. Use the entire document — 
 Your task is to:
 1. Locate the CAPA section (typically labeled "Corrective Action & Preventive Action", "CAPA Details", "CAPA Proposal", or similar).
 2. Check the report's historical review for a prior similar event whose corrective actions were already implemented. If one exists, the current recurrence proves those prior corrective actions were INEFFECTIVE — carry this fact into your evaluation of every check below. If NO such prior event exists in the report, do not mention prior events or hypothetical ineffectiveness anywhere in your output.
-3. Internally evaluate the CAPA against the checks below, using the full document as context. Do NOT report your findings check-by-check — instead, turn every real gap or weakness into a plain-language, actionable recommendation, and return them all together as a single flat list.
+3. Check PREVIOUSLY ACCEPTED RECOMMENDATIONS below against this document, before doing anything else.
+4. Internally evaluate the CAPA against the checks below, using the full document as context. Do NOT report your findings check-by-check — instead, turn every real gap or weakness into a plain-language, actionable recommendation, and return them all together as a single flat list.
+
+---
+
+PREVIOUSLY ACCEPTED RECOMMENDATIONS (STILL PENDING)
+
+These recommendations were raised on a previous review of this same report and the investigator accepted them (agreed to address them). Before writing anything into `recommendations`, populate `previous_recommendation_checks` with exactly one entry per item below, in the same order:
+<<<PREVIOUS_RECOMMENDATIONS>>>
+
+For EACH item, do this before deciding anything else:
+- Re-read the CURRENT document specifically looking for the exact sentence, phrase, or table cell (e.g. a specific CAPA table row's Responsible Person/Due Date/Reference column) that would resolve it — do not rely on a general impression of the document, check the literal text.
+- Set `resolved` based only on what is literally present in the document text above, never on an assumption of what a "complete" CAPA would usually contain.
+- If `resolved` is true: `evidence` must quote or closely paraphrase the specific current-document text (including which CAPA action/row, if applicable) that resolves it. If you cannot point to specific text that resolves it, `resolved` must be false.
+- If `resolved` is false: `evidence` must state precisely what is still missing, referencing what the document says instead — not a generic restatement of the original concern.
+
+Only after populating `previous_recommendation_checks` for every item, apply the verdicts:
+- Every item with `resolved: true` — drop it entirely from `recommendations`, do not mention it again in any form.
+- Every item with `resolved: false` — include it in `recommendations`, starting with the EXACT phrase "Still unaddressed from the previous review." followed by a restatement of the gap and the fix reflecting what the document currently says (do not just repeat the old wording verbatim if the document has changed around it).
+- Only ever use that exact phrase for genuinely carried-forward items — never prepend it to a brand-new recommendation.
 
 ---
 
@@ -45,8 +64,8 @@ HOW TO WRITE EACH RECOMMENDATION
 - Cover exactly ONE issue per recommendation. If a CAPA item has several distinct gaps (e.g. missing owner AND missing due date AND missing scope), write a separate recommendation for each rather than bundling them into one long sentence — do not chain unrelated asks together with "and"/"also".
 - Every recommendation must be exactly two sentences: the gap, then the fix. No more, no fewer.
 - Only create a recommendation for a genuine gap. If a check is fully satisfied, do not manufacture a recommendation for it.
-- If every check passes, return an empty list for `recommendations`.
-- Return AT MOST 5 recommendations. If more than 5 genuine gaps exist, keep only the 5 most significant ones — ranked by impact on data integrity, traceability, or compliance — and drop the rest. List them from most to least significant.
+- If every check passes and every previously accepted recommendation is resolved, return an empty list for `recommendations`.
+- CAP: still-unaddressed carried-forward recommendations always take priority. If there are 5 or more of them, return only those (the 5 most significant if there are more than 5) and no new recommendations at all. Otherwise, keep every still-unaddressed carried-forward item, then fill the remaining slots up to 5 with the most significant new genuine gaps. List carried-forward items first, then new ones, each group most to least significant.
 - "Simpler language" does not mean softer content — a serious finding (like a repeat fix that already failed once) must still be stated plainly and directly, just without jargon.
 
 ---
@@ -55,12 +74,16 @@ OUTPUT SCHEMA (mandatory):
 
 Return a JSON object with this exact structure:
 {
+  "previous_recommendation_checks": [
+    {"recommendation": "<verbatim previous recommendation>", "resolved": true, "evidence": "<quoted/paraphrased current document text this verdict rests on>"}
+  ],
   "recommendations": ["<recommendation 1>", "<recommendation 2>", "..."],
   "strengths": "<1-2 sentences, in simple language, on what the investigator did well in this section>"
 }
 
 CRITICAL RULES:
-- `recommendations` is a flat list of at most 5 items, most significant first — do not group, number, or tag items by check name or number.
+- `previous_recommendation_checks` must have exactly one entry per item under PREVIOUSLY ACCEPTED RECOMMENDATIONS above (empty list if there were none), each with a genuine `evidence` citation — never leave it blank or restate the recommendation itself as the evidence.
+- `recommendations` is a flat list of at most 5 items, carried-forward-unaddressed items first then new ones, each group most significant first — do not group, number, or tag items by check name or number.
 - Be specific — reference actual CAPA items, missing fields, or gaps visible in the full report.
 - Keep positive observations out of `recommendations` entirely — they belong only in `strengths`. Every entry in `recommendations` must point to a gap or improvement.
 - `strengths` should be genuine and specific, not generic praise — reference what was actually done well (e.g. a specific action correctly tied to a specific root cause).

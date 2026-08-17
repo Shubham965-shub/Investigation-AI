@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import logo from "../assets/icons/logo.png";
 import athenaLogo from "../assets/icons/athena-logo.svg";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
@@ -11,10 +11,18 @@ import { usePanelState } from "./PanelStateContext";
 import { InvestigationStatusInfo } from "./InvestigationStatusInfo";
 import { AppFeedbackButton } from "./AppFeedbackButton";
 
+// Temporary demo control (2026-08-14, per the user) — the real investigator
+// with the most currently open investigations (excluding unassigned rows),
+// found via a one-off live-DB query: 19 open investigations, next-highest
+// was 14. Hardcoded rather than fetched, since this dropdown is meant to be
+// removed once the demo need has passed.
+const DEMO_VIEW_AS_INVESTIGATOR = "Veena N Chavan";
+
 export function AppHeader() {
   const { toggleTheme } = useTheme();
-  const { username, logout } = useAuth();
+  const { username, logout, viewAsInvestigator, setViewAsInvestigator } = useAuth();
   const { isPanelOpen } = usePanelState();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   // Action Center-only — per the user (2026-07-31), this explains that
@@ -141,7 +149,40 @@ export function AppHeader() {
                 <div>
                   <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Signed in as</p>
                   <p style={{ margin: 0, fontWeight: 700, color: "var(--color-text)" }}>{username}</p>
+                  {viewAsInvestigator && (
+                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-primary)" }}>
+                      Viewing dashboard as {viewAsInvestigator}
+                    </p>
+                  )}
                 </div>
+
+                <div style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 8 }}>
+                  <label style={{ display: "block", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", marginBottom: 4 }}>
+                    View dashboard as (demo)
+                  </label>
+                  <select
+                    value={viewAsInvestigator ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value || null;
+                      setViewAsInvestigator(value);
+                      setMenuOpen(false);
+                      if (value) navigate("/");
+                    }}
+                    style={{
+                      width: "100%",
+                      border: "1px solid var(--color-card-border)",
+                      borderRadius: "var(--radius-btn)",
+                      padding: "6px 8px",
+                      fontSize: "var(--font-size-sm)",
+                      background: "var(--color-surface)",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    <option value="">— My account —</option>
+                    <option value={DEMO_VIEW_AS_INVESTIGATOR}>{DEMO_VIEW_AS_INVESTIGATOR} (most open investigations)</option>
+                  </select>
+                </div>
+
                 <button
                   type="button"
                   onClick={logout}

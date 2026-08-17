@@ -10,6 +10,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
+from backend.schemas.scoring import ScoreBreakdownTable
+
 
 class TaskCritiqueRecommendation(BaseModel):
     id: int
@@ -28,6 +30,14 @@ class TaskCritiqueReport(BaseModel):
     # never critiqued at all).
     summary: Optional[str] = None
     task_score: Optional[int] = None
+    # Full per-checkpoint breakdown, set alongside task_score — see
+    # schemas/scoring.py.
+    score_breakdown: List[ScoreBreakdownTable] = []
+    # True when ds's critique came back degenerate (no real tasks found to
+    # review) — see generated_content.sql's table comment. Only ever true for
+    # reports uploaded before the pre-upload format/degenerate-result checks
+    # existed; new uploads that would trigger this are rejected outright.
+    critique_failed: bool = False
     uploaded_at: datetime.datetime
     recommendations: List[TaskCritiqueRecommendation] = []
 

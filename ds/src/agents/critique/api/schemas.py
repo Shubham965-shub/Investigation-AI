@@ -94,6 +94,20 @@ class QuestionnaireResponse(BaseModel):
     question: List[str]
 
 
+# ---------- Previously accepted recommendation carry-forward ----------
+
+class PreviousRecommendationCheck(BaseModel):
+    """Forces an explicit, evidence-grounded verdict per previously accepted recommendation
+    before the model writes the final `recommendations` list (2026-08-14, per the user —
+    a bundled single-pass judgment on 'is this specific prior concern resolved?' proved
+    imprecise in live testing; requiring a cited quote per item, generated before
+    `recommendations` in field order, is the cheap first fix to try before reaching for a
+    stronger model or a separate per-item verification call)."""
+    recommendation: str              # the previous recommendation being checked, verbatim
+    resolved: bool                   # true only if the CURRENT document genuinely resolves it
+    evidence: str                    # quote/reference to the specific current-document text the verdict rests on
+
+
 # ---------- RC Conclusion Critique ----------
 
 class RCConclusionCritiqueRequest(BaseModel):
@@ -106,6 +120,9 @@ class RCConclusionCritiqueRequest(BaseModel):
 
 class RCConclusionCritiqueResponse(BaseModel):
     rc_conclusion_text: str
+    # Declared before `recommendations` so structured-output generation reasons through each
+    # previously accepted item, with cited evidence, before writing the final list.
+    previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
     strengths: str                  # 1-2 sentences on what was done well
 
@@ -128,6 +145,7 @@ class CAPACritiqueRequest(BaseModel):
 
 
 class CAPACritiqueResponse(BaseModel):
+    previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
     strengths: str                  # 1-2 sentences on what was done well
 

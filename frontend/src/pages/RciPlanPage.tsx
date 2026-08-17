@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   exportRciPlanDocx,
   generateRciPlan,
+  getAllInvestigators,
   getProblemStatementRecord,
   getRciPlanRecord,
   updateRciPlanSections,
@@ -60,6 +61,7 @@ export function RciPlanPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushed, setPushed] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [investigators, setInvestigators] = useState<string[]>([]);
 
   // Everything comes from the DB — no localStorage. RCI Plan depends on the
   // Problem Statement record existing (fetched here directly rather than
@@ -74,12 +76,14 @@ export function RciPlanPage() {
     setDbError(null);
     (async () => {
       try {
-        const [psRecord, rciRecord] = await Promise.all([
+        const [psRecord, rciRecord, investigatorNames] = await Promise.all([
           getProblemStatementRecord(recordId),
           getRciPlanRecord(recordId),
+          getAllInvestigators(),
         ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
+        setInvestigators(investigatorNames);
         if (rciRecord) {
           setEventType(rciRecord.event_type);
           setTrackwiseFields(rciRecord.trackwise_fields);
@@ -198,7 +202,7 @@ export function RciPlanPage() {
     }, 600);
   }
 
-  function setSectionAssignee(index: number, assignee: string) {
+  function setSectionAssignee(index: number, assignee: string | null) {
     if (!sections) return;
     const newSections = sections.map((s, i) => (i === index ? { ...s, assignee } : s));
     setSections(newSections);
@@ -399,14 +403,22 @@ export function RciPlanPage() {
                   {lockedForEditing ? (
                     <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
                   ) : (
-                    <input
-                      type="text"
-                      placeholder="Unassigned"
+                    <select
                       value={section.assignee ?? ""}
-                      onChange={(e) => setSectionAssignee(index, e.target.value)}
+                      onChange={(e) => setSectionAssignee(index, e.target.value || null)}
                       onClick={(e) => e.stopPropagation()}
                       style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", border: "none", background: "none", flex: 1, width: "100%", minWidth: 0, padding: "6px 8px", boxSizing: "border-box" }}
-                    />
+                    >
+                      <option value="">Unassigned</option>
+                      {section.assignee && !investigators.includes(section.assignee) && (
+                        <option value={section.assignee}>{section.assignee}</option>
+                      )}
+                      {investigators.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
                   )}
                 </div>
                 <button

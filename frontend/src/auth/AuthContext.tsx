@@ -7,6 +7,12 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  // Temporary demo control (2026-08-14, per the user) — lets the account menu
+  // simulate "what would the dashboard look like if this investigator were
+  // logged in" by driving Action Center's investigator filter, without any
+  // real re-authentication. Not persisted to localStorage — resets on reload.
+  viewAsInvestigator: string | null;
+  setViewAsInvestigator: (investigator: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -28,10 +34,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(
     () => localStorage.getItem("auth_token")
   );
+  const [viewAsInvestigator, setViewAsInvestigator] = useState<string | null>(null);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       username,
+      viewAsInvestigator,
+      setViewAsInvestigator,
       // A cached username alone isn't enough — the token itself may have
       // expired (or be an old opaque placeholder from before real JWTs)
       // since it was last set, so don't show the user as logged in based on
@@ -51,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUsername(null);
       },
     }),
-    [username, token]
+    [username, token, viewAsInvestigator]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

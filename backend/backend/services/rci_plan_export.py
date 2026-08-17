@@ -111,7 +111,13 @@ def build_rci_plan_docx(
         or next((s.assignee for s in sections if s.assignee), "")
     )
     _set_cell_text(value_row.cells[0], record_id)
-    _set_cell_text(value_row.cells[1], trackwise_fields.get("RCI Number") or "")
+    rci_number = trackwise_fields.get("RCI Number")
+    # dim_rci.rci_key (the actual Trackwise RCI ID — see db/queries.py) is an
+    # integer column, unlike every other Trackwise field here which is
+    # already text — stringify explicitly, since python-docx's cell.text
+    # setter requires a str (2026-08-14, per the user: confirmed rci_key,
+    # not dim_rci.reference_number, is the real RCI number to fill in here).
+    _set_cell_text(value_row.cells[1], str(rci_number) if rci_number is not None else "")
     _set_cell_text(value_row.cells[2], rci_owner or "")
     _set_cell_text(value_row.cells[3], datetime.date.today().strftime("%d-%b-%Y"))
     # Row 3 intentionally left blank — manual entry, not auto-filled.

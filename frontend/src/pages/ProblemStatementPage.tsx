@@ -11,6 +11,7 @@ import { generateProblemStatement, getProblemStatementRecord } from "../api/dash
 import { ApiError } from "../api/client";
 import { RecordDetailsModal } from "../components/RecordDetailsModal";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
 import copyIcon from "../assets/icons/copy-icon.svg";
 import chevronEntry from "../assets/icons/chevron-entry.svg";
 import chevronA from "../assets/icons/chevron-a.svg";
@@ -157,7 +158,7 @@ export function ProblemStatementPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="card">
           <div className="card-header">
-            <p className="card-title">Problem Statement</p>
+            <p className="card-title">Problem Statement <ProblemStatementGuidelines /></p>
             <button type="button" className="btn-outline" onClick={handleCopy}>
               <img src={copyIcon} alt="" width={18} height={18} />
               {copied ? "Copied" : "Copy"}

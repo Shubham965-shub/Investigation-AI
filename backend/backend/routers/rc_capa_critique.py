@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -41,11 +42,16 @@ async def _call_critique_endpoint(
     filename: str | None,
     file_bytes: bytes,
     content_type: str | None,
+    previous_recommendations: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     try:
         response = await client.post(
             path,
-            params={"event_type": event_type, "problem_statement": problem_statement},
+            params={
+                "event_type": event_type,
+                "problem_statement": problem_statement,
+                "previous_recommendations": json.dumps(previous_recommendations or []),
+            },
             files={"file": (filename, file_bytes, content_type)},
         )
         response.raise_for_status()
@@ -77,15 +83,16 @@ def _section_percentage(sections: Dict[str, Any], *keys: str) -> "int | None":
 
 async def _score_rc_capa_report(
     event_type: str, filename: str | None, file_bytes: bytes, content_type: str | None
-) -> "tuple[int | None, int | None, int | None]":
+) -> "tuple[int | None, int | None, int | None, list[dict]]":
     """Scores the final (locked) report against DS's rubric-based /score/report
-    endpoint and returns (rc_score, capa_score, total_score) — rc_score
-    combines the 'rc' and 'impact' rubric sections (matching this module's
-    own "RC Impact Assessment Critique" category, which already bundles the
-    two together everywhere else); capa_score is the 'capa' section alone;
-    total_score combines all three (2026-08-07, per the user: the underlying
-    raw marks added together, divided by their combined max — not a naive
-    average of rc_score and capa_score). Column split matches
+    endpoint and returns (rc_score, capa_score, total_score, the full `info`
+    breakdown table list — see schemas/scoring.py — for score_breakdown) —
+    rc_score combines the 'rc' and 'impact' rubric sections (matching this
+    module's own "RC Impact Assessment Critique" category, which already
+    bundles the two together everywhere else); capa_score is the 'capa'
+    section alone; total_score combines all three (2026-08-07, per the user:
+    the underlying raw marks added together, divided by their combined max —
+    not a naive average of rc_score and capa_score). Column split matches
     investigation_rc_capa_reports as already created against the live DB
     (2026-08-07). Best-effort, same as routers/task_critique.py's
     _score_task_report — a scoring failure must not undo an upload that
@@ -100,12 +107,14 @@ async def _score_rc_capa_report(
         response.raise_for_status()
     except httpx.HTTPError:
         logger.warning("RC & CAPA report scoring failed for %s", filename, exc_info=True)
-        return None, None, None
-    sections = response.json().get("sections") or {}
+        return None, None, None, []
+    data = response.json()
+    sections = data.get("sections") or {}
     rc_score = _section_percentage(sections, "rc", "impact")
     capa_score = _section_percentage(sections, "capa")
     total_score = _section_percentage(sections, "rc", "impact", "capa")
-    return rc_score, capa_score, total_score
+    info = data.get("info") or []
+    return rc_score, capa_score, total_score, info
 
 
 def _find_recommendation(reports: List[Dict[str, Any]], recommendation_id: int) -> bool:
@@ -176,8 +185,8 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
         # A gospel report is final the moment it's uploaded — score it now
         # (2026-08-07, per the user), same trigger as Task Critique's.
-        rc_score, capa_score, total_score = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score)
+        rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
         return await _build_state(record_id, deviation_id)
 
     # Real DS endpoints (per the user, 2026-08-06: module 6/RC & CAPA Critique
@@ -191,10 +200,31 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     # 422 before running any critique LLM calls (see ds's relevance_validation.py).
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
 
+    # Carry forward the previous attempt's accepted-but-still-pending recommendations (per
+    # category) so DS can check whether this new upload actually addresses them (2026-08-13, per
+    # the user — same behavior as Task Critique's carry-forward, but simpler here since every
+    # attempt's row is kept in place already, so the decisions are already right here in
+    # `reports` — no separate history table/lookup needed).
+    previous_rc_recommendations: List[str] = []
+    previous_capa_recommendations: List[str] = []
+    if reports:
+        for critique in reports[-1]["critiques"]:
+            accepted = [r["description"] for r in critique["recommendations"] if r["decision"] == "accepted"]
+            if critique["category"] == "rc_impact":
+                previous_rc_recommendations = accepted
+            elif critique["category"] == "capa":
+                previous_capa_recommendations = accepted
+
     client = get_client()
     rc_conclusion, capa = await asyncio.gather(
-        _call_critique_endpoint(client, "/critique/critique-rc-conclusion", event_type, problem_statement, file.filename, file_bytes, file.content_type),
-        _call_critique_endpoint(client, "/critique/critique-capa", event_type, problem_statement, file.filename, file_bytes, file.content_type),
+        _call_critique_endpoint(
+            client, "/critique/critique-rc-conclusion", event_type, problem_statement,
+            file.filename, file_bytes, file.content_type, previous_recommendations=previous_rc_recommendations,
+        ),
+        _call_critique_endpoint(
+            client, "/critique/critique-capa", event_type, problem_statement,
+            file.filename, file_bytes, file.content_type, previous_recommendations=previous_capa_recommendations,
+        ),
     )
 
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
@@ -211,8 +241,8 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     # critique_state.compute_upload_state) — score it now, since no further
     # upload will ever supersede it.
     if attempt_number >= MAX_UPLOADS:
-        rc_score, capa_score, total_score = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score)
+        rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
 
     return await _build_state(record_id, deviation_id)
 
@@ -235,6 +265,23 @@ async def decide_rc_capa_recommendation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such recommendation on the current report")
 
     await set_recommendation_decision(state["latest"]["id"], recommendation_id, request.decision, request.reason)
+
+    reports = await fetch_rc_capa_reports(deviation_id)
+    new_state = compute_rc_capa_state(reports)
+    if new_state["status"] == "complete" and new_state["latest"]["total_score"] is None:
+        # Rejecting every recommendation just locked this report immediately
+        # (see critique_state.compute_upload_state) rather than waiting on a
+        # further gospel upload — score it now, the same trigger a gospel/
+        # 3rd-attempt upload already gets.
+        report_id = new_state["latest"]["id"]
+        file_bytes = await fetch_report_file_bytes(report_id)
+        if file_bytes is not None:
+            _, _, event_type = await _deviation_id_and_row(record_id)
+            rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(
+                event_type, new_state["latest"]["file_name"], file_bytes, None
+            )
+            await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
+
     return await _build_state(record_id, deviation_id)
 
 
