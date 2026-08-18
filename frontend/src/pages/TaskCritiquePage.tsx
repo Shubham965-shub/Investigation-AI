@@ -12,6 +12,7 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import { TaskCritiqueGuidelines } from "../components/TaskCritiqueGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -35,6 +36,7 @@ export function TaskCritiquePage() {
   const [sourceDocUploading, setSourceDocUploading] = useState(false);
   const [busyTaskIndex, setBusyTaskIndex] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<Record<number, string>>({});
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
   useEffect(() => {
     if (!recordId) return;
@@ -119,6 +121,15 @@ export function TaskCritiquePage() {
   async function handleUpload(taskIndex: number, file: File) {
     setBusyTaskIndex(taskIndex);
     setUploadError((prev) => ({ ...prev, [taskIndex]: "" }));
+    // Predicted client-side from the state as of this click — a gospel
+    // upload or the 3rd/final attempt both lock and get scored synchronously
+    // as part of this same request (2026-08-18, per the user).
+    const section = sections?.find((s) => s.task_index === taskIndex);
+    if (section?.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (section && section.upload_count + 1 >= section.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
       if (updated.locked) {
@@ -127,6 +138,7 @@ export function TaskCritiquePage() {
         // detail page.
         setSections((prev) => (prev ? prev.map((s) => (s.task_index === taskIndex ? updated : s)) : prev));
         setBusyTaskIndex(null);
+        setScoring(null);
       } else {
         navigate(`/records/${recordId}/task-critique/${taskIndex}`);
       }
@@ -136,6 +148,7 @@ export function TaskCritiquePage() {
         [taskIndex]: err instanceof ApiError ? String(err.detail) : "Failed to upload report",
       }));
       setBusyTaskIndex(null);
+      setScoring(null);
     }
   }
 
@@ -283,6 +296,8 @@ export function TaskCritiquePage() {
           );
         })}
       </div>
+
+      {scoring && <ScoringDialog reason={scoring} />}
     </div>
   );
 }

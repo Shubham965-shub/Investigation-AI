@@ -149,7 +149,11 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 }
 
 export function ActionCenterPage() {
-  const { viewAsInvestigator } = useAuth();
+  const { username, viewAsInvestigator } = useAuth();
+  // Ajay Pathania's account is SIT (Site Inspection Team), not a generic
+  // admin (2026-08-18, per the user) — everyone else still defaults to
+  // "Admin View" when not viewing as a specific investigator.
+  const isSitAccount = username?.toLowerCase() === "pathania.ajay@strides.com";
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -300,7 +304,7 @@ export function ActionCenterPage() {
     <div className="ac-page-bg">
     <div className="ac-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
       <h1 className="ac-title">
-        Action Center{viewAsInvestigator ? ` - Investigator View (${viewAsInvestigator})` : " - Admin View"}
+        Action Center{viewAsInvestigator ? ` - Investigator View (${viewAsInvestigator})` : isSitAccount ? " - SIT View" : " - Admin View"}
       </h1>
 
       <section className="ac-card">

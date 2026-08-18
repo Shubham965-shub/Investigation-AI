@@ -9,6 +9,7 @@ import {
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
@@ -38,6 +39,7 @@ export function TaskCritiqueDetailPage() {
   const [actionError, setActionError] = useState("");
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [reasonDrafts, setReasonDrafts] = useState<Record<number, string>>({});
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
   useEffect(() => {
     if (!recordId || Number.isNaN(taskIndex)) return;
@@ -92,6 +94,16 @@ export function TaskCritiqueDetailPage() {
   async function handleUpload(file: File) {
     setBusy(true);
     setActionError("");
+    // Predicted client-side from the state as of this click — a gospel
+    // upload (all recs previously rejected) or the 3rd/final attempt both
+    // lock and get scored synchronously as part of this same request
+    // (2026-08-18, per the user: show that scoring is under way, correctly
+    // reflecting which of the two no-decision-needed cases this is).
+    if (section!.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (section!.upload_count + 1 >= section!.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
       if (updated.locked) {
@@ -106,6 +118,7 @@ export function TaskCritiqueDetailPage() {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to upload report");
     } finally {
       setBusy(false);
+      setScoring(null);
     }
   }
 
@@ -127,6 +140,14 @@ export function TaskCritiqueDetailPage() {
     if (!reason) return;
     setBusy(true);
     setActionError("");
+    // Rejecting the LAST still-pending recommendation, where every other one
+    // is already rejected too, immediately locks and scores this report (see
+    // db/critique_state.py's all-rejected branch) — predicted client-side
+    // from the state as of this click, not assumed from the response, so the
+    // dialog can appear the instant the request goes out.
+    if (report!.recommendations.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
+      setScoring("all_decided");
+    }
     try {
       const updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, recommendationId, "rejected", reason);
       setSection(updated);
@@ -134,6 +155,7 @@ export function TaskCritiqueDetailPage() {
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
     } finally {
+      setScoring(null);
       setBusy(false);
     }
   }
@@ -284,6 +306,8 @@ export function TaskCritiqueDetailPage() {
           )}
         </div>
       </div>
+
+      {scoring && <ScoringDialog reason={scoring} />}
     </div>
   );
 }

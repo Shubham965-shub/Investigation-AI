@@ -16,6 +16,7 @@ import { FileDropzone } from "../components/FileDropzone";
 import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { BoldText } from "../components/BoldText";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -50,6 +51,7 @@ export function RcCapaCritiquePage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
   useEffect(() => {
     if (!recordId) return;
@@ -101,6 +103,14 @@ export function RcCapaCritiquePage() {
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadError(null);
+    // Predicted client-side from the state as of this click — a gospel
+    // upload or the 3rd/final attempt both lock and get scored synchronously
+    // as part of this same request (2026-08-18, per the user).
+    if (state!.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (state!.upload_count + 1 >= state!.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadRcCapaCritiqueReport(recordId!, file);
       setState(updated);
@@ -108,6 +118,7 @@ export function RcCapaCritiquePage() {
       setUploadError(err instanceof ApiError ? String(err.detail) : "Failed to critique the uploaded report");
     } finally {
       setUploading(false);
+      setScoring(null);
     }
   }
 
@@ -129,6 +140,15 @@ export function RcCapaCritiquePage() {
     if (!reason) return;
     setDecisionBusy(true);
     setDecisionError(null);
+    // Rejecting the LAST still-pending recommendation across BOTH categories
+    // (rc_impact + capa combined — see db/critique_state.py, which flattens
+    // them before applying its all-rejected rule), where every other one is
+    // already rejected too, immediately locks and scores this report.
+    // Predicted client-side from the state as of this click.
+    const allRecs = state!.latest_report!.critiques.flatMap((c) => c.recommendations);
+    if (allRecs.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
+      setScoring("all_decided");
+    }
     try {
       const updated = await decideRcCapaRecommendation(recordId!, recommendationId, "rejected", reason);
       setState(updated);
@@ -137,6 +157,7 @@ export function RcCapaCritiquePage() {
       setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
     } finally {
       setDecisionBusy(false);
+      setScoring(null);
     }
   }
 
@@ -456,6 +477,8 @@ export function RcCapaCritiquePage() {
           onConfirm={handlePushToSitReview}
         />
       )}
+
+      {scoring && <ScoringDialog reason={scoring} />}
     </div>
   );
 }
