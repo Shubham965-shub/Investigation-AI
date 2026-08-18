@@ -242,6 +242,10 @@ export interface TaskCritiqueReport {
   // until DS returns one (or permanently, for an is_gospel report).
   summary: string | null;
   task_score: number | null;
+  // True when this is the task's final upload and scoring already ran but
+  // came back without a score — distinguishes "scoring failed" from "not
+  // scored yet", which otherwise both show task_score: null.
+  critique_failed: boolean;
   uploaded_at: string;
   recommendations: TaskCritiqueRecommendation[];
 }
@@ -261,6 +265,7 @@ export interface TaskCritiqueSection {
   locked: boolean;
   next_upload_is_final: boolean;
   can_upload: boolean;
+  critique_failed: boolean;
   latest_report: TaskCritiqueReport | null;
 }
 

@@ -64,7 +64,7 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
             rows = await conn.fetch(
                 """
                 SELECT id, task_index, attempt_number, file_name, is_gospel,
-                       summary, task_score, recommendations, uploaded_at
+                       summary, task_score, critique_failed, recommendations, uploaded_at
                 FROM investigation_task_critique_reports
                 WHERE deviation_id = $1
                 """,
@@ -81,6 +81,7 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
                 "is_gospel": r["is_gospel"],
                 "summary": r["summary"],
                 "task_score": r["task_score"],
+                "critique_failed": r["critique_failed"],
                 "uploaded_at": r["uploaded_at"],
                 "recommendations": _parse_recommendations(r["recommendations"]),
             }
@@ -100,8 +101,8 @@ async def upsert_report(
             """
             INSERT INTO investigation_task_critique_reports
                 (deviation_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
-                 summary, task_score, recommendations)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, '[]'::jsonb)
+                 summary, task_score, critique_failed, recommendations)
+            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, FALSE, '[]'::jsonb)
             ON CONFLICT (deviation_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
@@ -109,6 +110,7 @@ async def upsert_report(
                 is_gospel = EXCLUDED.is_gospel,
                 summary = NULL,
                 task_score = NULL,
+                critique_failed = FALSE,
                 recommendations = '[]'::jsonb,
                 uploaded_at = now()
             RETURNING id
@@ -162,13 +164,14 @@ async def insert_recommendation_history(
         )
 
 
-async def set_task_score(report_id: int, task_score: Optional[int]) -> None:
+async def set_task_score(report_id: int, task_score: Optional[int], critique_failed: bool = False) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_task_critique_reports SET task_score = $2 WHERE id = $1",
+            "UPDATE investigation_task_critique_reports SET task_score = $2, critique_failed = $3 WHERE id = $1",
             report_id,
             task_score,
+            critique_failed,
         )
 
 

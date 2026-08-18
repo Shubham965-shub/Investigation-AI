@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -58,11 +59,14 @@ async def _get_source_document(deviation_id: int, record_id: str) -> Tuple[Optio
 
 async def _score_task_report(
     event_type: str, filename: Optional[str], file_bytes: bytes, content_type: Optional[str]
-) -> Optional[int]:
+) -> Tuple[Optional[int], bool]:
     """Scores the final (locked) report against DS's rubric-based /score/report
-    endpoint (out of 40 for task_report_execution) and returns that section's
-    percentage, rounded, for storage in task_score. Best-effort — a scoring
-    failure must not undo an upload that already succeeded and persisted."""
+    endpoint (out of 40 for task_report_execution) and returns
+    (percentage rounded, critique_failed). Best-effort — a scoring failure
+    must not undo an upload that already succeeded and persisted, but it must
+    be flagged (critique_failed=True) rather than silently indistinguishable
+    from "not scored yet" (ticket 500954: tasks were reaching "complete" with
+    a NULL score and no record of why)."""
     client = get_client()
     try:
         response = await client.post(
@@ -71,13 +75,22 @@ async def _score_task_report(
             files={"file": (filename, file_bytes, content_type)},
         )
         response.raise_for_status()
+        task_report_execution = response.json().get("task_report_execution")
     except httpx.HTTPError:
         logger.warning("Task report scoring failed for %s", filename, exc_info=True)
-        return None
-    task_report_execution = response.json().get("task_report_execution")
+        return None, True
+    except (ValueError, KeyError, TypeError):
+        # Malformed 200 response (bad JSON, unexpected shape) — treat the
+        # same as a scoring failure rather than letting it raise unhandled.
+        logger.warning("Task report scoring returned a malformed response for %s", filename, exc_info=True)
+        return None, True
     if not task_report_execution:
-        return None
-    return round(task_report_execution["percentage"])
+        # DS responded successfully but didn't detect a Task Report section
+        # in this document (e.g. only an RC/Impact/CAPA section was found) —
+        # this is a 200, not an httpx.HTTPError, so it must be flagged here.
+        logger.warning("No task_report_execution section detected for %s — scoring incomplete", filename)
+        return None, True
+    return round(task_report_execution["percentage"]), False
 
 
 def _find_task(sections: List[Dict[str, Any]], task_index: int) -> Dict[str, Any]:
@@ -114,6 +127,7 @@ def _build_section_response(section: Dict[str, Any]) -> TaskCritiqueSection:
         locked=state["locked"],
         next_upload_is_final=state["next_upload_is_final"],
         can_upload=state["can_upload"],
+        critique_failed=state["critique_failed"],
         latest_report=TaskCritiqueReport(**latest) if latest else None,
     )
 
@@ -205,8 +219,8 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         # A gospel report is final the moment it's uploaded — no critique, no
         # further review possible (per the user, 2026-08-07: score whichever
         # report ends up being the task's final one, gospel or 3rd attempt).
-        task_score = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score)
+        task_score, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_task_score(report_id, task_score, critique_failed)
         sections = await _build_sections(deviation_id, docx_bytes)
         return _build_section_response(_find_task(sections, task_index))
 
@@ -233,6 +247,16 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
 
+    # Scoring only needs the raw report bytes, not the critique response, so it's
+    # started here and run concurrently with the critique call below rather than
+    # after it — halves the final upload's latency from critique_time + scoring_time
+    # down to max(critique_time, scoring_time).
+    score_task: Optional["asyncio.Task[Tuple[Optional[int], bool]]"] = None
+    if attempt_number >= MAX_UPLOADS:
+        score_task = asyncio.create_task(
+            _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        )
+
     client = get_client()
     try:
         response = await client.post(
@@ -250,8 +274,12 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        if score_task is not None:
+            score_task.cancel()
         _raise_for_upstream_error(exc)
     except httpx.RequestError as exc:
+        if score_task is not None:
+            score_task.cancel()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"InvestigationAi_DS service unreachable: {exc}",
@@ -287,10 +315,12 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
 
     # The 3rd attempt is final regardless of how its recommendations end up
     # decided (see critique_state.compute_upload_state) — score it now, since
-    # no further upload will ever supersede it.
-    if attempt_number >= MAX_UPLOADS:
-        task_score = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score)
+    # no further upload will ever supersede it. The scoring call was already
+    # kicked off above, concurrently with the critique call, so this just
+    # awaits its (by now likely-finished) result.
+    if score_task is not None:
+        task_score, critique_failed = await score_task
+        await set_task_score(report_id, task_score, critique_failed)
 
     sections = await _build_sections(deviation_id, docx_bytes)
     return _build_section_response(_find_task(sections, task_index))

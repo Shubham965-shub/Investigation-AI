@@ -16,6 +16,7 @@ from markitdown import MarkItDown
 from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.graph.schemas import (
     AllTaskCritiquesResult,
+    ExtractedTask,
     ExtractionResult,
     ImageAnalysisResult,
     SectionTasks,
@@ -290,24 +291,38 @@ async def _extract_via_markitdown(
         structure=_ExtractionHeader,
     )
 
-    all_tasks = []
-    task_counter = 1
-    for heading, content in segments:
-        n_inf = len(_INF_RE.findall(content))
-        if n_inf == 0:
-            continue
+    async def _extract_section(heading: str, content: str, n_inf: int) -> List[ExtractedTask]:
+        # start_num is a fixed placeholder here (the true running count isn't
+        # knowable until sibling sections finish concurrently) — task_number is
+        # renumbered client-side below, in original segment order.
         prompt = _SECTION_PROMPT.format(
             n_inf=n_inf,
             heading=heading,
             content=content,
-            start_num=task_counter,
+            start_num=1,
         )
         sec: SectionTasks = await llm.get_structured_chat_response(
             user_prompt=prompt,
             structure=SectionTasks,
         )
-        all_tasks.extend(sec.tasks)
-        task_counter += len(sec.tasks)
+        return sec.tasks
+
+    qualifying = [
+        (heading, content, len(_INF_RE.findall(content))) for heading, content in segments
+    ]
+    qualifying = [(heading, content, n_inf) for heading, content, n_inf in qualifying if n_inf > 0]
+
+    results = await asyncio.gather(
+        *[_extract_section(heading, content, n_inf) for heading, content, n_inf in qualifying]
+    )
+
+    all_tasks = []
+    task_counter = 1
+    for tasks in results:
+        for task in tasks:
+            task.task_number = task_counter
+            task_counter += 1
+        all_tasks.extend(tasks)
 
     return ExtractionResult(
         problem_statement=header.problem_statement,

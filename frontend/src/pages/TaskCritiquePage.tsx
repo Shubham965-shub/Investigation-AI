@@ -154,6 +154,7 @@ export function TaskCritiquePage() {
         {sections.map((section, index) => {
           const busy = busyTaskIndex === section.task_index;
           const hasScore = section.status === "complete" && section.latest_report?.task_score != null;
+          const scoringFailed = section.status === "complete" && !hasScore && section.critique_failed;
           return (
             <div key={section.task_index} className="card" style={{ padding: 0, gap: 0, overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "12px 16px" }}>
@@ -223,6 +224,28 @@ export function TaskCritiquePage() {
                         </p>
                         <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{section.latest_report!.task_score}%</p>
                       </div>
+                    </div>
+                  )}
+                  {scoringFailed && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 2,
+                        padding: "16px 24px",
+                        borderRadius: 6,
+                        background: "var(--color-warning-bg)",
+                        border: "1px solid var(--color-warning-text)",
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-warning-text)", textTransform: "uppercase" }}>
+                        Task Score
+                      </p>
+                      <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning-text)", textAlign: "center" }}>
+                        Scoring failed for this report
+                      </p>
                     </div>
                   )}
                 </div>

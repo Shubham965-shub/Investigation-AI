@@ -103,10 +103,23 @@ CREATE TABLE IF NOT EXISTS investigation_task_critique_reports (
     is_gospel BOOLEAN NOT NULL DEFAULT FALSE,
     summary TEXT,
     task_score INTEGER,
+    -- True when the final (locked) upload's scoring call ran but did not
+    -- produce a task_score — DS scoring failed, or DS didn't detect a Task
+    -- Report section in the document — so the frontend can distinguish
+    -- "complete, unscored due to a scoring failure" from "complete, scoring
+    -- still pending" (task_score IS NULL looked identical for both before
+    -- this column existed). Set by set_task_score, reset to FALSE on every
+    -- new upload alongside task_score (2026-08-14, ticket 500954).
+    critique_failed BOOLEAN NOT NULL DEFAULT FALSE,
     recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (deviation_id, task_index)
 );
+
+-- CREATE TABLE IF NOT EXISTS above is a no-op on a database where this table
+-- already exists from before critique_failed was added, so it's brought in
+-- separately here (idempotent — safe to run again).
+ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS critique_failed BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id ON investigation_task_critique_reports(deviation_id);
 

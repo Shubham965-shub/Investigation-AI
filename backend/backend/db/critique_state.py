@@ -37,8 +37,15 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": False,
             "can_upload": True,
             "next_upload_is_final": False,
+            "critique_failed": False,
             "latest": None,
         }
+
+    # Only meaningful once a report is locked/complete — a scoring attempt
+    # that hasn't run yet (task_score still NULL, critique_failed still
+    # FALSE) looks the same as "not scored", which is correct: it's not a
+    # failure until the scoring call has actually run and come back empty.
+    critique_failed = bool(latest.get("critique_failed", False))
 
     if latest["is_gospel"]:
         return {
@@ -47,6 +54,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": True,
             "can_upload": False,
             "next_upload_is_final": False,
+            "critique_failed": critique_failed,
             "latest": latest,
         }
 
@@ -59,6 +67,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": False,
             "can_upload": False,
             "next_upload_is_final": False,
+            "critique_failed": critique_failed,
             "latest": latest,
         }
 
@@ -71,6 +80,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": True,
             "can_upload": False,
             "next_upload_is_final": False,
+            "critique_failed": critique_failed,
             "latest": latest,
         }
     if "pending" in decisions:
@@ -83,6 +93,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": False,
             "can_upload": False,
             "next_upload_is_final": False,
+            "critique_failed": critique_failed,
             "latest": latest,
         }
     if "rejected" in decisions:
@@ -93,6 +104,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "locked": False,
             "can_upload": True,
             "next_upload_is_final": all_rejected,
+            "critique_failed": critique_failed,
             "latest": latest,
         }
     # Everything's been decided and none were rejected — nothing left to
@@ -103,6 +115,7 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
         "status": "in_progress",
         "upload_count": upload_count,
         "locked": False,
+        "critique_failed": critique_failed,
         "can_upload": True,
         "next_upload_is_final": False,
         "latest": latest,
