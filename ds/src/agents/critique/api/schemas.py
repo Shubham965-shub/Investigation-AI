@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 class TaskSchema(BaseModel):
     tick: str                      # task name
@@ -145,6 +145,11 @@ class CAPACritiqueRequest(BaseModel):
 
 
 class CAPACritiqueResponse(BaseModel):
+    # "missing": no CAPA section in the document at all (a document defect — the upload should be
+    # rejected and the investigator asked to reupload with CAPA included, see critique_route.py).
+    # "not_required": the report itself states/justifies that no CAPA is needed for this event.
+    # "evaluated": a real CAPA section was critiqued normally (recommendations/strengths below apply).
+    capa_status: Literal["missing", "not_required", "evaluated"] = "evaluated"
     previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
     strengths: str                  # 1-2 sentences on what was done well

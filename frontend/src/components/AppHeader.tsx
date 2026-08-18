@@ -18,9 +18,19 @@ import { AppFeedbackButton } from "./AppFeedbackButton";
 // removed once the demo need has passed.
 const DEMO_VIEW_AS_INVESTIGATOR = "Veena N Chavan";
 
+// "Ajay Pathania" -> "Ajay P", "Ajay Kumar Pathania" -> "Ajay K P" (2026-08-18,
+// per the user) — first name in full, every remaining name reduced to its
+// initial. A single-word name (no last name on file) is shown as-is.
+function formatShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return fullName;
+  const [first, ...rest] = parts;
+  return [first, ...rest.map((p) => p[0]?.toUpperCase())].join(" ");
+}
+
 export function AppHeader() {
   const { toggleTheme } = useTheme();
-  const { username, logout, viewAsInvestigator, setViewAsInvestigator } = useAuth();
+  const { username, fullName, logout, viewAsInvestigator, setViewAsInvestigator } = useAuth();
   const { isPanelOpen } = usePanelState();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -54,7 +64,15 @@ export function AppHeader() {
         animation: isPanelOpen ? "app-header-slide-down 250ms ease" : "none",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate("/")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") navigate("/");
+        }}
+        style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+      >
         <img src={logo} alt="Strides" style={{ height: 42 }} />
         <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
         <img src={athenaLogo} alt="" style={{ height: 36 }} />
@@ -62,7 +80,7 @@ export function AppHeader() {
           Athena
         </span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginRight: 16 }}>
         {isActionCenter && (
           <div style={{ position: "relative" }}>
             <button
@@ -112,6 +130,15 @@ export function AppHeader() {
         >
           <img src={headerIcon1} alt="" width={20} height={20} />
         </button>
+
+        {/* While "view as" is active, show that investigator's name instead
+            of the real signed-in user's — switches back to fullName the
+            moment viewAsInvestigator is cleared (2026-08-18, per the user). */}
+        {(viewAsInvestigator ?? fullName) && (
+          <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "#fafafa" }}>
+            {formatShortName(viewAsInvestigator ?? fullName!)}
+          </span>
+        )}
 
         <div style={{ position: "relative" }}>
           <button

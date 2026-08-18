@@ -4,9 +4,11 @@ import {
   decideRcCapaRecommendation,
   getProblemStatementRecord,
   getRcCapaCritique,
+  getRcCapaHistory,
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
   type RcCapaCritique,
+  type RcCapaReport,
   type RcCapaState,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
@@ -15,6 +17,9 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileDropzone } from "../components/FileDropzone";
 import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
+import { BoldText } from "../components/BoldText";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -49,6 +54,11 @@ export function RcCapaCritiquePage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReports, setHistoryReports] = useState<RcCapaReport[]>([]);
 
   useEffect(() => {
     if (!recordId) return;
@@ -100,6 +110,14 @@ export function RcCapaCritiquePage() {
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadError(null);
+    // Predicted client-side from the state as of this click — a gospel
+    // upload or the 3rd/final attempt both lock and get scored synchronously
+    // as part of this same request (2026-08-18, per the user).
+    if (state!.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (state!.upload_count + 1 >= state!.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadRcCapaCritiqueReport(recordId!, file);
       setState(updated);
@@ -107,6 +125,7 @@ export function RcCapaCritiquePage() {
       setUploadError(err instanceof ApiError ? String(err.detail) : "Failed to critique the uploaded report");
     } finally {
       setUploading(false);
+      setScoring(null);
     }
   }
 
@@ -128,6 +147,15 @@ export function RcCapaCritiquePage() {
     if (!reason) return;
     setDecisionBusy(true);
     setDecisionError(null);
+    // Rejecting the LAST still-pending recommendation across BOTH categories
+    // (rc_impact + capa combined — see db/critique_state.py, which flattens
+    // them before applying its all-rejected rule), where every other one is
+    // already rejected too, immediately locks and scores this report.
+    // Predicted client-side from the state as of this click.
+    const allRecs = state!.latest_report!.critiques.flatMap((c) => c.recommendations);
+    if (allRecs.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
+      setScoring("all_decided");
+    }
     try {
       const updated = await decideRcCapaRecommendation(recordId!, recommendationId, "rejected", reason);
       setState(updated);
@@ -136,7 +164,16 @@ export function RcCapaCritiquePage() {
       setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
     } finally {
       setDecisionBusy(false);
+      setScoring(null);
     }
+  }
+
+  function handleOpenHistory() {
+    setShowHistory(true);
+    setHistoryLoading(true);
+    getRcCapaHistory(recordId!)
+      .then(setHistoryReports)
+      .finally(() => setHistoryLoading(false));
   }
 
   async function handlePushToSitReview() {
@@ -170,22 +207,27 @@ export function RcCapaCritiquePage() {
       )}
       <div className="card-header">
         <p className="card-title">RC & CAPA Critique</p>
-        {waitingForSitReview ? (
-          <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
-            Waiting for SIT Review
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button type="button" className="btn-outline" onClick={handleOpenHistory}>
+            Recommendation History
           </button>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
-            disabled={!isComplete || pushBusy}
-            onClick={() => setShowConfirm(true)}
-          >
-            <img src={exportIcon} alt="" width={16} height={16} />
-            Accept and Push for SIT Review
-          </button>
-        )}
+          {waitingForSitReview ? (
+            <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
+              Waiting for SIT Review
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
+              disabled={!isComplete || pushBusy}
+              onClick={() => setShowConfirm(true)}
+            >
+              <img src={exportIcon} alt="" width={16} height={16} />
+              Accept and Push for SIT Review
+            </button>
+          )}
+        </div>
       </div>
 
       {pushError && <p className="error-banner">{pushError}</p>}
@@ -256,7 +298,7 @@ export function RcCapaCritiquePage() {
           )}
 
           {report && (report.rc_score != null || report.capa_score != null) && (
-            <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
@@ -266,8 +308,7 @@ export function RcCapaCritiquePage() {
                   <div
                     key={s.label}
                     style={{
-                      flex: 1,
-                      minWidth: 200,
+                      width: "100%",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -307,12 +348,22 @@ export function RcCapaCritiquePage() {
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
-              Record: {recordId}
-            </span>
+            {state.due_date && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                TCD: {state.due_date}
+              </span>
+            )}
             {report && (
               <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
                 Completed: {new Date(report.uploaded_at).toLocaleDateString()}
+              </span>
+            )}
+            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+              Record: {recordId}
+            </span>
+            {state.investigator && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                Investigator: {state.investigator}
               </span>
             )}
           </div>
@@ -357,7 +408,7 @@ export function RcCapaCritiquePage() {
                 {critique.summary ? (
                   <div style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px" }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Summary Of the Report</p>
-                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{critique.summary}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}><BoldText text={critique.summary} /></p>
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Critique pending.</p>
@@ -445,6 +496,12 @@ export function RcCapaCritiquePage() {
           onCancel={() => setShowConfirm(false)}
           onConfirm={handlePushToSitReview}
         />
+      )}
+
+      {scoring && <ScoringDialog reason={scoring} />}
+
+      {showHistory && (
+        <RcCapaHistoryPanel reports={historyReports} loading={historyLoading} onClose={() => setShowHistory(false)} />
       )}
     </div>
   );
