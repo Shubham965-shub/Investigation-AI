@@ -238,14 +238,24 @@ async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
         )
 
 
-async def set_task_score(report_id: int, task_score: Optional[int], score_breakdown: Optional[List[Dict[str, Any]]] = None) -> None:
+async def set_task_score(
+    report_id: int,
+    task_score: Optional[int],
+    score_breakdown: Optional[List[Dict[str, Any]]] = None,
+    critique_failed: bool = False,
+) -> None:
+    """critique_failed=True means the scoring call ran but did not produce a
+    score (DS scoring failure, or no Task Report section detected) — lets the
+    frontend distinguish that from "not scored yet", which otherwise both show
+    task_score = NULL (ticket 500954)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_task_critique_reports SET task_score = $2, score_breakdown = $3::jsonb WHERE id = $1",
+            "UPDATE investigation_task_critique_reports SET task_score = $2, score_breakdown = $3::jsonb, critique_failed = $4 WHERE id = $1",
             report_id,
             task_score,
             json.dumps(score_breakdown) if score_breakdown is not None else None,
+            critique_failed,
         )
 
 

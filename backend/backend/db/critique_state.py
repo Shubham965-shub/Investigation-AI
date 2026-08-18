@@ -50,17 +50,40 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "latest": latest,
         }
 
+    recs = latest["recommendations"]
+
+    # 3rd/final attempt is always terminally locked regardless of decision
+    # mix, checked before the critique_failed branch below — critique_failed
+    # is now overloaded with a second meaning (2026-08-18, ticket 500954: a
+    # final report whose separate SCORING call failed, added by a teammate's
+    # commit to routers/task_critique.py's set_task_score) that must stay
+    # locked/complete, unlike the original meaning (wrong report
+    # format/degenerate critique, never a genuine critique at all). Checking
+    # upload_count here first, ahead of critique_failed, means a 3rd-attempt
+    # report whose scoring failed correctly stays locked instead of being
+    # unlocked for a reupload the investigator has no attempts left for.
+    if upload_count >= MAX_UPLOADS:
+        return {
+            "status": "complete",
+            "upload_count": upload_count,
+            "locked": True,
+            "can_upload": False,
+            "next_upload_is_final": False,
+            "latest": latest,
+        }
+
     if latest.get("critique_failed"):
-        # Rejected outright — wrong report format, or DS found nothing real to
-        # critique (see task_report_format.py / the total_tasks_analyzed==0
-        # check in routers/task_critique.py) — never a genuine critique, so it
-        # must not lock the section or block a reupload (2026-08-14, per the
-        # user: uploading the wrong file must still leave the door open to
-        # upload the correct one). Falls through to here rather than the
-        # "not recs" branch below, which would otherwise treat this the same
-        # as "critique not back yet" and never let go — RC & CAPA reports have
-        # no critique_failed column, so `.get` is always falsy there and this
-        # branch is unreachable for that caller.
+        # Reaching here means NOT gospel and NOT the final attempt — so this
+        # is the original meaning: wrong report format, or DS found nothing
+        # real to critique (see task_report_format.py / the
+        # total_tasks_analyzed==0 check in routers/task_critique.py) — never
+        # a genuine critique, so it must not lock the section or block a
+        # reupload (2026-08-14, per the user: uploading the wrong file must
+        # still leave the door open to upload the correct one). Falls through
+        # to here rather than the "not recs" branch below, which would
+        # otherwise treat this the same as "critique not back yet" and never
+        # let go — RC & CAPA reports have no critique_failed column, so `.get`
+        # is always falsy there and this branch is unreachable for that caller.
         return {
             "status": "in_progress",
             "upload_count": upload_count,
@@ -70,7 +93,6 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "latest": latest,
         }
 
-    recs = latest["recommendations"]
     if not recs:
         # Critique not back yet (or DS not wired up yet) — nothing to decide.
         return {
@@ -83,16 +105,6 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
         }
 
     decisions = {r["decision"] for r in recs}
-    if upload_count >= MAX_UPLOADS:
-        # Final attempt consumed — locked regardless of remaining decision mix.
-        return {
-            "status": "complete",
-            "upload_count": upload_count,
-            "locked": True,
-            "can_upload": False,
-            "next_upload_is_final": False,
-            "latest": latest,
-        }
     if "pending" in decisions:
         # At least one recommendation is still undecided — no reupload until
         # every single one has been accepted or rejected (per the user,
