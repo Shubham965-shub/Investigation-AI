@@ -10,6 +10,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
+from backend.schemas.scoring import ScoreBreakdownTable
+
 
 class TaskCritiqueRecommendation(BaseModel):
     id: int
@@ -28,10 +30,13 @@ class TaskCritiqueReport(BaseModel):
     # never critiqued at all).
     summary: Optional[str] = None
     task_score: Optional[int] = None
-    # True when this report is the task's final upload and its scoring call
-    # already ran but came back without a score (DS scoring failure, or no
-    # Task Report section detected) — distinguishes that from "not scored
-    # yet" (ticket 500954), since both otherwise show task_score = None.
+    # Full per-checkpoint breakdown, set alongside task_score — see
+    # schemas/scoring.py.
+    score_breakdown: List[ScoreBreakdownTable] = []
+    # True when ds's critique came back degenerate (no real tasks found to
+    # review) — see generated_content.sql's table comment. Only ever true for
+    # reports uploaded before the pre-upload format/degenerate-result checks
+    # existed; new uploads that would trigger this are rejected outright.
     critique_failed: bool = False
     uploaded_at: datetime.datetime
     recommendations: List[TaskCritiqueRecommendation] = []
@@ -54,9 +59,6 @@ class TaskCritiqueSection(BaseModel):
     # the next upload is taken as the final "gospel" report, no critique run.
     next_upload_is_final: bool = False
     can_upload: bool
-    # Mirrors latest_report.critique_failed, hoisted to section level so the
-    # list page can flag it without reaching into latest_report.
-    critique_failed: bool = False
     latest_report: Optional[TaskCritiqueReport] = None
 
 

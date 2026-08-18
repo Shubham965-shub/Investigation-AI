@@ -197,6 +197,14 @@ export function getRciPlanRecord(recordId: string): Promise<RciPlanRecordRespons
   return getRecordOrNull<RciPlanRecordResponse>(`/rci-plan/${recordId}`);
 }
 
+/** Every real investigator who has ever appeared on any investigation —
+ * populates the per-section Investigator dropdown (2026-08-13, per the
+ * user), replacing free text. Registered ahead of GET /rci-plan/{record_id}
+ * on the backend so this literal path isn't shadowed by that catch-all. */
+export function getAllInvestigators(): Promise<string[]> {
+  return apiGet<string[]>("/rci-plan/investigators");
+}
+
 export interface RciTemplateUploadResponse {
   status: string;
   message: string;
@@ -233,6 +241,29 @@ export interface TaskCritiqueRecommendation {
   reason: string | null;
 }
 
+// One row / one section table of ds's /score/report `info` breakdown —
+// mirrors ds's InfoRow/InfoTable (2026-08-14, per the user: shown via a small
+// info icon next to each generated score). Shared shape for both Task
+// Critique and RC & CAPA Critique.
+export interface ScoreBreakdownRow {
+  id: string;
+  checkpoint: string;
+  max: number;
+  verdict: string;
+  score: number;
+  rationale: string;
+  evidence_quote: string;
+}
+
+export interface ScoreBreakdownTable {
+  section: string; // task_report | rc | impact | capa
+  label: string;
+  native_max: number;
+  marks_awarded: number;
+  percentage: number;
+  rows: ScoreBreakdownRow[];
+}
+
 export interface TaskCritiqueReport {
   id: number;
   attempt_number: number;
@@ -242,9 +273,10 @@ export interface TaskCritiqueReport {
   // until DS returns one (or permanently, for an is_gospel report).
   summary: string | null;
   task_score: number | null;
-  // True when this is the task's final upload and scoring already ran but
-  // came back without a score — distinguishes "scoring failed" from "not
-  // scored yet", which otherwise both show task_score: null.
+  score_breakdown: ScoreBreakdownTable[];
+  // True when ds's critique came back degenerate (no real tasks found to
+  // review) — only ever true for reports uploaded before the pre-upload
+  // format/degenerate-result checks existed.
   critique_failed: boolean;
   uploaded_at: string;
   recommendations: TaskCritiqueRecommendation[];
@@ -265,7 +297,6 @@ export interface TaskCritiqueSection {
   locked: boolean;
   next_upload_is_final: boolean;
   can_upload: boolean;
-  critique_failed: boolean;
   latest_report: TaskCritiqueReport | null;
 }
 
@@ -331,6 +362,7 @@ export interface RcCapaReport {
   rc_score: number | null;
   capa_score: number | null;
   total_score: number | null;
+  score_breakdown: ScoreBreakdownTable[];
   uploaded_at: string;
   critiques: RcCapaCritique[];
 }
@@ -448,6 +480,13 @@ export interface ActionCenterFilters {
   investigator?: string;
   startDateFrom?: string;
   startDateTo?: string;
+  // "cancelled" shows only cancelled investigations instead of the default
+  // open-only list (2026-08-13, per the user) — stat cards/chart/pending
+  // actions are unaffected either way, they've always been open-only.
+  status?: "open" | "cancelled";
+  // Page-wide filter (2026-08-14, per the user) — unlike `status` above, this
+  // narrows stat cards/chart/pending actions AND the investigations table.
+  criticality?: "critical" | "non_critical";
 }
 
 export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<ActionCenterSummaryResponse> {
@@ -458,6 +497,8 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.investigator) params.set("investigator", filters.investigator);
   if (filters?.startDateFrom) params.set("start_date_from", filters.startDateFrom);
   if (filters?.startDateTo) params.set("start_date_to", filters.startDateTo);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.criticality) params.set("criticality", filters.criticality);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
 }

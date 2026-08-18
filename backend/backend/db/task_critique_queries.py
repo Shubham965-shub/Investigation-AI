@@ -39,6 +39,12 @@ def _parse_recommendations(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
+def _parse_score_breakdown(raw: Any) -> List[Dict[str, Any]]:
+    if raw is None:
+        return []
+    return raw if isinstance(raw, list) else json.loads(raw)
+
+
 async def any_task_critique_started(deviation_id: int) -> bool:
     """Used by rci_plan.py to lock RCI Plan editing once Task Critique has
     begun on any of its tasks."""
@@ -64,7 +70,7 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
             rows = await conn.fetch(
                 """
                 SELECT id, task_index, attempt_number, file_name, is_gospel,
-                       summary, task_score, critique_failed, recommendations, uploaded_at
+                       summary, task_score, score_breakdown, recommendations, critique_failed, uploaded_at
                 FROM investigation_task_critique_reports
                 WHERE deviation_id = $1
                 """,
@@ -81,6 +87,7 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
                 "is_gospel": r["is_gospel"],
                 "summary": r["summary"],
                 "task_score": r["task_score"],
+                "score_breakdown": _parse_score_breakdown(r["score_breakdown"]),
                 "critique_failed": r["critique_failed"],
                 "uploaded_at": r["uploaded_at"],
                 "recommendations": _parse_recommendations(r["recommendations"]),
@@ -101,8 +108,8 @@ async def upsert_report(
             """
             INSERT INTO investigation_task_critique_reports
                 (deviation_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
-                 summary, task_score, critique_failed, recommendations)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, FALSE, '[]'::jsonb)
+                 summary, task_score, score_breakdown, recommendations, critique_failed)
+            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, FALSE)
             ON CONFLICT (deviation_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
@@ -110,8 +117,9 @@ async def upsert_report(
                 is_gospel = EXCLUDED.is_gospel,
                 summary = NULL,
                 task_score = NULL,
-                critique_failed = FALSE,
+                score_breakdown = NULL,
                 recommendations = '[]'::jsonb,
+                critique_failed = FALSE,
                 uploaded_at = now()
             RETURNING id
             """,
@@ -164,14 +172,27 @@ async def insert_recommendation_history(
         )
 
 
-async def set_task_score(report_id: int, task_score: Optional[int], critique_failed: bool = False) -> None:
+async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
+    """Used to re-score a report from routers/task_critique.py's decision
+    endpoint (2026-08-14) — a report can now become locked/complete purely
+    from rejecting every recommendation, with no new upload to score from, so
+    the original file's bytes need to be fetched back out for that trigger."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT file_bytes FROM investigation_task_critique_reports WHERE id = $1",
+            report_id,
+        )
+
+
+async def set_task_score(report_id: int, task_score: Optional[int], score_breakdown: Optional[List[Dict[str, Any]]] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_task_critique_reports SET task_score = $2, critique_failed = $3 WHERE id = $1",
+            "UPDATE investigation_task_critique_reports SET task_score = $2, score_breakdown = $3::jsonb WHERE id = $1",
             report_id,
             task_score,
-            critique_failed,
+            json.dumps(score_breakdown) if score_breakdown is not None else None,
         )
 
 

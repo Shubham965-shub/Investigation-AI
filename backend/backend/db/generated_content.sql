@@ -103,23 +103,25 @@ CREATE TABLE IF NOT EXISTS investigation_task_critique_reports (
     is_gospel BOOLEAN NOT NULL DEFAULT FALSE,
     summary TEXT,
     task_score INTEGER,
-    -- True when the final (locked) upload's scoring call ran but did not
-    -- produce a task_score — DS scoring failed, or DS didn't detect a Task
-    -- Report section in the document — so the frontend can distinguish
-    -- "complete, unscored due to a scoring failure" from "complete, scoring
-    -- still pending" (task_score IS NULL looked identical for both before
-    -- this column existed). Set by set_task_score, reset to FALSE on every
-    -- new upload alongside task_score (2026-08-14, ticket 500954).
-    critique_failed BOOLEAN NOT NULL DEFAULT FALSE,
     recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- True when ds's critique came back degenerate — total_tasks_analyzed=0,
+    -- meaning it couldn't find any real tasks to review at all (e.g. the
+    -- uploaded file passed the local format check — see
+    -- services/task_report_format.py — but still wasn't a genuine task
+    -- report, or ds's task extraction itself failed). Uploads that trigger
+    -- this are now rejected outright before persisting (2026-08-13, per the
+    -- user), so this only ever gets set on rows from before that check
+    -- existed — surfaced on the list page as the same error state.
+    critique_failed BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Full per-checkpoint breakdown table(s) from ds's /score/report response
+    -- (its `info` field — see ds/src/agents/scoring/api/schemas.py's InfoTable/
+    -- InfoRow) — a JSON array, stored verbatim, set alongside task_score
+    -- whenever it's set (2026-08-14, per the user: shown via a small info
+    -- icon next to the score).
+    score_breakdown JSONB,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (deviation_id, task_index)
 );
-
--- CREATE TABLE IF NOT EXISTS above is a no-op on a database where this table
--- already exists from before critique_failed was added, so it's brought in
--- separately here (idempotent — safe to run again).
-ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS critique_failed BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id ON investigation_task_critique_reports(deviation_id);
 
@@ -185,6 +187,11 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     -- capa_score's underlying raw marks added together, divided by their
     -- combined max — not a naive average of the two percentages.
     total_score INTEGER,
+    -- Same as investigation_task_critique_reports.score_breakdown — ds's full
+    -- /score/report `info` breakdown table(s) (rc + impact + capa sections
+    -- all present here, unlike Task Critique's single task_report section),
+    -- stored verbatim as a JSON array.
+    score_breakdown JSONB,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

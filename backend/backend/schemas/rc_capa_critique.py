@@ -11,6 +11,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
+from backend.schemas.scoring import ScoreBreakdownTable
+
 
 class RcCapaRecommendation(BaseModel):
     id: int
@@ -43,6 +45,9 @@ class RcCapaReport(BaseModel):
     # added together, divided by their combined max — not a naive average of
     # the two percentages.
     total_score: Optional[int] = None
+    # Full per-checkpoint breakdown (rc + impact + capa sections all present
+    # here) — see schemas/scoring.py.
+    score_breakdown: List[ScoreBreakdownTable] = []
     uploaded_at: datetime.datetime
     critiques: List[RcCapaCritique] = []
 

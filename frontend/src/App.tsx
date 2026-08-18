@@ -14,6 +14,7 @@ import { RciPlanPage } from "./pages/RciPlanPage";
 import { TaskCritiquePage } from "./pages/TaskCritiquePage";
 import { TaskCritiqueDetailPage } from "./pages/TaskCritiqueDetailPage";
 import { RcCapaCritiquePage } from "./pages/RcCapaCritiquePage";
+import { RciReportPage } from "./pages/RciReportPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 
 export default function App() {
@@ -54,6 +55,9 @@ export default function App() {
               </Route>
               <Route path="/records/:recordId/rc-capa-critique" element={<RecordShell currentStep="rc-capa-critique" />}>
                 <Route index element={<RcCapaCritiquePage />} />
+              </Route>
+              <Route path="/records/:recordId/rci-report" element={<RecordShell currentStep="rci-report" />}>
+                <Route index element={<RciReportPage />} />
               </Route>
             </Route>
 
