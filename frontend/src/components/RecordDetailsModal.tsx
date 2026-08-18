@@ -2,7 +2,6 @@ import { useState } from "react";
 import modalClose from "../assets/icons/modal-close.svg";
 import recordDocIcon from "../assets/icons/modal-record-doc.svg";
 import chevronRight from "../assets/icons/modal-chevron-right.svg";
-import copyIcon from "../assets/icons/copy-icon.svg";
 import { ApiError } from "../api/client";
 import { getSimilarInvestigations, type SimilarInvestigation } from "../api/dashboard";
 
@@ -38,10 +37,6 @@ export function RecordDetailsModal({
   const [historicData, setHistoricData] = useState<SimilarInvestigation[] | null>(null);
   const [historicLoading, setHistoricLoading] = useState(false);
   const [historicError, setHistoricError] = useState<string | null>(null);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(problemStatement);
-  }
 
   function handleToggleHistoric() {
     const next = !historicExpanded;
@@ -126,10 +121,6 @@ export function RecordDetailsModal({
           <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 28 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Problem Statement</p>
-              <button type="button" onClick={handleCopy} className="btn-outline">
-                <img src={copyIcon} alt="" width={18} height={18} />
-                Copy
-              </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {isEditing ? (

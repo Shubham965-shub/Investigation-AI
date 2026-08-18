@@ -126,10 +126,12 @@ def _find_recommendation(reports: List[Dict[str, Any]], recommendation_id: int) 
     return False
 
 
-async def _build_state(record_id: str, deviation_id: int) -> RcCapaState:
+async def _build_state(record_id: str, deviation_id: int, row: Any = None) -> RcCapaState:
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
     sit_review_status = await fetch_latest_sit_review_status(deviation_id)
+    if row is None:
+        row = await fetch_investigation_row(deviation_id)
     return RcCapaState(
         record_id=record_id,
         status=state["status"],
@@ -139,6 +141,8 @@ async def _build_state(record_id: str, deviation_id: int) -> RcCapaState:
         can_upload=state["can_upload"],
         latest_report=state["latest"],
         sit_review_status=sit_review_status,
+        investigator=row["investigator"] if row else None,
+        due_date=row["due_date"].strftime("%d %b %Y") if row and row["due_date"] else None,
     )
 
 
@@ -161,8 +165,8 @@ async def _deviation_id_and_row(record_id: str):
 
 @router.get("/{record_id}", response_model=RcCapaState)
 async def get_rc_capa_critique(record_id: str) -> RcCapaState:
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
-    return await _build_state(record_id, deviation_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
+    return await _build_state(record_id, deviation_id, row)
 
 
 @router.post("/{record_id}/upload", response_model=RcCapaState)
@@ -187,7 +191,7 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         # (2026-08-07, per the user), same trigger as Task Critique's.
         rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
-        return await _build_state(record_id, deviation_id)
+        return await _build_state(record_id, deviation_id, row)
 
     # Real DS endpoints (per the user, 2026-08-06: module 6/RC & CAPA Critique
     # uses these two single-purpose endpoints, not the combined
@@ -243,7 +247,7 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
 
-    return await _build_state(record_id, deviation_id)
+    return await _build_state(record_id, deviation_id, row)
 
 
 @router.post("/{record_id}/recommendations/{recommendation_id}/decision", response_model=RcCapaState)
@@ -253,7 +257,7 @@ async def decide_rc_capa_recommendation(
     if request.decision == "rejected" and not request.reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required to reject a recommendation")
 
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
 
@@ -281,12 +285,12 @@ async def decide_rc_capa_recommendation(
             )
             await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
 
-    return await _build_state(record_id, deviation_id)
+    return await _build_state(record_id, deviation_id, row)
 
 
 @router.post("/{record_id}/push-to-sit-review", response_model=RcCapaState)
 async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get_current_username)) -> RcCapaState:
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
 
@@ -304,4 +308,4 @@ async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get
     except Exception:
         logger.warning("Could not persist RC & CAPA SIT review snapshot for record_id=%s", record_id, exc_info=True)
 
-    return await _build_state(record_id, deviation_id)
+    return await _build_state(record_id, deviation_id, row)

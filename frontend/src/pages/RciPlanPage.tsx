@@ -10,7 +10,7 @@ import {
   type RciSectionItem,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
-import { getAdditionalFieldsForModule, nativeInputType, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
+import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
@@ -294,41 +294,6 @@ export function RciPlanPage() {
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
           </div>
         </div>
-
-        {additionalFields.length > 0 && (
-          <div className="card">
-            <p className="card-title">Additional Details for RCI Plan</p>
-            <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-              RCI Plan generation needs a few more details beyond the Problem Statement step.
-            </p>
-            <div className="field-grid" style={{ flexWrap: "wrap" }}>
-              {additionalFields.map((field) => (
-                <div key={field.key} style={{ minWidth: 240 }}>
-                  <p className="field-label">
-                    {field.label}
-                    {field.required && " *"}
-                  </p>
-                  {field.kind === "list" || field.kind === "textarea" ? (
-                    <textarea
-                      className="field-value"
-                      required={field.required}
-                      value={additionalValues[field.key] ?? ""}
-                      onChange={(e) => setAdditionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    />
-                  ) : (
-                    <input
-                      className="field-value"
-                      type={nativeInputType(field.kind, additionalValues[field.key] ?? "")}
-                      required={field.required}
-                      value={additionalValues[field.key] ?? ""}
-                      onChange={(e) => setAdditionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {error && <p className="error-banner">{error}</p>}
 

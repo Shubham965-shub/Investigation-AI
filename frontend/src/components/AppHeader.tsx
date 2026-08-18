@@ -54,7 +54,15 @@ export function AppHeader() {
         animation: isPanelOpen ? "app-header-slide-down 250ms ease" : "none",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate("/")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") navigate("/");
+        }}
+        style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+      >
         <img src={logo} alt="Strides" style={{ height: 42 }} />
         <span style={{ fontSize: "var(--font-size-xl)", color: "var(--color-primary)" }}>|</span>
         <img src={athenaLogo} alt="" style={{ height: 36 }} />

@@ -256,7 +256,7 @@ export function RcCapaCritiquePage() {
           )}
 
           {report && (report.rc_score != null || report.capa_score != null) && (
-            <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
@@ -266,8 +266,7 @@ export function RcCapaCritiquePage() {
                   <div
                     key={s.label}
                     style={{
-                      flex: 1,
-                      minWidth: 200,
+                      width: "100%",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -307,12 +306,22 @@ export function RcCapaCritiquePage() {
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
-              Record: {recordId}
-            </span>
+            {state.due_date && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                TCD: {state.due_date}
+              </span>
+            )}
             {report && (
               <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
                 Completed: {new Date(report.uploaded_at).toLocaleDateString()}
+              </span>
+            )}
+            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+              Record: {recordId}
+            </span>
+            {state.investigator && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                Investigator: {state.investigator}
               </span>
             )}
           </div>

@@ -18,6 +18,7 @@ interface ChecklistItem {
 }
 import checkIcon from "../assets/icons/interview-checkbox.svg";
 import addPlusIcon from "../assets/icons/interview-add-plus.svg";
+import copyIcon from "../assets/icons/copy-icon.svg";
 import "./RecordModulePage.css";
 
 export function InterviewQuestionnairePage() {
@@ -36,6 +37,7 @@ export function InterviewQuestionnairePage() {
   const [saved, setSaved] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. Interview Questionnaire
@@ -158,18 +160,19 @@ export function InterviewQuestionnairePage() {
     persistItems(newItems);
   }
 
-  function handleAgreeAndCopy() {
+  function handleAgreeAndNext() {
     setShowConfirm(false);
-    // Only the agreed-upon (checked) items — an unchecked one was explicitly
-    // deselected as not applicable, so it shouldn't be copied out as a
-    // question to ask (2026-08-16, per the user).
-    const list = (items ?? []).filter((i) => i.checked).map((i) => `- ${i.description}`).join("\n");
-    navigator.clipboard.writeText(list).then(() => {
-      setSaved(true);
-      setTimeout(() => {
-        setSaved(false);
-        navigate(`/records/${recordId}/rci-plan`);
-      }, 1500);
+    setSaved(true);
+    setTimeout(() => {
+      setSaved(false);
+      navigate(`/records/${recordId}/rci-plan`);
+    }, 1500);
+  }
+
+  function handleCopyItem(index: number, description: string) {
+    navigator.clipboard.writeText(description).then(() => {
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
     });
   }
 
@@ -207,6 +210,16 @@ export function InterviewQuestionnairePage() {
                     {item.checked && <img src={checkIcon} alt="" width={12} height={12} />}
                   </button>
                   <span className="checklist-text">{item.description}</span>
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    style={{ flexShrink: 0, padding: 6 }}
+                    onClick={() => handleCopyItem(index, item.description)}
+                    aria-label="Copy"
+                    title={copiedIndex === index ? "Copied" : "Copy"}
+                  >
+                    <img src={copyIcon} alt="" width={14} height={14} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -220,7 +233,7 @@ export function InterviewQuestionnairePage() {
           Add Your Own Question
         </button>
         <button type="button" className="btn-primary" onClick={() => setShowConfirm(true)}>
-          {saved ? "Saved" : "Agree & Copy"}
+          {saved ? "Saved" : "Agree and Next"}
         </button>
       </div>
 
@@ -240,7 +253,7 @@ export function InterviewQuestionnairePage() {
           title="Accept Interview Questionnaire?"
           message="Are you sure you want to accept the Interview Questionnaire and lock it for this investigation?"
           onCancel={() => setShowConfirm(false)}
-          onConfirm={handleAgreeAndCopy}
+          onConfirm={handleAgreeAndNext}
         />
       )}
     </div>

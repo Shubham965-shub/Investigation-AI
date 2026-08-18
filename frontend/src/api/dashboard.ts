@@ -377,6 +377,8 @@ export interface RcCapaState {
   can_upload: boolean;
   latest_report: RcCapaReport | null;
   sit_review_status: "pending" | null;
+  investigator: string | null;
+  due_date: string | null;
 }
 
 export function getRcCapaCritique(recordId: string): Promise<RcCapaState | null> {
