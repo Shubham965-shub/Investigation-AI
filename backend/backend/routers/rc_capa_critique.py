@@ -227,7 +227,6 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
     await save_critiques(
         report_id,
-        rc_conclusion_text=rc_conclusion["rc_conclusion_text"],
         rc_recommendations=rc_conclusion["recommendations"],
         rc_strengths=rc_conclusion["strengths"],
         capa_recommendations=capa["recommendations"],

@@ -112,17 +112,19 @@ async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
 
 async def save_critiques(
     report_id: int,
-    rc_conclusion_text: str,
     rc_recommendations: List[str],
     rc_strengths: str,
     capa_recommendations: List[str],
     capa_strengths: str,
 ) -> None:
     """Persists both fixed categories' critique directly onto the report row.
-    rc_impact's summary is DS's rc_conclusion_text; capa has no dedicated
-    summary field in DS's response (CAPACritiqueResponse), so its summary
-    falls back to strengths (unchanged from the previous design). Recommendation
-    ids are unique per report: rc's run 0..len(rc)-1, capa's continue from there."""
+    Neither RCConclusionCritiqueResponse nor CAPACritiqueResponse has a dedicated
+    summary field, so both categories' summary is just their strengths string —
+    positive-only, matching Task Critique's summary (2026-08-18, per the user).
+    rc_summary previously echoed DS's rc_conclusion_text (the investigator's own
+    conclusion text, not a critique verdict); that field is no longer persisted.
+    Recommendation ids are unique per report: rc's run 0..len(rc)-1, capa's
+    continue from there."""
     rc_recs = [
         {"id": i, "description": d, "decision": "pending", "reason": None, "decided_at": None}
         for i, d in enumerate(rc_recommendations)
@@ -141,7 +143,7 @@ async def save_critiques(
             WHERE id = $1
             """,
             report_id,
-            rc_conclusion_text,
+            rc_strengths,
             rc_strengths,
             json.dumps(rc_recs),
             capa_strengths,

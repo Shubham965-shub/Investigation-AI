@@ -21,8 +21,9 @@ class RcCapaRecommendation(BaseModel):
 
 class RcCapaCritique(BaseModel):
     category: Literal["rc_impact", "capa"]
-    # rc_conclusion_text for rc_impact; strengths for capa (CAPACritiqueResponse
-    # has no dedicated summary field) — see routers/rc_capa_critique.py.
+    # Neither RCConclusionCritiqueResponse nor CAPACritiqueResponse has a
+    # dedicated summary field, so summary is just strengths for both
+    # categories — positive-only, matching Task Critique's summary.
     summary: Optional[str] = None
     strengths: Optional[str] = None
     recommendations: List[RcCapaRecommendation] = []
