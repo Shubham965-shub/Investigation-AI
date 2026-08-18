@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -249,6 +250,16 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
 
+    # Scoring only needs the raw report bytes, not the critique response, so it's
+    # started here and run concurrently with the critique call below rather than
+    # after it — cuts the final upload's latency from critique_time + scoring_time
+    # down to max(critique_time, scoring_time).
+    score_task: Optional["asyncio.Task[Tuple[Optional[int], List[Dict[str, Any]]]]"] = None
+    if attempt_number >= MAX_UPLOADS:
+        score_task = asyncio.create_task(
+            _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        )
+
     client = get_client()
     try:
         response = await client.post(
@@ -266,8 +277,12 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        if score_task is not None:
+            score_task.cancel()
         _raise_for_upstream_error(exc)
     except httpx.RequestError as exc:
+        if score_task is not None:
+            score_task.cancel()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"InvestigationAi_DS service unreachable: {exc}",
@@ -287,6 +302,8 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         # persistence — this is the deeper check for cases the local one
         # can't catch (e.g. the format check alone can't parse actual task
         # content the way ds's own extraction does).
+        if score_task is not None:
+            score_task.cancel()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This document doesn't match the required task report format — please upload the correct report.",
@@ -317,9 +334,11 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
 
     # The 3rd attempt is final regardless of how its recommendations end up
     # decided (see critique_state.compute_upload_state) — score it now, since
-    # no further upload will ever supersede it.
-    if attempt_number >= MAX_UPLOADS:
-        task_score, score_breakdown = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+    # no further upload will ever supersede it. The scoring call was already
+    # kicked off above, concurrently with the critique call, so this just
+    # awaits its (by now likely-finished) result.
+    if score_task is not None:
+        task_score, score_breakdown = await score_task
         await set_task_score(report_id, task_score, score_breakdown)
 
     sections = await _build_sections(deviation_id, docx_bytes)
