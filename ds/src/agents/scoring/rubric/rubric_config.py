@@ -314,13 +314,21 @@ def clamp_percentage(value: float) -> float:
     return round(max(0.0, min(100.0, value)), 2)
 
 
-def resolve_checkpoint(cp: Checkpoint, verdict: str) -> tuple[str, float, bool]:
+def _is_justified_na(rationale: str) -> bool:
+    """True if `rationale` explains the non-applicability rather than just
+    restating the NA verdict itself (e.g. a bare "NA" / "Not applicable")."""
+    norm = re.sub(r"[^a-z]", "", rationale.lower())
+    return bool(norm) and norm not in ("na", "notapplicable", "nonapplicable")
+
+
+def resolve_checkpoint(cp: Checkpoint, verdict: str, rationale: str = "") -> tuple[str, float, bool]:
     """
     Map a raw LLM verdict to (normalised_verdict, marks_awarded, is_applicable).
 
     Unknown/blank verdicts are treated conservatively as the worst applicable
     outcome (No for binary, 'none' for RC) so a malformed model reply can never
-    silently inflate a score.
+    silently inflate a score. Likewise, a checkpoint claimed "NA" without a
+    substantive `rationale` is not excused from scoring — it is scored as unmet.
     """
     raw = (verdict or "").strip()
 
@@ -356,8 +364,8 @@ def resolve_checkpoint(cp: Checkpoint, verdict: str) -> tuple[str, float, bool]:
     if low in ("yes", "y", "true", "pass"):
         return YES, cp.max_marks, True
     if low in ("na", "n/a", "not applicable"):
-        if cp.allow_na:
+        if cp.allow_na and _is_justified_na(rationale):
             return NA, 0.0, False
-        # NA not permitted here → treat as unmet
+        # NA not permitted here, or claimed without a real justification → treat as unmet
         return NO, 0.0, True
     return NO, 0.0, True
