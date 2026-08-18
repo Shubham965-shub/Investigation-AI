@@ -338,6 +338,21 @@ export function decideTaskCritiqueRecommendation(
   );
 }
 
+// The full audit trail across every attempt for one task — independent of
+// lock/complete state, so it stays available even once the task is scored
+// and done (2026-08-18, per the user). Same rich decision-tracking shape as
+// the live report's recommendations, kept in sync as decisions are made.
+export interface RecommendationHistoryAttempt {
+  attempt_number: number;
+  summary: string | null;
+  recommendations: TaskCritiqueRecommendation[];
+  created_at: string;
+}
+
+export function getTaskCritiqueHistory(recordId: string, taskIndex: number): Promise<RecommendationHistoryAttempt[]> {
+  return apiGet<RecommendationHistoryAttempt[]>(`/task-critique/${recordId}/sections/${taskIndex}/history`);
+}
+
 // ── RC & CAPA Critique ────────────────────────────────────────────────────
 
 export interface RcCapaRecommendation {
@@ -398,6 +413,15 @@ export function decideRcCapaRecommendation(
   reason?: string
 ): Promise<RcCapaState> {
   return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/recommendations/${recommendationId}/decision`, { decision, reason });
+}
+
+// The full audit trail across every attempt — unlike Task Critique,
+// investigation_rc_capa_reports already keeps a real row per attempt
+// (never upserted in place), so this is just every report, oldest first.
+// Independent of lock/complete state (2026-08-18, per the user) — surfaced
+// behind its own button/panel rather than inline.
+export function getRcCapaHistory(recordId: string): Promise<RcCapaReport[]> {
+  return apiGet<RcCapaReport[]>(`/rc-capa-critique/${recordId}/history`);
 }
 
 export function pushRcCapaToSitReview(recordId: string): Promise<RcCapaState> {

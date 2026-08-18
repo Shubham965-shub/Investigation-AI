@@ -15,6 +15,7 @@ from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
 from backend.db.task_critique_queries import (
     compute_section_state,
+    fetch_recommendation_history,
     fetch_report_file_bytes,
     fetch_reports_by_task_index,
     insert_recommendation_history,
@@ -26,6 +27,7 @@ from backend.db.task_critique_queries import (
 from backend.db.task_critique_source_document_queries import fetch_source_document, upsert_source_document
 from backend.schemas.task_critique import (
     RecommendationDecisionRequest,
+    RecommendationHistoryAttempt,
     TaskCritiqueListResponse,
     TaskCritiqueReport,
     TaskCritiqueSection,
@@ -389,3 +391,19 @@ async def decide_recommendation(
             section = _find_task(sections, task_index)
 
     return _build_section_response(section)
+
+
+@router.get(
+    "/{record_id}/sections/{task_index}/history",
+    response_model=List[RecommendationHistoryAttempt],
+)
+async def get_recommendation_history(record_id: str, task_index: int) -> List[RecommendationHistoryAttempt]:
+    """The full audit trail across every attempt for this task — independent
+    of lock/complete state, so it stays visible even once the task is scored
+    and done (2026-08-18, per the user). Task Critique only ever keeps the
+    CURRENT attempt on investigation_task_critique_reports (replaced in
+    place each upload), so this separate append-only log is the only place
+    a prior attempt's recommendations survive being superseded."""
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    history = await fetch_recommendation_history(deviation_id, task_index)
+    return [RecommendationHistoryAttempt(**attempt) for attempt in history]

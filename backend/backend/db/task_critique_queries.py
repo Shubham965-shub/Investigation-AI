@@ -133,10 +133,7 @@ async def upsert_report(
 
 
 async def save_critique(report_id: int, summary: Optional[str], task_score: Optional[int], recommendations: List[str]) -> None:
-    recs = [
-        {"id": i, "description": description, "decision": "pending", "reason": None, "decided_at": None}
-        for i, description in enumerate(recommendations)
-    ]
+    recs = _build_recommendation_records(recommendations)
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
@@ -148,13 +145,30 @@ async def save_critique(report_id: int, summary: Optional[str], task_score: Opti
         )
 
 
+def _build_recommendation_records(recommendations: List[str]) -> List[Dict[str, Any]]:
+    """Same {id, description, decision, reason, decided_at} shape save_critique
+    puts on the live report row — ids assigned identically (enumerate order),
+    so a decision made on the live report and the matching history row for
+    that same attempt stay correlated by id."""
+    return [
+        {"id": i, "description": description, "decision": "pending", "reason": None, "decided_at": None}
+        for i, description in enumerate(recommendations)
+    ]
+
+
 async def insert_recommendation_history(
     deviation_id: int, task_index: int, attempt_number: int, summary: Optional[str], recommendations: List[str]
 ) -> None:
     """Append-only audit log — separate from investigation_task_critique_reports,
     which only ever holds the current attempt (2026-08-07, per the user).
-    Not read by any business rule; ON CONFLICT DO NOTHING makes this safe to
-    call more than once for the same attempt without erroring."""
+    Stores the same rich {id, description, decision, reason} shape as the live
+    report (2026-08-18, per the user: accept/reject/reason needs to survive
+    here too) — set_recommendation_decision keeps this row's copy in sync as
+    decisions are made on the current attempt, so by the time a new upload
+    supersedes it, this row already reflects its final decided state.
+    ON CONFLICT DO NOTHING makes this safe to call more than once for the
+    same attempt without erroring (or clobbering decisions already recorded
+    here by set_recommendation_decision)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
@@ -168,8 +182,47 @@ async def insert_recommendation_history(
             task_index,
             attempt_number,
             summary,
-            json.dumps(recommendations),
+            json.dumps(_build_recommendation_records(recommendations)),
         )
+
+
+async def fetch_recommendation_history(deviation_id: int, task_index: int) -> List[Dict[str, Any]]:
+    """The full audit trail across every attempt for this task — unlike
+    investigation_task_critique_reports (which only ever holds the current
+    attempt, replaced in place), this table is append-only, so it's the only
+    place a prior attempt's recommendations survive being superseded.
+    Deliberately independent of lock/complete state — the whole point is
+    that this stays visible even once the task is scored and done
+    (2026-08-18, per the user). Newest attempt first — the current/live
+    attempt is already the highest number and shown separately above this
+    list, so this history reads in reverse-chronological order underneath it."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT attempt_number, summary, recommendations, created_at
+                FROM investigation_task_critique_recommendation_history
+                WHERE deviation_id = $1 AND task_index = $2
+                ORDER BY attempt_number DESC
+                """,
+                deviation_id,
+                task_index,
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            return []
+        return [
+            {
+                "attempt_number": r["attempt_number"],
+                "summary": r["summary"],
+                # Same {id, description, decision, reason, decided_at} shape as
+                # the live report — set_recommendation_decision keeps this in
+                # sync as decisions are made (2026-08-18, per the user).
+                "recommendations": _parse_recommendations(r["recommendations"]),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
 
 
 async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
@@ -202,7 +255,7 @@ async def set_recommendation_decision(deviation_id: int, task_index: int, recomm
         async with conn.transaction():
             row = await conn.fetchrow(
                 """
-                SELECT id, recommendations FROM investigation_task_critique_reports
+                SELECT id, attempt_number, recommendations FROM investigation_task_critique_reports
                 WHERE deviation_id = $1 AND task_index = $2 FOR UPDATE
                 """,
                 deviation_id,
@@ -220,6 +273,22 @@ async def set_recommendation_decision(deviation_id: int, task_index: int, recomm
             await conn.execute(
                 "UPDATE investigation_task_critique_reports SET recommendations = $2::jsonb WHERE id = $1",
                 row["id"],
+                json.dumps(recs),
+            )
+            # Keep the audit-log row for this same attempt in sync too
+            # (2026-08-18, per the user: accept/reject/reason needs to survive
+            # in the history even after this attempt is superseded by a new
+            # upload, since investigation_task_critique_reports only ever
+            # holds the current attempt).
+            await conn.execute(
+                """
+                UPDATE investigation_task_critique_recommendation_history
+                SET recommendations = $4::jsonb
+                WHERE deviation_id = $1 AND task_index = $2 AND attempt_number = $3
+                """,
+                deviation_id,
+                task_index,
+                row["attempt_number"],
                 json.dumps(recs),
             )
 

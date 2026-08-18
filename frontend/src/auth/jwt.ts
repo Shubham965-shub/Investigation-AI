@@ -21,3 +21,18 @@ export function isTokenExpired(token: string): boolean {
     return true;
   }
 }
+
+/** Pulls the display name embedded in the token's `name` claim (see
+ * backend/backend/routers/auth.py's issue_token — athena_users.full_name, or
+ * a username-derived fallback) — client-side only, same no-verification
+ * caveat as isTokenExpired above. Used by AppHeader to show the signed-in
+ * user's name (2026-08-18, per the user) without a separate /auth/me round
+ * trip, since it's already right here in the token. */
+export function nameFromToken(token: string): string | null {
+  try {
+    const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));
+    return typeof payload.name === "string" && payload.name ? payload.name : null;
+  } catch {
+    return null;
+  }
+}

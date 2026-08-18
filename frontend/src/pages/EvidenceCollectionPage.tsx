@@ -190,7 +190,7 @@ export function EvidenceCollectionPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card-header">
-          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidence To Be Collected</p>
+          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidences To Be Collected</p>
           <div style={{ display: "flex", gap: 4, background: "var(--color-open-bg)", padding: 4, borderRadius: 10 }}>
             <button
               type="button"

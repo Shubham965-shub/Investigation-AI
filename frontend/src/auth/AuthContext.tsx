@@ -1,9 +1,13 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { login as loginRequest } from "../api/auth";
-import { isTokenExpired } from "./jwt";
+import { isTokenExpired, nameFromToken } from "./jwt";
 
 interface AuthContextValue {
   username: string | null;
+  // The signed-in user's display name (athena_users.full_name, from the
+  // token's `name` claim) — null until a token exists (2026-08-18, per the
+  // user: shown in AppHeader instead of the raw username/email).
+  fullName: string | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -39,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       username,
+      fullName: token ? nameFromToken(token) : null,
       viewAsInvestigator,
       setViewAsInvestigator,
       // A cached username alone isn't enough — the token itself may have

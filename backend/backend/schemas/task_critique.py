@@ -74,3 +74,18 @@ class TaskCritiqueListResponse(BaseModel):
 class RecommendationDecisionRequest(BaseModel):
     decision: Literal["accepted", "rejected"]
     reason: Optional[str] = None
+
+
+class RecommendationHistoryAttempt(BaseModel):
+    """One past attempt's audit-log entry — see
+    investigation_task_critique_recommendation_history. Same rich
+    {id, description, decision, reason} shape as the live report's
+    recommendations (2026-08-18, per the user: accept/reject/reason needs to
+    survive here too) — set_recommendation_decision keeps this row's copy in
+    sync as decisions are made, independent of the current report/lock state
+    (stays visible even once the task is scored and complete)."""
+
+    attempt_number: int
+    summary: Optional[str] = None
+    recommendations: List[TaskCritiqueRecommendation] = []
+    created_at: datetime.datetime

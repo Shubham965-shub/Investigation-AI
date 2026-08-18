@@ -25,7 +25,7 @@ from backend.db.rc_capa_critique_queries import (
 )
 from backend.db.rc_capa_sit_review_queries import fetch_latest_sit_review_status, insert_sit_review
 from backend.routers.auth import get_current_username
-from backend.schemas.rc_capa_critique import RcCapaState, RecommendationDecisionRequest
+from backend.schemas.rc_capa_critique import RcCapaReport, RcCapaState, RecommendationDecisionRequest
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +167,23 @@ async def _deviation_id_and_row(record_id: str):
 async def get_rc_capa_critique(record_id: str) -> RcCapaState:
     deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
     return await _build_state(record_id, deviation_id, row)
+
+
+@router.get("/{record_id}/history", response_model=List[RcCapaReport])
+async def get_rc_capa_history(record_id: str) -> List[RcCapaReport]:
+    """The full audit trail across every attempt — unlike Task Critique,
+    investigation_rc_capa_reports already keeps a real row per attempt (never
+    upserted in place), so this is just the same fetch the live state uses,
+    minus the "only look at the latest" narrowing. Independent of lock/
+    complete state, so it stays available even once the record is scored and
+    done (2026-08-18, per the user) — surfaced behind its own button/panel
+    rather than inline, since it's the full history, not just the current
+    report. Newest attempt first: fetch_rc_capa_reports itself stays
+    ascending (compute_rc_capa_state relies on reports[-1] being the
+    latest), so the reversal happens here rather than in the shared query."""
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    reports = await fetch_rc_capa_reports(deviation_id)
+    return [RcCapaReport(**report) for report in reversed(reports)]
 
 
 @router.post("/{record_id}/upload", response_model=RcCapaState)

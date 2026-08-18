@@ -173,7 +173,7 @@ export function TaskCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">Task Critique History <TaskCritiqueGuidelines /></p>
+        <p className="card-title">Task Critique<TaskCritiqueGuidelines /></p>
         <button
           type="button"
           className="btn-primary"

@@ -3,13 +3,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   decideTaskCritiqueRecommendation,
   getTaskCritique,
+  getTaskCritiqueHistory,
   uploadTaskCritiqueReport,
+  type RecommendationHistoryAttempt,
   type TaskCritiqueSection,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { formatAttemptTimestamp } from "../utils/formatTimestamp";
 import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
@@ -40,6 +43,7 @@ export function TaskCritiqueDetailPage() {
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [reasonDrafts, setReasonDrafts] = useState<Record<number, string>>({});
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
+  const [history, setHistory] = useState<RecommendationHistoryAttempt[]>([]);
 
   useEffect(() => {
     if (!recordId || Number.isNaN(taskIndex)) return;
@@ -48,11 +52,12 @@ export function TaskCritiqueDetailPage() {
     setDbError(null);
     (async () => {
       try {
-        const data = await getTaskCritique(recordId);
+        const [data, historyData] = await Promise.all([getTaskCritique(recordId), getTaskCritiqueHistory(recordId, taskIndex)]);
         if (cancelled) return;
         const foundIndex = data?.sections.findIndex((s) => s.task_index === taskIndex) ?? -1;
         setSection(foundIndex >= 0 ? data!.sections[foundIndex] : null);
         setSectionNumber(foundIndex >= 0 ? foundIndex + 1 : null);
+        setHistory(historyData);
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
       } finally {
@@ -114,6 +119,8 @@ export function TaskCritiqueDetailPage() {
         return;
       }
       setSection(updated);
+      // This upload just added a new attempt to the audit trail.
+      getTaskCritiqueHistory(recordId!, taskIndex).then(setHistory);
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to upload report");
     } finally {
@@ -301,6 +308,68 @@ export function TaskCritiqueDetailPage() {
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Full history across every attempt — independent of lock/complete
+              state, so it stays visible even once the task is scored and
+              done (2026-08-18, per the user). */}
+          {history.length > 0 && (
+            <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "16px 24px" }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendation History</p>
+              </div>
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                {history.map((attempt) => (
+                  <div key={attempt.attempt_number} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 600, fontSize: "var(--font-size-sm)" }}>Attempt {attempt.attempt_number}</span>
+                      <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
+                        {formatAttemptTimestamp(attempt.created_at)}
+                      </span>
+                    </div>
+                    {attempt.summary && (
+                      <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>{attempt.summary}</p>
+                    )}
+                    {attempt.recommendations.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {attempt.recommendations.map((rec) => (
+                          <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
+                              {/* Read-only mirror of the live section's Accept/Reject
+                                  pills — both options always shown, the actual
+                                  decision highlighted and the other dimmed
+                                  (2026-08-18, per the user), instead of buttons. */}
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <span
+                                  className={rec.decision === "accepted" ? "status-pill complete" : undefined}
+                                  style={rec.decision === "accepted" ? undefined : { fontSize: "var(--font-size-sm)", color: "var(--color-text-faint)", opacity: 0.5 }}
+                                >
+                                  Accepted
+                                </span>
+                                <span
+                                  className={rec.decision === "rejected" ? "status-pill" : undefined}
+                                  style={
+                                    rec.decision === "rejected"
+                                      ? { color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }
+                                      : { fontSize: "var(--font-size-sm)", color: "var(--color-text-faint)", opacity: 0.5 }
+                                  }
+                                >
+                                  Rejected
+                                </span>
+                              </div>
+                            </div>
+                            {rec.decision === "rejected" && rec.reason && (
+                              <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

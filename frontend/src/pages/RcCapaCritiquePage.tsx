@@ -4,9 +4,11 @@ import {
   decideRcCapaRecommendation,
   getProblemStatementRecord,
   getRcCapaCritique,
+  getRcCapaHistory,
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
   type RcCapaCritique,
+  type RcCapaReport,
   type RcCapaState,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
@@ -17,6 +19,7 @@ import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/Rc
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { BoldText } from "../components/BoldText";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -52,6 +55,10 @@ export function RcCapaCritiquePage() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReports, setHistoryReports] = useState<RcCapaReport[]>([]);
 
   useEffect(() => {
     if (!recordId) return;
@@ -161,6 +168,14 @@ export function RcCapaCritiquePage() {
     }
   }
 
+  function handleOpenHistory() {
+    setShowHistory(true);
+    setHistoryLoading(true);
+    getRcCapaHistory(recordId!)
+      .then(setHistoryReports)
+      .finally(() => setHistoryLoading(false));
+  }
+
   async function handlePushToSitReview() {
     setShowConfirm(false);
     setPushBusy(true);
@@ -192,22 +207,27 @@ export function RcCapaCritiquePage() {
       )}
       <div className="card-header">
         <p className="card-title">RC & CAPA Critique</p>
-        {waitingForSitReview ? (
-          <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
-            Waiting for SIT Review
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button type="button" className="btn-outline" onClick={handleOpenHistory}>
+            Recommendation History
           </button>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
-            disabled={!isComplete || pushBusy}
-            onClick={() => setShowConfirm(true)}
-          >
-            <img src={exportIcon} alt="" width={16} height={16} />
-            Accept and Push for SIT Review
-          </button>
-        )}
+          {waitingForSitReview ? (
+            <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
+              Waiting for SIT Review
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
+              disabled={!isComplete || pushBusy}
+              onClick={() => setShowConfirm(true)}
+            >
+              <img src={exportIcon} alt="" width={16} height={16} />
+              Accept and Push for SIT Review
+            </button>
+          )}
+        </div>
       </div>
 
       {pushError && <p className="error-banner">{pushError}</p>}
@@ -479,6 +499,10 @@ export function RcCapaCritiquePage() {
       )}
 
       {scoring && <ScoringDialog reason={scoring} />}
+
+      {showHistory && (
+        <RcCapaHistoryPanel reports={historyReports} loading={historyLoading} onClose={() => setShowHistory(false)} />
+      )}
     </div>
   );
 }
