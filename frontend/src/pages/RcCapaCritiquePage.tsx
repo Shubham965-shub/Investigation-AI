@@ -15,6 +15,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileDropzone } from "../components/FileDropzone";
 import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
+import { BoldText } from "../components/BoldText";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -357,7 +358,7 @@ export function RcCapaCritiquePage() {
                 {critique.summary ? (
                   <div style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px" }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Summary Of the Report</p>
-                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{critique.summary}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}><BoldText text={critique.summary} /></p>
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Critique pending.</p>
