@@ -197,11 +197,12 @@ export function getRciPlanRecord(recordId: string): Promise<RciPlanRecordRespons
   return getRecordOrNull<RciPlanRecordResponse>(`/rci-plan/${recordId}`);
 }
 
-/** Every real investigator who has ever appeared on any investigation —
- * populates the per-section Investigator dropdown (2026-08-13, per the
- * user), replacing free text. Registered ahead of GET /rci-plan/{record_id}
- * on the backend so this literal path isn't shadowed by that catch-all. */
-export function getAllInvestigators(): Promise<string[]> {
+/** Investigators currently assigned to an OPEN investigation only
+ * (2026-08-19, per the user, re-scoping the prior 2026-08-13 all-time list)
+ * — populates the per-section Investigator dropdown. Registered ahead of
+ * GET /rci-plan/{record_id} on the backend so this literal path isn't
+ * shadowed by that catch-all. */
+export function getOpenInvestigators(): Promise<string[]> {
   return apiGet<string[]>("/rci-plan/investigators");
 }
 

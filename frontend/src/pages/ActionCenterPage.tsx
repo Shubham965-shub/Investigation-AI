@@ -33,10 +33,22 @@ const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
   overdue: "overdue",
 };
 
+// Status cards use hyphenated keys ("on-track") while each investigation
+// row's own bucket field uses underscores ("on_track") — see
+// action_center.py's _bucket_for/_OPEN_STATUS_TO_BUCKET vs its status-card
+// building. Needed to filter the table by clicking a card (2026-08-19, per
+// the user, same click-to-filter UX as the event-type pills below).
+const CARD_KEY_TO_BUCKET: Record<string, string> = {
+  unassigned: "unassigned",
+  "on-track": "on_track",
+  delay: "delay",
+  overdue: "overdue",
+};
+
 // Real backend bucket -> the table/grid status-pill styling + label.
 const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   unassigned: { status: "unassigned", label: "Unassigned" },
-  delay: { status: "due-soon", label: "Due Soon" },
+  delay: { status: "due-soon", label: "At Risk of Delay" },
   on_track: { status: "in-progress", label: "In Progress" },
   overdue: { status: "overdue", label: "Overdue" },
 };
@@ -111,10 +123,10 @@ function compareForSort(a: string | number | null, b: string | number | null, di
 // action_center_roles for the business-rule placeholders this endpoint
 // encodes (status buckets, pending actions, progress chart).
 
-function renderStatusCard(card: StatusCardResponse) {
+function renderStatusCard(card: StatusCardResponse, active: boolean, onClick: () => void) {
   const cssClass = CARD_KEY_TO_CSS_CLASS[card.key] ?? "unassigned";
   return (
-    <div className={`ac-status-card ${cssClass}`} key={card.key}>
+    <div className={`ac-status-card ${cssClass} ${active ? "active" : ""}`} key={card.key} onClick={onClick}>
       <div className="ac-status-card-header">
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src={STATUS_ICONS[cssClass]} alt="" width={18} height={18} />
@@ -160,6 +172,10 @@ export function ActionCenterPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [previewInvestigation, setPreviewInvestigation] = useState<PreviewInvestigation | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  // Status-card click filter (2026-08-19, per the user) — same client-side
+  // toggle-filter UX as the event-type pills (activeFilter above), just
+  // scoped to a card's bucket instead of an event type.
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
   const [siteFilter, setSiteFilter] = useState("");
@@ -244,6 +260,7 @@ export function ActionCenterPage() {
 
   const visibleInvestigations = summary.investigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
+    .filter((inv) => !statusFilter || inv.bucket === CARD_KEY_TO_BUCKET[statusFilter])
     .filter((inv) => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
@@ -286,6 +303,11 @@ export function ActionCenterPage() {
     setPage(1);
   }
 
+  function setStatusCardFilter(key: string) {
+    setStatusFilter((prev) => (prev === key ? null : key));
+    setPage(1);
+  }
+
   function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
     return {
       id: inv.id,
@@ -309,7 +331,7 @@ export function ActionCenterPage() {
 
       <section className="ac-card">
         <div className="ac-total-header">
-          <h2>Total Investigations</h2>
+          <h2>Open Investigations</h2>
           <span className="ac-total-count">{summary.total_investigations}</span>
         </div>
         <div className="ac-stat-pills">
@@ -330,7 +352,7 @@ export function ActionCenterPage() {
       </section>
 
       <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
-        {statusCards.map(renderStatusCard)}
+        {statusCards.map((card) => renderStatusCard(card, statusFilter === card.key, () => setStatusCardFilter(card.key)))}
       </div>
 
       {false && (

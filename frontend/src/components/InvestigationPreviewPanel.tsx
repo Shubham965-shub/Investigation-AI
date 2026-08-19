@@ -211,6 +211,7 @@ export function InvestigationPreviewPanel({
                         <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--color-info-text)" }}>Currently in progress</p>
                         <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-info-text)" }}>
                           Step {investigation.step + 1}: {currentStepDef.label}
+                          {currentStepDef.label === "Interview Questionnaire" && investigation.eventType === "Market Complaint" && " (Optional)"}
                         </p>
                       </div>
                     </div>
@@ -287,7 +288,12 @@ export function InvestigationPreviewPanel({
                             <img src={status === "completed" ? badgeCompletedIcon : status === "in-progress" ? badgeInProgressIcon : badgeNotStartedIcon} alt="" width={16} height={16} />
                             {status === "completed" ? "Completed" : status === "in-progress" ? "In Progress" : "Not Started"}
                           </span>
-                          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--color-text)" }}>{stepDef.label}</p>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--color-text)" }}>
+                            {stepDef.label}
+                            {stepDef.label === "Interview Questionnaire" && investigation.eventType === "Market Complaint" && (
+                              <span style={{ fontWeight: 400, color: "var(--color-text-muted)" }}> (Optional)</span>
+                            )}
+                          </p>
                           <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{stepDef.description}</p>
                           <div style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 8, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             {status !== "not-started" && investigation.investigator ? (

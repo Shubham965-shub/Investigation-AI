@@ -4,6 +4,7 @@ import recordDocIcon from "../assets/icons/modal-record-doc.svg";
 import chevronRight from "../assets/icons/modal-chevron-right.svg";
 import { ApiError } from "../api/client";
 import { getSimilarInvestigations, type SimilarInvestigation } from "../api/dashboard";
+import { getEventExplorerHandoffUrl } from "../api/auth";
 
 const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; color: string }> = {
   Open: { bg: "var(--color-info-bg)", color: "var(--color-info-text)" },
@@ -37,6 +38,25 @@ export function RecordDetailsModal({
   const [historicData, setHistoricData] = useState<SimilarInvestigation[] | null>(null);
   const [historicLoading, setHistoricLoading] = useState(false);
   const [historicError, setHistoricError] = useState<string | null>(null);
+  const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
+
+  function handleExploreEvents() {
+    setExploreEventsError(null);
+    // Opened synchronously on the click itself, before the async handoff
+    // call — a tab opened only after an awaited fetch resolves is not
+    // considered a direct result of the user gesture by most browsers and
+    // gets popup-blocked. Redirect this already-open tab once the token
+    // arrives instead.
+    const newTab = window.open("", "_blank");
+    getEventExplorerHandoffUrl()
+      .then(({ url }) => {
+        if (newTab) newTab.location.href = url;
+      })
+      .catch((err) => {
+        newTab?.close();
+        setExploreEventsError(err instanceof ApiError ? String(err.detail) : "Could not open Event Explorer.");
+      });
+  }
 
   function handleToggleHistoric() {
     const next = !historicExpanded;
@@ -155,16 +175,22 @@ export function RecordDetailsModal({
           </div>
 
           <div>
-            <button type="button" onClick={handleToggleHistoric} className="btn-outline">
-              View Historic Data
-              <img
-                src={chevronRight}
-                alt=""
-                width={20}
-                height={20}
-                style={{ transform: historicExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 150ms ease" }}
-              />
-            </button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button type="button" onClick={handleToggleHistoric} className="btn-outline">
+                View Historic Data
+                <img
+                  src={chevronRight}
+                  alt=""
+                  width={20}
+                  height={20}
+                  style={{ transform: historicExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 150ms ease" }}
+                />
+              </button>
+              <button type="button" onClick={handleExploreEvents} className="btn-outline">
+                Explore Events
+              </button>
+            </div>
+            {exploreEventsError && <p style={{ margin: "8px 0 0", color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
 
             {historicExpanded && (
               <div

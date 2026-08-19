@@ -43,7 +43,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.config.settings import settings
 from backend.db.auth_queries import fetch_user_by_username
-from backend.schemas.auth import CurrentUser, LoginRequest, LoginResponse
+from backend.schemas.auth import CurrentUser, EventExplorerHandoffResponse, LoginRequest, LoginResponse
 
 logger = logging.getLogger(__name__)
 
@@ -149,3 +149,25 @@ async def login(request: LoginRequest) -> LoginResponse:
 @router.get("/me", response_model=CurrentUser)
 async def me(username: str = Depends(get_current_username)) -> CurrentUser:
     return CurrentUser(username=username)
+
+
+# Event Explorer SSO handoff (2026-08-19, per the user) — mints a short-lived,
+# single-purpose token InvestigationAI_BE exchanges for its own local session,
+# so clicking "Explore Events" lands the user in InvestigationAI_FE's Event
+# Explorer already authenticated as the same athena_users identity. Signed
+# with EVENT_EXPLORER_HANDOFF_SECRET (NOT settings.JWT_SECRET — see that
+# setting's docstring for why this is a deliberately separate secret).
+_HANDOFF_TOKEN_TTL_SECONDS = 60
+
+
+@router.get("/event-explorer-handoff", response_model=EventExplorerHandoffResponse)
+async def event_explorer_handoff(username: str = Depends(get_current_username)) -> EventExplorerHandoffResponse:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "username": username,
+        "iat": now,
+        "exp": now + timedelta(seconds=_HANDOFF_TOKEN_TTL_SECONDS),
+    }
+    token = jwt.encode(payload, settings.EVENT_EXPLORER_HANDOFF_SECRET, algorithm=settings.JWT_ALGORITHM)
+    url = f"{settings.EVENT_EXPLORER_URL}/event-explorer?handoff={token}"
+    return EventExplorerHandoffResponse(url=url)

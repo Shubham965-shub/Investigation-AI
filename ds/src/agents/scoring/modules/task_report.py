@@ -1,7 +1,7 @@
 """
 Module 1 — Task Report scoring (Task Report Execution rubric, /40).
 
-Scores the investigation-task-report section against its 12 checkpoints.
+Scores the investigation-task-report section against its 9 checkpoints.
 """
 
 from __future__ import annotations

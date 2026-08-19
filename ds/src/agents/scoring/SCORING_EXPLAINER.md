@@ -36,18 +36,15 @@ An AI assessor reads the report and returns, for every checkpoint: a **verdict**
 
 | Sub-criteria | Checkpoint | Marks |
 |---|---|---|
-| 2.1 Coverage of Tasks | 2.1a — tasks examine all relevant 6M source categories (or reason out N/A) | 8 |
-| | 2.1b — no obvious relevant line of enquiry left undefined | 2 |
-| 2.2 Title & Objective | 2.2a — each task has a clear, specific title | 2 |
-| | 2.2b — each task states a specific, answerable objective | 2 |
-| 3.1 Evidence & Objectivity | 3.1a — findings supported by objective evidence & data | 5 |
-| | 3.1b — both confirming & disconfirming evidence; quantified | 3 |
-| 3.2 Completeness & Traceability | 3.2a — each objective actually answered (closure) | 5 |
-| | 3.2b — data traceable to authenticated source records (ALCOA+) | 3 |
-| 4.1 Logical Linkage & Depth | 4.1a — each inference follows from findings | 3 |
-| | 4.1b — ruled-out lines justified; reaches systemic level *(NA allowed)* | 3 |
-| 4.2 Report Quality | 4.2a — clear, self-contained, GDP, signed & dated | 2 |
-| | 4.2b — inferences give a coherent, gap-free basis for root cause | 2 |
+| 2.2 Title & Objective | 2.2a — each task has a clear, specific title | 4 |
+| | 2.2b — each task states a specific, answerable objective | 4 |
+| 3.1 Evidence & Objectivity | 3.1a — findings supported by objective evidence & data | 6 |
+| | 3.1b — both confirming & disconfirming evidence; quantified | 4 |
+| 3.2 Completeness & Traceability | 3.2a — each objective actually answered (closure) | 4 |
+| | 3.2b — data traceable to authenticated source records (ALCOA+) | 6 |
+| 4.1 Logical Linkage & Depth | 4.1a — each inference follows from findings | 4 |
+| | 4.1b — ruled-out lines justified; reaches systemic level *(NA allowed)* | 4 |
+| | 4.1c — inferences give a coherent, gap-free basis for root cause | 4 |
 | **Total** | | **40** |
 
 ## Report 2 — IQ Score (/60)
