@@ -21,9 +21,14 @@ tables in that version. Re-verified properly this time via `cell.tables`:
     what has happened...") that stands in for the description field itself
     — same as the old template.
   - row 6 (outer) -> a nested 19x5 table: header row + 6 task-number blocks
-    of 3 rows each (S.No. vertically merged per block) — IDENTICAL
-    structure to the old template's Investigation tasks table, including
-    the same fixed 6-slot capacity.
+    of 3 rows each — IDENTICAL structure to the old template's Investigation
+    tasks table, including the same fixed 6-slot capacity. Despite looking
+    vertically merged in the raw template, each row's vMerge is independently
+    `val="restart"` (verified via each cell's `w:tcPr/w:vMerge`, 2026-08-19) —
+    there is no real w:vMerge continuation tying the 3 rows of a block
+    together, so only the block's first row is ever filled and the other two
+    are deleted outright (see build_rci_plan_docx) rather than left as blank
+    placeholder rows.
   - row 8 (outer) -> header labels already printed in the template:
     Investigator | Task Owner 1 | Task Owner 2 | Task Owner 3 | Task Owner 4
     (this row itself is not filled).
@@ -38,10 +43,11 @@ only the blank text runs are replaced.
 """
 from __future__ import annotations
 
+import copy
 import datetime
 import io
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import docx
 
@@ -64,6 +70,20 @@ MAX_SIGN_OFF_OWNERS = 4
 
 def _set_cell_text(cell, text: str) -> None:
     cell.text = text or ""
+
+
+def _format_ddmmyyyy(iso: Optional[str]) -> str:
+    """due_date is always a plain "yyyy-mm-dd" string (native <input
+    type="date">'s value format, see RciPlanPage.tsx) — the exported docx
+    shows it as dd/mm/yyyy (2026-08-18, per the user), matching the RCI Plan
+    page's own read-only display."""
+    if not iso:
+        return ""
+    parts = iso.split("-")
+    if len(parts) != 3:
+        return iso
+    y, m, d = parts
+    return f"{d}/{m}/{y}"
 
 
 def _set_description_paragraph(doc, text: str) -> None:
@@ -127,28 +147,98 @@ def build_rci_plan_docx(
     # ── 2.0 Investigation tasks ─────────────────────────────────────────
     tasks_table = outer.rows[6].cells[1].tables[0]
     truncated = max(0, len(sections) - MAX_TEMPLATE_SECTIONS)
-    for i, section in enumerate(sections[:MAX_TEMPLATE_SECTIONS]):
+    # Each 3-row block only ever gets its first row filled — the other two
+    # are deleted outright (2026-08-19, per the user: leftover blank rows,
+    # each still showing the block's placeholder S.No. text with nothing
+    # else, were showing up under every task). Deleted in descending row
+    # index order at the end so earlier deletions don't shift the indices of
+    # rows still queued for removal.
+    rows_to_delete: List[int] = []
+    for i in range(MAX_TEMPLATE_SECTIONS):
         block_start = 1 + i * 3  # header row is row 0; each section owns rows [block_start, block_start+2]
-        row = tasks_table.rows[block_start]
-        objective = section.title if not section.correlation else f"{section.title}\n{section.correlation}"
-        # Unchecked tasks are excluded from the exported report — same
-        # "checked = keep it" convention Evidence Collection/Interview
-        # Questionnaire already use.
-        details = "\n".join(f"- {t.description}" for t in section.tasks if t.is_checked)
-        _set_cell_text(row.cells[0], str(i + 1))
-        _set_cell_text(row.cells[1], objective)
-        _set_cell_text(row.cells[2], details)
-        _set_cell_text(row.cells[3], section.assignee or "Unassigned")
-        _set_cell_text(row.cells[4], section.due_date or "")
+        if i < len(sections):
+            section = sections[i]
+            row = tasks_table.rows[block_start]
+            objective = section.title if not section.correlation else f"{section.title}\n{section.correlation}"
+            # Unchecked tasks are excluded from the exported report — same
+            # "checked = keep it" convention Evidence Collection/Interview
+            # Questionnaire already use. Numbered "<task>.<subtask>" so
+            # subtasks are identifiable individually within the one cell
+            # (2026-08-19, per the user), since the block's other rows are
+            # removed rather than used to hold one subtask each.
+            checked = [t for t in section.tasks if t.is_checked]
+            details = "\n".join(f"{i + 1}.{j + 1} {t.description}" for j, t in enumerate(checked))
+            _set_cell_text(row.cells[0], str(i + 1))
+            _set_cell_text(row.cells[1], objective)
+            _set_cell_text(row.cells[2], details)
+            _set_cell_text(row.cells[3], section.assignee or "Unassigned")
+            _set_cell_text(row.cells[4], _format_ddmmyyyy(section.due_date))
+            rows_to_delete.extend([block_start + 1, block_start + 2])
+        else:
+            # No section for this slot at all — the whole block is unused.
+            rows_to_delete.extend([block_start, block_start + 1, block_start + 2])
+    for row_idx in sorted(rows_to_delete, reverse=True):
+        row = tasks_table.rows[row_idx]
+        row._tr.getparent().remove(row._tr)
 
     # ── 3.0 RCI Plan Sign-off ────────────────────────────────────────────
     # Genuinely flat (no nested table, confirmed via cell.tables) — headers
-    # (Investigator | Task Owner 1-4) are already printed at outer row 8.
+    # at outer row 8 are ['', 'Investigator', 'Task Owner 1', 'Task Owner 2',
+    # 'Task Owner 3', 'Task Owner 4'] (6 cells, confirmed 2026-08-19) — cell 0
+    # is a blank label column, NOT the Investigator slot. The previous
+    # off-by-one (writing rci_owner into cell 0 and assignees into cells
+    # 1-4) squashed the investigator's name into that blank cell, put the
+    # first task owner's name in the actual Investigator column, and left
+    # the last Task Owner slot (cell 5) always empty — per the user's
+    # report, 2026-08-19.
     sign_off_row = outer.rows[9]
-    _set_cell_text(sign_off_row.cells[0], rci_owner or "")
-    owners_truncated = max(0, len(sections) - MAX_SIGN_OFF_OWNERS)
-    for i, section in enumerate(sections[:MAX_SIGN_OFF_OWNERS]):
-        _set_cell_text(sign_off_row.cells[i + 1], section.assignee or "Unassigned")
+    header_row = outer.rows[8]
+    # Multiple sections are routinely assigned to the same person — filling
+    # slots section-by-section (previous approach) could burn a slot on a
+    # repeat name while a genuinely distinct owner further down the list got
+    # no slot at all (2026-08-19, per the user: a 6-task investigation with
+    # only 3 distinct owners was showing a duplicate name in one Task Owner
+    # slot and omitting a real owner entirely). Dedup by name, preserving
+    # first-appearance order.
+    unique_owners: List[str] = []
+    for section in sections:
+        name = section.assignee or "Unassigned"
+        if name not in unique_owners:
+            unique_owners.append(name)
+
+    _set_cell_text(sign_off_row.cells[1], rci_owner or "")
+    for i, name in enumerate(unique_owners[:MAX_SIGN_OFF_OWNERS]):
+        _set_cell_text(sign_off_row.cells[i + 2], name)
+
+    # The template's Sign-off row only has 4 fixed Task Owner slots, but an
+    # investigation can have more distinct owners than that (2026-08-19, per
+    # the user: 6 distinct owners still only showed the first 4). Rather
+    # than add a separate table, extend this SAME table with more rows —
+    # cloned from the header/value row pair (captured before either was
+    # filled in, so the clones start pristine) — each holding up to 5 more
+    # "Task Owner N" slots across its 5 non-label cells (cell 0 stays the
+    # blank label column, matching row 8/9's own layout).
+    EXTRA_OWNERS_PER_ROW = 5
+    remaining_owners = unique_owners[MAX_SIGN_OFF_OWNERS:]
+    owners_truncated = 0
+    if remaining_owners:
+        header_tr_template = copy.deepcopy(header_row._tr)
+        value_tr_template = copy.deepcopy(sign_off_row._tr)
+        next_owner_number = MAX_SIGN_OFF_OWNERS + 1
+        for batch_start in range(0, len(remaining_owners), EXTRA_OWNERS_PER_ROW):
+            batch = remaining_owners[batch_start : batch_start + EXTRA_OWNERS_PER_ROW]
+            outer._tbl.append(copy.deepcopy(header_tr_template))
+            outer._tbl.append(copy.deepcopy(value_tr_template))
+            new_header_row = outer.rows[-2]
+            new_value_row = outer.rows[-1]
+            for i in range(EXTRA_OWNERS_PER_ROW):
+                if i < len(batch):
+                    _set_cell_text(new_header_row.cells[i + 1], f"Task Owner {next_owner_number + i}")
+                    _set_cell_text(new_value_row.cells[i + 1], batch[i])
+                else:
+                    _set_cell_text(new_header_row.cells[i + 1], "")
+                    _set_cell_text(new_value_row.cells[i + 1], "")
+            next_owner_number += len(batch)
 
     buffer = io.BytesIO()
     doc.save(buffer)

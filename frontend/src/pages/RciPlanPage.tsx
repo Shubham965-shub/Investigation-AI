@@ -29,6 +29,15 @@ function tomorrowIso(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// due_date is always a plain "yyyy-mm-dd" string (native <input type="date">'s
+// value format) — displayed as dd/mm/yyyy once locked/read-only (2026-08-18,
+// per the user). The editable native date input itself still renders
+// according to the browser's own locale — that's outside app-level control.
+function formatDdMmYyyy(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
 export function RciPlanPage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
@@ -359,7 +368,7 @@ export function RciPlanPage() {
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
                   <span>TCD:</span>
                   {lockedForEditing ? (
-                    <span>{section.due_date || "—"}</span>
+                    <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
                   ) : (
                     <input
                       type="date"
