@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   exportRciPlanDocx,
   generateRciPlan,
-  getAllInvestigators,
+  getOpenInvestigators,
   getProblemStatementRecord,
   getRciPlanRecord,
   updateRciPlanSections,
@@ -88,7 +88,7 @@ export function RciPlanPage() {
         const [psRecord, rciRecord, investigatorNames] = await Promise.all([
           getProblemStatementRecord(recordId),
           getRciPlanRecord(recordId),
-          getAllInvestigators(),
+          getOpenInvestigators(),
         ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
