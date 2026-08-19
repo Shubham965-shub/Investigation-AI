@@ -69,7 +69,8 @@ SELECT
     eq.instrument_equipment,
     eq.instrument_equipment_id,
     di.investigator,
-    r.rci_key AS rci_number
+    r.rci_key AS rci_number,
+    f.due_date
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key

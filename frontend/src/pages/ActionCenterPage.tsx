@@ -149,7 +149,11 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 }
 
 export function ActionCenterPage() {
-  const { viewAsInvestigator } = useAuth();
+  const { username, viewAsInvestigator } = useAuth();
+  // Ajay Pathania's account is SIT (Site Inspection Team), not a generic
+  // admin (2026-08-18, per the user) — everyone else still defaults to
+  // "Admin View" when not viewing as a specific investigator.
+  const isSitAccount = username?.toLowerCase() === "pathania.ajay@strides.com";
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -299,7 +303,9 @@ export function ActionCenterPage() {
     <>
     <div className="ac-page-bg">
     <div className="ac-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
-      <h1 className="ac-title">Action Center</h1>
+      <h1 className="ac-title">
+        Action Center{viewAsInvestigator ? ` - Investigator View (${viewAsInvestigator})` : isSitAccount ? " - SIT View" : " - Admin View"}
+      </h1>
 
       <section className="ac-card">
         <div className="ac-total-header">
@@ -327,15 +333,16 @@ export function ActionCenterPage() {
         {statusCards.map(renderStatusCard)}
       </div>
 
+      {false && (
       <div>
         <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
         <div className="ac-pending-grid">
-            {summary.pending_actions.map((action) => {
+            {summary!.pending_actions.map((action) => {
               // Pending actions carry a summary shape (no investigator/stage)
               // — look up the matching full row from summary.investigations
               // (same source list backend-side) to build the same
               // PreviewInvestigation the table/grid rows use.
-              const fullInvestigation = summary.investigations.find((inv) => inv.id === action.id);
+              const fullInvestigation = summary!.investigations.find((inv) => inv.id === action.id);
               // Fixed two-row layout: row 1 = OOS, row 2 = Deviation (see
               // action_center.py) — explicit gridRow so the split stays
               // correct even when one side has fewer than 3 cards, rather
@@ -366,21 +373,58 @@ export function ActionCenterPage() {
                 </div>
               );
             })}
-            {summary.pending_actions.length === 0 && (
+            {summary!.pending_actions.length === 0 && (
               <p style={{ color: "var(--color-text-muted)" }}>No pending actions right now.</p>
             )}
           </div>
         </div>
+      )}
 
+      {false && (
       <div className="ac-card">
         <h2 className="ac-section-title" style={{ marginBottom: 16 }}>Status Of Open Investigations</h2>
         <StatusChart data={chartData} />
       </div>
+      )}
 
       <div className="ac-card">
         <div className="ac-details-header">
           <div className="ac-details-title-group">
-            <h2>Investigation Details</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h2>Investigation Details</h2>
+              <div className="ac-criticality-toggle">
+                <button
+                  type="button"
+                  className={criticalityFilter === "" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("");
+                    setPage(1);
+                  }}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={criticalityFilter === "critical" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("critical");
+                    setPage(1);
+                  }}
+                >
+                  Critical
+                </button>
+                <button
+                  type="button"
+                  className={criticalityFilter === "non_critical" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("non_critical");
+                    setPage(1);
+                  }}
+                >
+                  Major/Minor
+                </button>
+              </div>
+            </div>
             <p>{summary.total_investigations} investigations total</p>
           </div>
           <div className="ac-filters">
@@ -436,17 +480,6 @@ export function ActionCenterPage() {
               defaultLabel="All Time (Start Date)"
               options={["7", "30", "180"]}
               formatOption={(v) => (v === "7" ? "Last week" : v === "30" ? "Last month" : "Last 6 months")}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={criticalityFilter}
-              onChange={(v) => {
-                setCriticalityFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="All Criticality"
-              options={["critical", "non_critical"]}
-              formatOption={(v) => (v === "critical" ? "Critical" : "Non-Critical")}
             />
             <button
               type="button"

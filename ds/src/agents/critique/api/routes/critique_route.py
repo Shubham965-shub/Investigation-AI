@@ -401,6 +401,14 @@ async def critique_capa(
             user_prompt=user_prompt,
             structure=CAPACritiqueResponse,
         )
+        if result.capa_status == "missing":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "No CAPA (Corrective and Preventive Action) section was found in the uploaded "
+                    "report. Please reupload a report that includes a CAPA section."
+                ),
+            )
         return _cap_recommendations(result)
     except HTTPException:
         raise
