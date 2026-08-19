@@ -36,10 +36,18 @@ export function Stepper({
   recordId,
   currentStep,
   stepStatuses,
+  eventType,
 }: {
   recordId: string;
   currentStep: string;
   stepStatuses: Record<string, StepStatus>;
+  // Market Complaint investigations can skip straight from Evidence
+  // Collection to RCI Plan Creation without completing Interview
+  // Questionnaire (2026-08-19, per the user) — RCI Plan Creation's own
+  // gating already never required it, so this is purely a visual "this step
+  // is optional" marker, not a real lock (nothing in this stepper actually
+  // blocks navigation today).
+  eventType?: string;
 }) {
   const navigate = useNavigate();
 
@@ -49,6 +57,7 @@ export function Stepper({
         const status = stepStatuses[step.key] ?? "open";
         const isLast = index === RECORD_STEPS.length - 1;
         const clickable = step.path !== null;
+        const isSkippable = step.key === "interview-questionnaire" && eventType === "Market Complaint";
 
         return (
           <div key={step.key} style={{ display: "flex", alignItems: "center", flex: isLast ? "0 0 auto" : "1 1 auto" }}>
@@ -81,6 +90,11 @@ export function Stepper({
                 }}
               >
                 {step.label}
+                {isSkippable && (
+                  <span style={{ display: "block", fontWeight: 400, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+                    (Optional)
+                  </span>
+                )}
               </div>
             </div>
             {!isLast && (
