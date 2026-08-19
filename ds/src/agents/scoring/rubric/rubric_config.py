@@ -76,86 +76,65 @@ class SectionSpec:
 
 
 # ── Task Report Execution rubric (/40) ─────────────────────────────────────────
-# Checkpoint 2.1a carries 8 marks so the checkpoints sum exactly to the sheet's
-# section total of 40; a flawless task report scores 40/40 = 100%.
 _TASK_REPORT = SectionSpec(
     section="task_report",
     label="Task Report Execution",
     native_max=40.0,
     checkpoints=[
         Checkpoint(
-            "2.1a", "2.1 Coverage of Tasks",
-            "Tasks collectively examine all relevant potential-source categories "
-            "(Man, Machine, Material, Method, Measurement, Environment — 6M), or reason "
-            "out those that are not applicable.",
-            8.0,
-        ),
-        Checkpoint(
-            "2.1b", "2.1 Coverage of Tasks",
-            "No obvious relevant line of enquiry for the stated problem is left undefined.",
-            2.0,
-        ),
-        Checkpoint(
             "2.2a", "2.2 Title & Objective Quality",
             "Each investigation task has a clear, specific Title that identifies what is "
             "being investigated.",
-            2.0,
+            4.0,
         ),
         Checkpoint(
             "2.2b", "2.2 Title & Objective Quality",
             "Each task states a specific, answerable Objective linked to the problem or a "
             "hypothesis.",
-            2.0,
+            4.0,
         ),
         Checkpoint(
             "3.1a", "3.1 Evidence & Objectivity",
             "Findings are supported by objective evidence & data (records, logbooks, trend "
             "data, interviews, reconstruction) rather than unsupported assertions.",
-            5.0,
+            6.0,
         ),
         Checkpoint(
             "3.1b", "3.1 Evidence & Objectivity",
             "Both confirming and disconfirming evidence is captured (no cherry-picking); "
             "findings state fact and are quantified where relevant.",
-            3.0,
+            4.0,
         ),
         Checkpoint(
             "3.2a", "3.2 Completeness & Traceability",
             "Each task's stated Objective is actually answered by its Findings — the task is "
             "executed to closure, not left open.",
-            5.0,
+            4.0,
         ),
         Checkpoint(
             "3.2b", "3.2 Completeness & Traceability",
             "Data / evidence in the Findings is traceable to authenticated source records "
             "(ALCOA+).",
-            3.0,
+            6.0,
         ),
         Checkpoint(
             "4.1a", "4.1 Logical Linkage & Analytical Depth",
             "Each Inference follows logically from that task's Findings (no leaps or "
             "unsupported conclusions).",
-            3.0,
+            4.0,
         ),
         Checkpoint(
             "4.1b", "4.1 Logical Linkage & Analytical Depth",
-            "Ruled-out lines are justified by findings (Is / Is-Not or equivalent); the "
-            "inference reaches a systemic level; where human error is inferred, underlying "
-            "systemic contributors are examined.",
-            3.0,
+            "Ruled-out lines are justified by findings; the inference reaches a systemic "
+            "level; underlying systemic contributors are examined.",
+            4.0,
             allow_na=True,
         ),
         Checkpoint(
-            "4.2a", "4.2 Report Quality & Accountability",
-            "The report is clear and self-contained, follows Good Documentation Practices, "
-            "and is prepared, signed and dated by the investigator.",
-            2.0,
-        ),
-        Checkpoint(
-            "4.2b", "4.2 Report Quality & Accountability",
+            "4.1c", "4.1 Logical Linkage & Analytical Depth",
             "The inferences collectively provide a coherent, gap-free basis for the "
             "root-cause determination.",
-            2.0,
+            4.0,
         ),
     ],
 )
