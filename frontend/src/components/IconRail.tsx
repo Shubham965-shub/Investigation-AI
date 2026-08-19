@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import rail1 from "../assets/icons/rail-1.svg";
-import rail3 from "../assets/icons/rail-3.svg";
 import rail4Active from "../assets/icons/rail-4-active.svg";
 
 // Left icon rail — mirrors the Figma shell present on every screen. Figma's
@@ -12,7 +11,6 @@ import rail4Active from "../assets/icons/rail-4-active.svg";
 //  3. Investigations — the Action Center
 const ITEMS = [
   { icon: rail1, label: "Dashboard", path: null },
-  { icon: rail3, label: "Analytics", path: "/analytics" },
   { icon: rail4Active, label: "Investigations", path: "/" },
 ];
 

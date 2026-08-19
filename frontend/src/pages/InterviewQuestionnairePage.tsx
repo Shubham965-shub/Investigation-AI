@@ -78,7 +78,10 @@ export function InterviewQuestionnairePage() {
   }, [recordId, retryKey]);
 
   useEffect(() => {
+    // Market Complaint investigations skip this module entirely (2026-08-19,
+    // per the user) — no point generating questions nobody will see.
     if (!recordId || recordLoading || dbError || items !== null || !problemStatement || !eventType || !trackwiseFields) return;
+    if (eventType === "Market Complaint") return;
     setLoading(true);
     setError(null);
     generateQuestionnaire(recordId, { event_type: eventType, trackwise_fields: trackwiseFields })
@@ -114,6 +117,17 @@ export function InterviewQuestionnairePage() {
         <p>Complete the Problem Statement step first — Interview Questionnaire needs it to generate questions.</p>
         <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/problem-statement`)}>
           Go to Problem Statement
+        </button>
+      </div>
+    );
+  }
+
+  if (eventType === "Market Complaint") {
+    return (
+      <div className="empty-state">
+        <p>Interview Questionnaire is not required for Market Complaint investigations.</p>
+        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/rci-plan`)}>
+          Go to RCI Plan Creation
         </button>
       </div>
     );
