@@ -10,7 +10,7 @@ from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections, replace_rci_sections
 from backend.db.module_stage import stage_for
-from backend.db.queries import fetch_all_investigators, fetch_investigation_row
+from backend.db.queries import fetch_investigation_row, fetch_open_investigators
 from backend.db.rci_plan_export_queries import insert_rci_plan_export
 from backend.db.task_critique_queries import any_task_critique_started
 from backend.routers.auth import get_current_username
@@ -197,14 +197,15 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
 
 @router.get("/investigators", response_model=list[str])
-async def get_all_investigators() -> list[str]:
-    """Every real investigator who has ever appeared on any investigation —
-    populates the Investigator dropdown per section on the RCI Plan Creation
-    page (2026-08-13, per the user), replacing free text. Registered before
-    /{record_id} below — otherwise that catch-all route would shadow this one
-    (FastAPI matches by registration order; same class of bug fixed in ds's
-    critique routes earlier this session)."""
-    return await fetch_all_investigators()
+async def get_open_investigators() -> list[str]:
+    """Investigators currently assigned to an OPEN investigation only
+    (2026-08-19, per the user, re-scoping the prior 2026-08-13 all-time
+    list) — populates the Investigator dropdown per section on the RCI Plan
+    Creation page, replacing free text. Registered before /{record_id}
+    below — otherwise that catch-all route would shadow this one (FastAPI
+    matches by registration order; same class of bug fixed in ds's critique
+    routes earlier this session)."""
+    return await fetch_open_investigators()
 
 
 @router.get("/{record_id}", response_model=RciPlanRecord)
