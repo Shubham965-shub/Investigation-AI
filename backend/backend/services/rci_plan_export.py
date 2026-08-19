@@ -139,7 +139,7 @@ def build_rci_plan_docx(
     # not dim_rci.reference_number, is the real RCI number to fill in here).
     _set_cell_text(value_row.cells[1], str(rci_number) if rci_number is not None else "")
     _set_cell_text(value_row.cells[2], rci_owner or "")
-    _set_cell_text(value_row.cells[3], datetime.date.today().strftime("%d-%b-%Y"))
+    _set_cell_text(value_row.cells[3], datetime.date.today().strftime("%d/%m/%Y"))
     # Row 3 intentionally left blank — manual entry, not auto-filled.
 
     _set_description_paragraph(doc, trackwise_fields.get("description") or trackwise_fields.get("title") or "")

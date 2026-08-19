@@ -309,7 +309,7 @@ export function ActionCenterPage() {
 
       <section className="ac-card">
         <div className="ac-total-header">
-          <h2>Total Investigations</h2>
+          <h2>Open Investigations</h2>
           <span className="ac-total-count">{summary.total_investigations}</span>
         </div>
         <div className="ac-stat-pills">
