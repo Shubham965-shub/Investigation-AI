@@ -21,3 +21,7 @@ class LoginResponse(BaseModel):
 
 class CurrentUser(BaseModel):
     username: str
+
+
+class EventExplorerHandoffResponse(BaseModel):
+    url: str

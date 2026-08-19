@@ -173,7 +173,7 @@ export function TaskCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">Task Critique<TaskCritiqueGuidelines /></p>
+        <p className="card-title">Task Critique <TaskCritiqueGuidelines /></p>
         <button
           type="button"
           className="btn-primary"
@@ -200,9 +200,6 @@ export function TaskCritiquePage() {
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
-                    </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-                      ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
                     </span>
                   </div>
                   {section.correlation && (

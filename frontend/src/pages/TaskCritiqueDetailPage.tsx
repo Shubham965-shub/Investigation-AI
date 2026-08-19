@@ -187,9 +187,6 @@ export function TaskCritiqueDetailPage() {
                 {sectionNumber != null ? `${sectionNumber}. ` : ""}
                 {section.title}
               </span>
-              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-                ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
-              </span>
             </div>
             {section.correlation && (
               <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
