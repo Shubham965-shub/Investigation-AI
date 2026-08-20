@@ -58,6 +58,13 @@ CREATE TABLE IF NOT EXISTS investigation_rci_sections (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Whole-section include/exclude from the final plan (2026-08-20, per the
+-- user) — same "checked = keep it" convention investigation_rci_tasks'
+-- is_checked already uses per-subtask, just at the section level. Excluded
+-- sections are skipped entirely by build_rci_plan_docx, same as an
+-- unchecked task is skipped from a section's details cell.
+ALTER TABLE investigation_rci_sections ADD COLUMN IF NOT EXISTS is_checked BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE INDEX IF NOT EXISTS idx_investigation_rci_sections_deviation_id ON investigation_rci_sections(deviation_id);
 
 CREATE TABLE IF NOT EXISTS investigation_rci_tasks (

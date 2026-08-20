@@ -21,6 +21,9 @@ class RciSectionItem(BaseModel):
     title: str
     correlation: Optional[str] = None
     tasks: List[RciTaskItem]
+    # Whole-section include/exclude from the final plan (2026-08-20, per the
+    # user) — same convention as RciTaskItem.is_checked, one level up.
+    is_checked: bool = True
     # Populated only when read back from investigation_rci_sections
     # (generated_content.sql) — DS's generate response doesn't return these
     # yet (see project memory: rci-plan-schema-gap).

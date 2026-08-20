@@ -27,10 +27,13 @@ import docx
 
 
 def _clean(text: Optional[str]) -> Optional[str]:
-    """Empty string and the literal "Unassigned"/"" placeholders both mean
-    "nothing set" — normalize both to None."""
+    """Empty string and the literal "Unassigned"/"N/A" placeholders all mean
+    "nothing set" — normalize all three to None. "N/A" is rci_plan_export.py's
+    fallback for an otherwise-blank objective/details/TCD cell (2026-08-19,
+    per the user) — read back the same way, so a section with no due date
+    doesn't come back as the literal string "N/A"."""
     text = (text or "").strip()
-    if not text or text == "Unassigned":
+    if not text or text in ("Unassigned", "N/A"):
         return None
     return text
 
@@ -60,11 +63,13 @@ def extract_task_sections(docx_bytes: bytes) -> List[Dict[str, Any]]:
 
         # rci_plan_export.py numbers each subtask "<task>.<subtask> "
         # (e.g. "1.1 ") — strip that back off, same as the old "- " bullet
-        # prefix this replaced.
+        # prefix this replaced. A cell with zero checked subtasks exports as
+        # the literal "N/A" (2026-08-19, per the user) rather than being
+        # blank — treat that the same as no lines at all, not a fake task.
         task_lines = [
             _SUBTASK_NUMBER_RE.sub("", line.strip())
             for line in (row.cells[2].text or "").split("\n")
-            if line.strip()
+            if line.strip() and line.strip() != "N/A"
         ]
 
         sections.append(

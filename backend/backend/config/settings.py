@@ -43,6 +43,22 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
 
+    # ── Event Explorer SSO handoff (2026-08-19, per the user) ────
+    # InvestigationAI_BE/_FE are a separate, parallel backend+frontend stack
+    # for the same product (see routers/rci_plan.py's "View Historic Data"
+    # button — "Explore Events" opens InvestigationAI_FE's Event Explorer at
+    # EVENT_EXPLORER_URL). EVENT_EXPLORER_HANDOFF_SECRET is a DEDICATED
+    # secret shared only with InvestigationAI_BE — deliberately NOT the same
+    # as JWT_SECRET (that one is the platform-wide session-token secret
+    # shared with the feedback service and others; reusing it here would
+    # mean a leaked handoff token could forge a real, long-lived session
+    # anywhere else too). This secret only ever signs short-lived,
+    # single-purpose handoff tokens minted by the new
+    # /auth/event-explorer-handoff endpoint and verified by
+    # InvestigationAI_BE's matching SSO-exchange endpoint.
+    EVENT_EXPLORER_HANDOFF_SECRET: str = "dev-placeholder-handoff-secret-change-me"
+    EVENT_EXPLORER_URL: str = "https://ashy-field-01d0ebc00.7.azurestaticapps.net"
+
     # ── Database (same shared Postgres instance InvestigationAi_DS uses —
     # hosts this backend's auth tables (users/roles/api_call_trails) plus
     # the STAR schema (FACT_QMS_EVENTS + dimensions), not a separate DB) ──

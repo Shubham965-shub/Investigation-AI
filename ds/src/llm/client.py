@@ -81,6 +81,25 @@ class LLMClient:
         )
         return response.data[0].embedding
 
+    async def embed_texts(self, texts: list[str], chunk_size: int = 100) -> list[list[float]]:
+        """Generate embedding vectors for multiple texts, in the same order.
+
+        Batches requests to respect API payload limits rather than one call
+        per text — for N texts this is ceil(N/chunk_size) calls, not N.
+        """
+        if not texts:
+            return []
+        vectors: list[list[float]] = []
+        for i in range(0, len(texts), chunk_size):
+            chunk = texts[i : i + chunk_size]
+            response = await self._client.embeddings.create(
+                model=self._embedding_model,
+                input=chunk,
+                dimensions=settings.EMBEDDING_DIMENSIONS,
+            )
+            vectors.extend(item.embedding for item in response.data)
+        return vectors
+
 
 
     async def get_structured_response(

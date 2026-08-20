@@ -387,7 +387,15 @@ export function RcCapaCritiquePage() {
               handleUpload(file);
             }}
           />
-          {uploadError && <p className="error-banner">{uploadError}</p>}
+          {uploadError && (
+            <p
+              className="error-banner"
+              title={uploadError}
+              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {uploadError}
+            </p>
+          )}
         </div>
       )}
 

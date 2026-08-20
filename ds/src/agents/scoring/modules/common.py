@@ -78,7 +78,7 @@ def consensus(section: str, samples: List[SectionScoringLLMOutput]) -> List[Chec
         votes = per_id.get(cid)
         if not votes:
             continue  # missing everywhere → build_section_score defaults it to not-met
-        norm = [(v, resolve_checkpoint(cp, v.verdict)[0]) for v in votes]
+        norm = [(v, resolve_checkpoint(cp, v.verdict, v.rationale)[0]) for v in votes]
         counts = Counter(n for _, n in norm)
         top = max(counts.values())
         tied = [n for n, c in counts.items() if c == top]

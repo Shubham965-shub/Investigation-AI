@@ -173,7 +173,7 @@ export function TaskCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">Task Critique<TaskCritiqueGuidelines /></p>
+        <p className="card-title">Task Critique <TaskCritiqueGuidelines /></p>
         <button
           type="button"
           className="btn-primary"
@@ -201,9 +201,6 @@ export function TaskCritiquePage() {
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
                     </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-                      ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
-                    </span>
                   </div>
                   {section.correlation && (
                     <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
@@ -224,7 +221,7 @@ export function TaskCritiquePage() {
                       <span
                         className="error-badge"
                         title={uploadError[section.task_index]}
-                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}
+                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       >
                         ⚠ {uploadError[section.task_index]}
                       </span>
