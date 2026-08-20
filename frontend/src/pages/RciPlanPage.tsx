@@ -13,7 +13,6 @@ import { ApiError } from "../api/client";
 import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
@@ -211,6 +210,38 @@ export function RciPlanPage() {
     }, 600);
   }
 
+  function toggleSectionIncluded(index: number) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, is_checked: !(s.is_checked ?? true) } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  function addSection() {
+    if (!sections) return;
+    const newSection: RciSectionItem = { title: "", correlation: null, assignee: null, due_date: null, tasks: [] };
+    const newSections = [...sections, newSection];
+    setSections(newSections);
+    persistSections(newSections);
+    // Open it immediately so the new (blank) title/correlation inputs are
+    // visible to fill in right away, same as landing on any other section.
+    setOpenSections((prev) => ({ ...prev, [newSections.length - 1]: true }));
+  }
+
+  function setSectionTitle(index: number, title: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, title } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  function setSectionCorrelation(index: number, correlation: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, correlation: correlation || null } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
   function setSectionAssignee(index: number, assignee: string | null) {
     if (!sections) return;
     const newSections = sections.map((s, i) => (i === index ? { ...s, assignee } : s));
@@ -279,7 +310,9 @@ export function RciPlanPage() {
   // pushed to Trackwise / proceed to Task Critique (2026-08-16, per the
   // user) — checked across every section, not just the ones with real
   // checklist items, since the assignee/TCD fields are always shown.
-  const missingAssignments = (sections ?? []).some((s) => !s.assignee || !s.due_date);
+  // Excluded sections don't need an assignee/TCD — they're being left out of
+  // the final plan entirely (2026-08-20, per the user).
+  const missingAssignments = (sections ?? []).some((s) => (s.is_checked ?? true) && (!s.assignee || !s.due_date));
 
   async function handleAcceptAndPush() {
     if (missingAssignments) return;
@@ -348,21 +381,56 @@ export function RciPlanPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map((section, index) => {
           const isOpen = !!openSections[index];
+          const included = section.is_checked ?? true;
           return (
-            <div key={index} className="card" style={{ gap: 12 }}>
+            <div key={index} className="card" style={{ gap: 12, opacity: included ? 1 : 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button type="button" onClick={() => toggleSection(index)} style={{ border: "1px solid var(--color-primary)", borderRadius: 4, width: 34, height: 34, background: "none", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Toggle section">
-                  <img src={rowPlusIcon} alt="" width={16} height={16} />
+                <button
+                  type="button"
+                  className={`checklist-checkbox ${included ? "" : "unchecked"}`}
+                  onClick={lockedForEditing ? undefined : () => toggleSectionIncluded(index)}
+                  aria-label={included ? "Exclude section from final plan" : "Include section in final plan"}
+                  title={included ? "Exclude from final plan" : "Include in final plan"}
+                  style={{ flexShrink: 0, cursor: lockedForEditing ? "default" : "pointer" }}
+                  disabled={lockedForEditing}
+                >
+                  {included && <img src={checkIcon} alt="" width={12} height={12} />}
                 </button>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
-                      {index + 1}. {section.title}
-                    </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
-                  </div>
-                  {section.correlation && (
-                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {editMode && !lockedForEditing ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)", flexShrink: 0 }}>{index + 1}.</span>
+                        <input
+                          type="text"
+                          value={section.title}
+                          onChange={(e) => setSectionTitle(index, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontWeight: 600, fontSize: "var(--font-size-base)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", flex: 1, minWidth: 0, padding: "4px 8px" }}
+                        />
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)", flexShrink: 0 }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Correlation (optional)"
+                        value={section.correlation ?? ""}
+                        onChange={(e) => setSectionCorrelation(index, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-faint)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", padding: "4px 8px" }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                          {index + 1}. {section.title}
+                        </span>
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
+                      </div>
+                      {section.correlation && (
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                      )}
+                    </>
                   )}
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
@@ -500,6 +568,12 @@ export function RciPlanPage() {
           );
         })}
       </div>
+
+      {editMode && !lockedForEditing && (
+        <button type="button" className="btn-outline" onClick={addSection} style={{ alignSelf: "flex-start" }}>
+          Add Task
+        </button>
+      )}
 
       {exportError && <p className="error-banner">{exportError}</p>}
       {missingAssignments && (

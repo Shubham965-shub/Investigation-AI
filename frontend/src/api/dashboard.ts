@@ -162,6 +162,9 @@ export interface RciSectionItem {
   tasks: RciTaskItem[];
   due_date?: string | null;
   assignee?: string | null;
+  // Whole-section include/exclude from the final plan (2026-08-20, per the
+  // user) — same convention as RciTaskItem.is_checked, one level up.
+  is_checked?: boolean;
   // investigation_rci_sections.id — only populated on read-back, used by
   // Task Critique to attach report/recommendation history to a section.
   id?: number | null;

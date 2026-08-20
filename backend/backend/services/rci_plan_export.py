@@ -115,6 +115,11 @@ def build_rci_plan_docx(
     sections: List[RciSectionItem],
 ) -> tuple[bytes, int, int]:
     """Returns (docx_bytes, truncated_section_count, truncated_owner_count)."""
+    # Unchecked sections are excluded from the final plan entirely (2026-08-20,
+    # per the user) — same "checked = keep it" convention already used for
+    # individual subtasks (RciTaskItem.is_checked) here, one level up.
+    sections = [s for s in sections if s.is_checked]
+
     doc = docx.Document(str(TEMPLATE_PATH))
     outer = doc.tables[0]
 

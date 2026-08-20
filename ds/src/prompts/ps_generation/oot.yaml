@@ -1,4 +1,4 @@
-active: v4
+active: v5
 versions:
   v1:
     description: Original OOT prompt — batch number included in output if provided
@@ -182,7 +182,7 @@ versions:
       Assay by HPLC result for the product Tenofovir disoproxil fumarate/Lamivudine/Dolutegravir Tablets 300mg/300mg showed 'Dolutegravir' was reported as 103.2%, against the OOT limit of Minimum: 96.0% and Maximum: 102.9%.
 
   v4:
-    description: 'Consolidated fix (squashed from this session v4-v9 iterations; remote was at v3): (1) Named Individual Preservation Rule; (2) fixed a showed X was reported as Y grammar bug in the named-analyte Structure/example; (3) Specification vs Derived OOT Criteria Rule - a stated specification value is used as the OOT limit rather than being displaced by a derived trend-failure narrative; (4) strengthened OOT/Out-of-Trend signal wording so statements never drift into OOS-style specification limit phrasing; (5) Analyte Source-of-Truth Rule - the quoted analyte must come from this records own wording, never borrowed from a similar-looking example; (6) fixed a regression where the test/method name was dropped from the named-analyte Structure; (7) extended the Multiple Analyte/Parameter Rule so analytes with a result but no stated limit are still included, not dropped. Found and fixed via the ps_generation golden-corpus harness, 2026-08-11'
+    description: 'Consolidated fix (squashed from this session v4-v9 iterations; remote was at v3): (1) Named Individual Preservation Rule; (2) fixed a showed X was reported as Y grammar bug in the named-analyte Structure/example; (3) Specification vs Derived OOT Criteria Rule - a stated specification value is used as the OOT limit rather than being displaced by a derived trend-failure narrative; (4) strengthened OOT/Out-of-Trend signal wording so statements never drift into OOS-style specification limit phrasing; (5) Analyte Source-of-Truth Rule - the quoted analyte must come from this records own wording, never borrowed from a similar-looking example; (6) fixed a regression where the test/method name was dropped from the named-analyte Structure; (7) extended the Multiple Analyte/Parameter Rule so analytes with a result but no stated limit are still included, not dropped.'
     created_at: '2026-08-11T12:00:00+00:00'
     template: |
       Generate a concise OOT (Out-of-Trend) problem statement by rewriting the provided details in a professional laboratory investigation format.
@@ -257,3 +257,83 @@ versions:
       During Dissolution by HPLC testing for the product Efavirenz/Emtricitabine/Tenofovir Disoproxil Fumarate Tablets 600/200/300mg, 'Emtricitabine' was reported as 79%, 82%, 88%, 91%, 85%, and 89% with an average of 85.7%, against the OOT limit of NLT 80% (Q), 'Efavirenz' was reported as 95%, 93%, 97%, 99%, 96%, and 98% with an average of 96.3%, and 'Tenofovir Disoproxil Fumarate' was reported as 90%, 88%, 92%, 94%, 91%, and 93% with an average of 91.3%.
       Dissolution by HPLC result for the product Efavirenz Tablets 600mg was reported as 130%, 98%, 95%, 94%, 93%, and 95% with an average of 101%, against the OOT limit of NLT 80% (Q), as more than 2 units were observed above 110% of the input value, not meeting the S1 acceptance criteria.
       During Dissolution by HPLC (Lamivudine content) testing for the product Tenofovir DF, Lamivudine & Efavirenz Tablets 300/300/600mg, 'Lamivudine' was reported as 88%, 91%, 90%, 89%, 92%, and 90% with an average of 90%, against the OOT limit of NLT 80% (Q).
+  v5:
+    description: 'Person names no longer appear in the output, per the user, 2026-08-18: replaced the
+  Named Individual Preservation Rule with a Role-Only Reference Rule (analyst/reviewer
+  names generalized to role, employee IDs dropped too), plus a Same-Role Disambiguation
+  Rule for two people sharing one role.'
+    created_at: '2026-08-18T00:00:00+00:00'
+    template: |
+      Generate a concise OOT (Out-of-Trend) problem statement by rewriting the provided details in a professional laboratory investigation format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+      - Write in clear, grammatically correct, natural-sounding sentences — re-read the sentence for language, grammar, and flow clarity before returning it; make sure the subject and verb of every clause agree in meaning and the sentence reads as natural prose rather than concatenated fields.
+
+      OOT-specific rules:
+
+      1. Clearly state that an OOT or Out-of-Trend result was observed/reported/found. Always use the phrase "OOT limit" (as in the Structure below) for the comparison clause — even if the source itself labels the value "Specification" or "Specification limit". Do NOT write "against the specification limit of ..." in an OOT statement; that phrasing belongs to OOS statements and erases the OOT/Out-of-Trend signal this rule requires.
+      2. Preserve all provided numerical values exactly.
+      3. Include only details explicitly present in the source input.
+      4. Do not infer or fabricate missing metadata.
+      5. Do not convert OOT into OOS.
+      6. Keep the narrative concise and GMP/QMS compliant.
+      7. Additional metadata should remain in structured fields unless explicitly mentioned in the source narrative.
+      8. Preserve phrases like "details mentioned below" and "results tabulated below" exactly if present.
+      9. Do not include date, time, batch number, AR number, or SR number in the problem statement.
+      10. Named Analyte/Parameter Preservation Rule: If the observed result is explicitly tied to a specific named analyte or parameter (e.g. one active ingredient in a multi-ingredient/combination product, a specific impurity, a specific dissolution timepoint label), that name MUST be preserved in the output — never drop it even for brevity. Enclose the named analyte/parameter in single quotes when it functions as the subject of a result clause, e.g. 'Dolutegravir' was reported as 103.2%. Do not quote the test/method name or the product name — quoting applies only to the specific analyte/parameter. Do NOT write "showed '<analyte>' was reported as" — that stacks two verbs on one subject and reads ungrammatically; make the analyte itself the subject of "was reported as" (see Structure below).
+      10b. Do NOT drop the test/method name (e.g. "Dissolution by HPLC", "Assay by Potentiometry") when a named analyte is also present — use the "During <Test Name> testing for <Product>, '<Analyte>' was reported as..." Structure below so both survive together. A named analyte does not replace the test name; they are two different facts and both are required if both are given.
+      10a. Analyte Source-of-Truth Rule: The named analyte/parameter you quote MUST be the one explicitly stated in THIS record's own input (e.g. a parenthetical like "(Tenofovir content)" or "(By Tenofovir)" next to the test name explicitly identifies the analyte under test here). NEVER substitute or borrow an analyte name from a real-world example above merely because this record's product name looks similar to an example's product name — the examples illustrate FORMAT/STYLE only, not which analyte applies to a different record. Before finalizing, re-check the exact analyte name against this record's own description/test-name wording, not against any example.
+      11. Multiple Analyte/Parameter Rule: If two or more distinct named analytes/parameters are provided, each with its own result and/or limit, give each one its own self-contained clause pairing it with its own result and limit (e.g. 'Analyte A' was reported as <Result A> against the OOT limit of <Limit A>, and 'Analyte B' was reported as <Result B> against the OOT limit of <Limit B>) rather than collapsing them into one shared "was reported" clause.
+      11a. Do NOT drop an analyte just because it has no stated limit. Some analytes in a multi-analyte record are reported as "other content" with only a result and no individual limit given — that analyte still gets its own clause with just the result (e.g. "'Analyte C' was reported as <Result C>", with no "against the OOT limit of..." portion for that one analyte). Missing a limit for one analyte is never a reason to omit that analyte from the statement entirely — only the analyte(s) that actually have a stated limit get the limit clause.
+      12. Role-Only Reference Rule: Do NOT include any analyst, reviewer, or other individual's name in the problem statement, even when a name is explicitly provided — whether in a structured field (e.g. Analyst name) or embedded in the free-text description. Always generalize to their functional role instead (e.g. "the analyst", "the reviewer"). Do not attach that person's employee ID next to their role either — an ID re-identifies the individual the same way a name would. If more than one individual is provided (e.g. both an analyst and a reviewer), include both of their roles. Append roles as a trailing clause after the result/limit clause, e.g. "..., tested by the analyst" and/or "..., reviewed by the reviewer" — combine both with "and" when both are present. Same-Role Disambiguation Rule: if two or more individuals in the SAME finding share the same role, do not collapse them into one ambiguous reference — distinguish them by sequence or action instead (e.g. "one analyst" / "a second analyst").
+      13. Specification vs Derived OOT Criteria Rule: The source may provide TWO different limit-like things: (a) the originally stated specification/acceptance limit for individual results (e.g. "Specification: NLT 80% (Q)"), and (b) a separately labeled, derived trend-failure narrative describing WHY the trend is out (e.g. "OOT criteria: more than 2 units observed above 110% of the input value"). These are not interchangeable. Use (a), the originally stated specification/limit value, for the "<OOT Limit>" slot in the Structure below — never substitute a narrative pass/fail description in its place, since it cannot be sensibly compared against a percentage or numeric result. If a derived OOT-criteria narrative (b) is also present, you may append it as a separate trailing clause (e.g. ", as more than 2 units were observed above 110% of the input value, not meeting the S1 acceptance criteria") rather than dropping it, but it must not replace (a) in the "against the OOT limit of <OOT Limit>" comparison.
+      14. Full Product/Material Name Preference Rule: If the structured product/material name field contains an abbreviated or coded short name (e.g. an internal SKU-style label from a product master list, such as "Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX"), but the free-text description explicitly states the full, non-abbreviated product name elsewhere (e.g. "Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG"), use the FULL descriptive name in the problem statement instead of the abbreviated code — both refer to the same product, and the full name is what a reader needs. Only use the abbreviated/coded name if no full descriptive name appears anywhere in the source.
+
+      Structure:
+      - Single result, no distinct named analyte: <Test Parameter/Activity Name> result for the product <Product/Material Name> was reported <Observed Result>, against the OOT limit of <OOT Limit>.
+      - Single result tied to a named analyte/parameter: During <Test Parameter/Activity Name> testing for the product <Product/Material Name>, '<Analyte/Parameter>' was reported as <Observed Result>, against the OOT limit of <OOT Limit>.
+      - Multiple named analytes/parameters: During <Test Parameter/Activity Name> testing for the product <Product/Material Name>, '<Analyte A>' was reported as <Result A> against the OOT limit of <Limit A>, and '<Analyte B>' was reported as <Result B> against the OOT limit of <Limit B>.
+      - Multiple named analytes, only some with a stated limit: During <Test Parameter/Activity Name> testing for the product <Product/Material Name>, '<Analyte A>' was reported as <Result A> against the OOT limit of <Limit A>, '<Analyte B>' was reported as <Result B>, and '<Analyte C>' was reported as <Result C>. (Analytes without a stated limit still get their own clause with just the result — never dropped.)
+      - With a derived OOT-criteria narrative present alongside a stated specification: <any of the above clauses using the stated specification for <OOT Limit>>, as <derived OOT-criteria narrative>.
+      - With individual(s) involved: <any of the above clauses>, tested by the analyst[, and reviewed by the reviewer].
+
+      Real-world examples for reference:
+      Assay result for the product Macrogol Plus Electrolytes[13.72g] was reported 102.2%, against the OOT limit of 98.0% to 101.7%.
+      Assay by HPLC result for the product Ibuprofen Oral Suspension 40 mg/mL (BULK HTS 21 DAYS) was reported as 96.7%, against the OOT limit of +/-3.0% of the target value 100.0%.
+      FP assay by HPLC (Stability-N2560-12M) result for the product Acarbose Tablets [50 mg] was reported with an OOT result.
+      FP assay by HPLC (Stability-N2560-12M) result for the product Acarbose Tablets [25 mg] was reported with an OOT result.
+      Dissolution by HPLC result for the product Prednisone Tablets USP 2.5 mg was reported as 106%, 104%, 115%, 117%, 113%, and 126% with an average of 113.5%, against the specification limit of NLT 85% (Q=80) of the labelled amount of Prednisone Tablets USP 2.5 mg.
+      Assay by HPLC result for the product Dosulepin Tablets [75 mg] (Core HTS 60 Days) was reported as 95.9%, against the OOT limit of +/-3% of target value 100%.
+      Assay by HPLC result for the product Acarbose Tablets [50 mg] was reported as 108.0%, against the OOT limit of Minimum: 96.6% and Maximum: 105.7%.
+      Dissolution by HPLC result for the product Ursodiol Capsules USP 150 mg was reported with an OOT result during result review and LIMS entry.
+      Compression stage yield result was reported as 92.92% against the BMR limit of 97% to 100% during batch reconciliation activity.
+      Preservative content by HPLC result for the product Benzonatate Capsules USP [100 mg and 200 mg] was reported with out-of-trend results during LIMS entry. The obtained results were tabulated below.
+      Dissolution test result for Extended Phenytoin Sodium Capsules 100 mg was reported with OOT results during LIMS. Observed results are tabulated below.
+      Assay by HPLC result for the product Prednisone Tablets [25 mg] was reported as 95.3%, against the OOT limit of 97.0% to 103.0%.
+      Dissolution by HPLC result for the product Ursodiol Capsules USP 150 mg was reported as D1: 95%, D2: 62%, D3: 91%, D4: 100%, D5: 72%, D6: 90%, Avg.: 85%.
+      Assay by HPLC result for the product Oxybutynin Hydrochloride Tablets [2.5 mg] (LG HTS 30 DAYS) was reported as 105.0%, against the OOT limit of +/-3% of target value 100%.
+      Assay by HPLC result for the product Dosulepin Tablets [75 mg] (Core HTS 60 Days) was reported as 95.9%, against the OOT limit of +/-3% of target value 100%.
+      Assay by HPLC result for the Stability sample Acarbose Tablets [50 mg] was reported as 109.8%, against the OOT limit of +/-5.0% from the previous time point result of 104.7%.
+      During Assay by HPLC testing for the product Tenofovir disoproxil fumarate/Lamivudine/Dolutegravir Tablets 300mg/300mg, 'Dolutegravir' was reported as 103.2%, against the OOT limit of Minimum: 96.0% and Maximum: 102.9%.
+      Assay by Autotitrator result for the product Sevelamer Carbonate for Oral Suspension 0.8g was reported as 108.4%, against the OOT limit of 90.0% to 110.0%, tested by the analyst and reviewed by the reviewer.
+      During Dissolution by HPLC testing for the product Efavirenz/Emtricitabine/Tenofovir Disoproxil Fumarate Tablets 600/200/300mg, 'Emtricitabine' was reported as 79%, 82%, 88%, 91%, 85%, and 89% with an average of 85.7%, against the OOT limit of NLT 80% (Q), 'Efavirenz' was reported as 95%, 93%, 97%, 99%, 96%, and 98% with an average of 96.3%, and 'Tenofovir Disoproxil Fumarate' was reported as 90%, 88%, 92%, 94%, 91%, and 93% with an average of 91.3%.
+      Dissolution by HPLC result for the product Efavirenz Tablets 600mg was reported as 130%, 98%, 95%, 94%, 93%, and 95% with an average of 101%, against the OOT limit of NLT 80% (Q), as more than 2 units were observed above 110% of the input value, not meeting the S1 acceptance criteria.
+      During Dissolution by HPLC (Lamivudine content) testing for the product Tenofovir DF, Lamivudine & Efavirenz Tablets 300/300/600mg, 'Lamivudine' was reported as 88%, 91%, 90%, 89%, 92%, and 90% with an average of 90%, against the OOT limit of NLT 80% (Q).
+

@@ -9,7 +9,9 @@ Side-effect dependencies (DB pool, LLM client) are injected via closures in
 from __future__ import annotations
 
 import logging
+import re
 import sys
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,9 +27,57 @@ from src.llm.client import LLMClient
 from src.agents.search_agent.api.services.filters import SearchFilters
 from src.agents.search_agent.api.services.keyword_search import keyword_search
 from src.agents.search_agent.api.services.semantic_search import semantic_search
+from src.agents.search_agent.api.services.relevance_filter import filter_relevant
+from src.agents.search_agent.api.services.rerank import rerank_by_clean_embeddings
 from src.config.settings import settings
+from src.utils.deps import get_prompt_registry
+from src.utils.text import sanitize_for_tsquery
+
+# Cap on candidates judged by relevance_filter_node per search — bounds LLM
+# cost to a single call regardless of how many raw candidates were found.
+# rerank_candidates_node re-sorts by clean-embedding similarity first, so
+# genuine matches cluster near the top instead of being scattered across the
+# whole pool (confirmed: true matches moved from ranks 71-133 to ranks 1-41
+# after reranking on one query/pool, and ranks 74-86 to ranks 1-17 on
+# another) — 25 still missed some of a wider cluster at ranks 31-41; 50
+# gives headroom above that without paying for a much larger judgment call.
+_RELEVANCE_FILTER_TOP_N = 50
 
 logger = logging.getLogger(__name__)
+
+# Queries at/below this word count are treated as already-distilled (the
+# only other producer feeding this graph, shared/build_search_query, targets
+# 8-20 words per its own prompt) and skipped — raw free-text problem
+# statements from the search UI ran 60-150+ words in real test data, so
+# there's no realistic query landing in between; biased toward skipping to
+# avoid a redundant LLM call on the historical-search fallback call sites.
+_DISTILLATION_WORD_THRESHOLD = 25
+
+# Cache of raw problem-statement text -> distilled_query. The LLM distillation
+# call is not perfectly deterministic even at temperature=0 (confirmed via
+# testing: the same raw text produced 3 differently-worded distillations
+# across 3 calls, which in turn embedded to meaningfully different vectors
+# and reshuffled the entire candidate ranking). Problem statements are
+# persisted records, not one-off free text, so the same raw text is searched
+# repeatedly — caching by that text guarantees identical distillation, and
+# therefore identical downstream ranking, for every repeat search of the same
+# investigation. Bounded to avoid unbounded growth in a long-running process.
+_DISTILLED_QUERY_CACHE: "OrderedDict[str, str]" = OrderedDict()
+_DISTILLED_QUERY_CACHE_MAX = 1000
+
+
+def _distilled_query_cache_get(key: str) -> str | None:
+    if key not in _DISTILLED_QUERY_CACHE:
+        return None
+    _DISTILLED_QUERY_CACHE.move_to_end(key)
+    return _DISTILLED_QUERY_CACHE[key]
+
+
+def _distilled_query_cache_set(key: str, value: str) -> None:
+    _DISTILLED_QUERY_CACHE[key] = value
+    _DISTILLED_QUERY_CACHE.move_to_end(key)
+    if len(_DISTILLED_QUERY_CACHE) > _DISTILLED_QUERY_CACHE_MAX:
+        _DISTILLED_QUERY_CACHE.popitem(last=False)
 
 
 # ── Prompt Loading ──────────────────────────────────────────
@@ -88,8 +138,14 @@ def _filters_from_dict(d: dict[str, Any]) -> SearchFilters:
 
 async def analyze_query(
     state: SearchState,
+    llm: LLMClient,
 ) -> dict[str, Any]:
-    """Use GPT-4o to decide search type and extract / merge filters."""
+    """Decide search type/filters and, for long raw free-text queries only,
+    distill a mechanism-level retrieval phrase into `distilled_query`.
+
+    Short queries (e.g. already-distilled phrases from the historical-search
+    fallback callers) are left untouched — see _DISTILLATION_WORD_THRESHOLD.
+    """
     user_pref = (state.get("search_type") or "auto").lower()
 
     if user_pref in ("keyword", "semantic"):
@@ -97,10 +153,36 @@ async def analyze_query(
     else:
         determined = "hybrid"
 
-    return {
+    result: dict[str, Any] = {
         "determined_search_type": determined,
         "filters": state.get("filters", {}),
     }
+
+    raw_query = state.get("query", "") or ""
+    if len(raw_query.split()) > _DISTILLATION_WORD_THRESHOLD:
+        cache_key = raw_query.strip()
+        cached = _distilled_query_cache_get(cache_key)
+        if cached is not None:
+            result["distilled_query"] = cached
+        else:
+            try:
+                registry = get_prompt_registry()
+                prompt = registry.get("search_agent/build_search_query").format(
+                    problem_statement=raw_query,
+                )
+                distilled = (await llm.chat(prompt)).strip()
+                # Light sanitize only — preserve phrase structure for the
+                # embedder; keyword_search_node applies its own stricter,
+                # tsquery-safe pass on top of this.
+                distilled = re.sub(r"[^\w\s\-/]", "", distilled).strip()
+                distilled = distilled or raw_query
+                result["distilled_query"] = distilled
+                _distilled_query_cache_set(cache_key, distilled)
+            except Exception:
+                logger.exception("analyze_query distillation failed, falling back to raw query")
+                result["distilled_query"] = raw_query
+
+    return result
 
 
 # ── Node 2: keyword_search_node ────────────────────────────
@@ -111,19 +193,30 @@ async def keyword_search_node(
     pool: asyncpg.Pool,
 ) -> dict[str, Any]:
     """Execute full-text keyword search on the user-selected field(s)."""
-    
+
     filters = _filters_from_dict(state.get("filters", {}))
     search_fields = state.get("search_fields", ["description"])
 
+    # Keyword search wants a small, high-precision AND-list — always cap to
+    # the top few terms regardless of whether analyze_query distilled the
+    # query, since AND-of-5 terms is meaningfully more likely to hit a real
+    # record than AND-of-15-20 (or AND-of-the-full-raw-problem-statement).
+    source_text = state.get("distilled_query") or state["query"]
+    kw_query = sanitize_for_tsquery(source_text, max_terms=5)
+
+    if not kw_query:
+        logger.info("keyword_search_node: no usable terms after sanitization, skipping")
+        return {"keyword_results": []}
+
     all_results = []
-    logger.info(f"entered key word search")
+    logger.info(f"entered key word search (terms: {kw_query!r})")
 
     # Search each field separately
     for field in search_fields:
         try:
             field_results = await keyword_search(
                 pool=pool,
-                query=state["query"],
+                query=kw_query,
                 search_field=field,
                 filters=filters,
 #                limit=settings.KEYWORD_SEARCH_LIMIT,
@@ -151,33 +244,34 @@ async def keyword_search_node(
 
 
 # ── Node 3: semantic_search_node ────────────────────────────
-def _adaptive_semantic_threshold(query: str, base: float) -> float:
-    """Dynamically adjust semantic relevance threshold based on query complexity."""
-    word_count = len(query.strip().split())
-    if word_count <= 3:
-        return min(base + 0.15, 0.75)  
-    elif word_count >= 15:
-        return max(base - 0.10, 0.35)
-    return base 
-
 
 async def semantic_search_node(
     state: SearchState,
     pool: asyncpg.Pool,
     llm: LLMClient,
 ) -> dict[str, Any]:
-    """Generate query embedding then run vector similarity search on selected field(s)."""
+    """Generate query embedding then run vector similarity search on selected field(s).
+
+    No score-based relevance cutoff is applied here. A fixed cosine-similarity
+    threshold sits too close to real candidates' scores for narrow/sparse
+    queries — it was silently dropping genuine mechanism matches before
+    relevance_filter_node ever got a chance to judge them (confirmed: a
+    query that returned 0 candidates one run surfaced 2 confirmed-relevant
+    ones on a later run, purely from score noise around the cutoff). The DB
+    query's own `ORDER BY relevance_score DESC LIMIT` already bounds how many
+    rows come back per field; relevance_filter_node's top-N cap bounds how
+    many actually reach the expensive LLM judgment. A cosine-score floor
+    doesn't add precision on top of that — it only risks losing recall.
+    """
     filters = _filters_from_dict(state.get("filters", {}))
     search_fields = state.get("search_fields", ["description"])
     all_results = []
-    query = state["query"]
-    min_relevance = 0.5
-    print(f"Semantic relevance threshold set to {min_relevance:.2f} for query: {query!r}")
+    query = state.get("distilled_query") or state["query"]
     logger.info(f"entered semantic search")
 
     try:
         query_vector = await llm.embed_text(query)
-        
+
         # Search each field separately
         for field in search_fields:
             try:
@@ -188,14 +282,10 @@ async def semantic_search_node(
                     filters=filters,
                     limit=settings.SEMANTIC_SEARCH_LIMIT,
                 )
-                filtered_field_results = [
-                    result for result in field_results
-                    if float(result.get("relevance_score", 0)) >= min_relevance
-                ]
-                all_results.extend(filtered_field_results)
+                all_results.extend(field_results)
             except Exception as exc:
                 logger.error("semantic_search_node failed for field %s: %s", field, exc)
-                
+
     except Exception as exc:
         logger.error("semantic_search_node embedding failed: %s", exc)
 
@@ -252,3 +342,75 @@ async def combine_results_node(state: SearchState) -> dict[str, Any]:
             reverse=True
         )
     return {"final_results": final_results}
+
+
+# ── Node 5: rerank_candidates ───────────────────────────────
+
+async def rerank_candidates_node(
+    state: SearchState,
+    llm: LLMClient,
+) -> dict[str, Any]:
+    """Re-sort candidates by cosine similarity between the query and a
+    clean-text embedding of each candidate (description + extracted
+    root-cause statement), instead of the stored raw-text embedding score.
+
+    Confirmed empirically: comparing a clean, distilled query against
+    candidates' stored embeddings (of their full raw, noisy text) barely
+    correlates with genuine failure-mode relevance — a true match ranked
+    75th+ out of ~270 candidates. Re-embedding the same clean snippet the
+    relevance filter already extracts and comparing against that instead
+    pulled true matches from ranks 74-86 up to ranks 1-17 on the same pool.
+    """
+    final_results = state.get("final_results", [])
+    if not final_results:
+        return {"final_results": final_results}
+
+    query = state.get("distilled_query") or state.get("query", "")
+
+    try:
+        reranked = await rerank_by_clean_embeddings(llm=llm, query=query, candidates=final_results)
+        return {"final_results": reranked}
+    except Exception:
+        logger.exception("rerank_candidates_node failed, falling back to unreranked order")
+        return {"final_results": final_results}
+
+
+# ── Node 6: relevance_filter ───────────────────────────────
+
+async def relevance_filter_node(
+    state: SearchState,
+    llm: LLMClient,
+) -> dict[str, Any]:
+    """Drop candidates that are only topically/lexically similar but
+    mechanistically unrelated to the current problem statement.
+
+    Cosine similarity alone can't tell these apart — it measures textual
+    closeness, not cause identity — so this uses the LLM to judge each
+    candidate's own description and documented root cause against the query.
+    """
+    final_results = state.get("final_results", [])
+    if not final_results:
+        return {"final_results": final_results}
+
+    # Judge the top-N by relevance_score regardless of the list's current
+    # sort order (combine_results_node sorts by date, not score, in pure
+    # keyword mode) — the LLM should see the most textually-promising
+    # candidates, not an arbitrary date-ordered slice.
+    candidates = sorted(
+        final_results, key=lambda r: r.get("relevance_score", 0), reverse=True
+    )[:_RELEVANCE_FILTER_TOP_N]
+
+    try:
+        registry = get_prompt_registry()
+        prompt_template = registry.get("search_agent/relevance_filter")
+        filtered = await filter_relevant(
+            llm=llm,
+            prompt_template=prompt_template,
+            guard_rail_text=guard_rail_text,
+            query=state.get("query", ""),
+            candidates=candidates,
+        )
+        return {"final_results": filtered}
+    except Exception:
+        logger.exception("relevance_filter_node failed, falling back to unfiltered top-N candidates")
+        return {"final_results": candidates}

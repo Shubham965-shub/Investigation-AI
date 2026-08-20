@@ -1,4 +1,4 @@
-active: v4
+active: v5
 versions:
   v1:
     description: Original market complaint prompt — batch/lot number included in output if provided
@@ -217,6 +217,81 @@ versions:
       During inspection of HealthyLax, unpleasant odor was observed from the product.
       During inspection of Cholecalciferol Capsules [1000 IU], patient observed missing desiccant from the bottle and capsules stuck together.
       During administration of Sodium Sulfate, Potassium Sulfate and Magnesium Sulfate Oral Solution (17.5 g/3.13 g/1.6 g), patient experienced itching of skin, redness, loss of consciousness, and breathing difficulty.
+
+      Example with multiple distinct complaints (do not drop any):
+      Description: Complaint 1: Customer reported a foreign particle embedded in an Amoxicillin Capsule 500mg from Batch A. Complaint 2: Same customer separately reported that a Paracetamol Tablet 500mg from Batch B had an unusual odor.
+      → During inspection of Amoxicillin Capsules 500 mg, customer reported a foreign particle embedded in a capsule. Additionally, during inspection of Paracetamol Tablets 500 mg, customer reported an unusual odor from a tablet.
+  v5:
+    description: 'Fixes reported by the user, 2026-08-18/19: (1) No Fabricated Activity Rule - stop defaulting the opening clause to "During inspection of ..." when the input never actually states what activity/action was being performed; (2) Verb Tense Agreement Rule - a complaint reporting two or more conditions of the same product must use one consistent tense across all of them, not a mix of present and past tense; (3) reworded the "no activity provided" Structure/example, which previously opened with a bare product name followed directly by a comma (e.g. "Prednisone Tablets 5 mg, consumer reported...") — a comma splice that contradicted this same version''s grammar/flow-clarity rule. Now leads with the complainant instead ("<complainant> reported that <Product Name> ..."); (4) generalized the old product-name-only "Full Product/Material Name Preference Rule" into a "Specific-Over-Generic Field Rule" covering ANY structured field (not just product name) that can hold a generic/templated value contradicted by a more specific free-text statement — found via testing that "Market Complaint Reported By" often defaults to "Consumer" even when the free text names a pharmacist/pharmacy technician/wholesaler; also strengthened the defect-preservation rule to keep distinguishing physical detail (color, shape, imprint) for foreign-object-type complaints instead of compressing to just the category; (5) added a Serial Number Preservation Rule, per the user, 2026-08-19: found via QA testing that a product/device Serial Number was being dropped inconsistently (sometimes kept, sometimes referred to only generically) across near-identical complaints — decided to always preserve it (like an equipment/instrument ID), not exclude it (like a batch/lot number), since a serial number usually identifies the one specific unit a complaint (e.g. DSCSA/traceability failure) is actually about. Explicitly distinguished from "SR number" (sample/service reference), which stays excluded as before — the two were previously conflated since "serial number" was never mentioned at all in the exclusion rules.'
+    created_at: '2026-08-18T00:00:00+00:00'
+    template: |
+      Generate a concise Market Complaint problem statement by rewriting the provided details in a professional quality complaint format.
+
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, lot number, AR number, or SR number in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, equipment IDs, employee IDs, observed values, limits, SOP numbers, or instrument IDs.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Verb Tense Agreement Rule: when a sentence describes two or more conditions of the same reported item joined by "and"/"or" (e.g. "the tablets disintegrate and were crumbled"), every verb in that list MUST share the same tense — rewrite so all of them are consistently past tense (e.g. "the tablets were disintegrated and crumbled"), matching the fact that the complaint is reporting something already observed. Never leave one verb in present tense while another is past tense in the same clause.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+      - Write in clear, grammatically correct, natural-sounding sentences — re-read the sentence for language, grammar, and flow clarity before returning it; make sure the subject and verb of every clause agree in meaning and the sentence reads as natural prose rather than concatenated fields. As part of this check, watch for duplicated dosage-form wording: if the product/material name field already ends in an abbreviated dosage-form token (e.g. "tab", "tabs", "cap", "caps", "amp", "inj", "sol"), do not also append the spelled-out dosage form right after it (e.g. do not write "100 tab tablets" or "10 cap capsules") — use the dosage form once, either the abbreviation as given in the product name or the spelled-out word, not both back to back.
+
+      Market complaint-specific rules:
+      - Mention complainant/customer/market/source, product name, strength, dosage form, and complaint description only if provided.
+      - Do NOT include batch number, lot number, or AR number in the problem statement.
+      - Serial Number Preservation Rule: "SR number" and a product/device "Serial Number" are different, distinct fields — do not confuse them. Continue excluding "SR number" (a sample/service reference tied to internal lab workflow) as before. But if the complaint gives a specific Serial Number, PRESERVE it exactly as given — do not drop it or refer to it only generically (e.g. "the serial number was..."). Treat it like an equipment/instrument ID in Deviation/OOS, not like a batch/lot number: a serial number usually identifies the one specific unit the complaint is actually about (e.g. a DSCSA/traceability verification failure, a counterfeit investigation, a recall trace), so dropping it removes the fact that makes the complaint actionable, not just a redundant detail.
+      - Preserve the reported defect or complaint exactly in meaning AND with its identifying descriptive detail, such as odor, broken tablets, missing capsules, leakage, deformed capsules, missing seal, dented tablets, shortage, taste issue, or adverse event description. When the complaint involves identifying a specific item (e.g. a foreign object, a wrong tablet/capsule found inside the product, an unexpected marking), keep the source's distinguishing detail about that item — color, shape, size, imprint/marking, or material — rather than compressing it down to only its general category.
+      - Do not add medical assessment, seriousness assessment, causality, patient outcome, investigation conclusion, or regulatory classification unless explicitly provided.
+      - Do not soften or exaggerate the complaint wording.
+      - Do not include date or time information in the problem statement.
+      - No Fabricated Activity Rule: the "<activity>" opening ("During <activity> of ...") is only ever used when the input explicitly names an activity/action involving the product (e.g. dispensing, administration, opening, inspection, testing). Do NOT default to "inspection" (or any other activity word) as a generic filler when the input does not actually say what activity occurred. If no such activity is explicitly stated anywhere in the input, lead with the complainant source instead — see the Structure section's "no activity provided" case below — never a bare product name followed directly by a comma and the next clause, since that reads as a comma splice rather than a sentence. IMPORTANT: this rule is about whether an activity is stated at all, NOT about whether that activity is the exact moment the defect was discovered. If the input states a product-related activity (e.g. the patient took/administered the doses as directed) AND separately describes a later, different event where the defect was actually found (e.g. a follow-up procedure, test, or inspection revealed the problem), you MUST still use the "During <activity> of" opening for the stated activity — do NOT switch to the no-activity/complainant-first structure just because the discovery happened during a different, later event. Fold that later discovery event into the complaint-description clause instead. Only use the no-activity structure when the input truly never mentions any product-related activity at all.
+      - Multiple Distinct Complaints Rule: If the input describes two or more separately identified, unrelated complaints or defects — such as those explicitly numbered or labeled "Complaint 1", "Complaint 2", "Observation 1", "Observation 2", etc., or describing different products, batches, defect types, or complainants within the same record — you MUST include EVERY distinct complaint in the problem statement. Do NOT drop, merge, or summarize away any numbered/distinct complaint. Give each its own clause following the Structure below, and join the clauses with "Additionally," (or "; " for a terser join).
+      - Specific-Over-Generic Field Rule: A structured field can hold a generic, templated, coded, or default/placeholder value from the source system, even when the free-text description explicitly states something more specific and accurate for that same fact. Whenever this happens, prefer the specific free-text version over the generic/coded structured value — the specific version is what a reader actually needs. This applies to ANY field where this conflict shows up, not only the two cases below:
+        * Product/material name: if the structured product name field is an abbreviated/coded short name (e.g. an internal SKU-style label such as "Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX"), but the free text states the full descriptive name elsewhere (e.g. "Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG"), use the full descriptive name.
+        * Complainant source: if the structured "Market Complaint Reported By" field is a generic role/code (e.g. "Consumer"), but the free text explicitly identifies a more specific reporter (e.g. "a pharmacist," "a pharmacy technician," "a wholesaler notified our QA team"), use the specific role stated in the free text instead of the generic structured value.
+        Only fall back to the structured field's own value when the free text does not state anything more specific than it.
+
+      Structure:
+      - Single complaint, activity known: During <activity> of <Product Name> <Strength if available> <Dosage Form if available>, <complainant source if available> <complainee if available> observed/reported <complaint description>.
+      - Single complaint, no activity provided: <complainant source if available> <complainee if available> reported that <Product Name> <Strength if available> <Dosage Form if available> <complaint description>, dropping any generic placeholder subject (e.g. "the tablets") from <complaint description> that would otherwise duplicate the dosage form already named in <Product Name>.
+      - Multiple distinct complaints: <Single-complaint clause 1>. Additionally, <single-complaint clause 2>.
+        (repeat the "Additionally, ..." clause for each further distinct complaint; never omit one)
+
+      Real-world examples:
+      During dispensing of Amitriptyline Tablets 10 mg, pharmacist observed a few tablets debossed with "1" instead of "10/AM" as specified in PIL.
+      During dispensing of Prednisone Tablets USP 10 mg, pharmacist observed a small gray-like substance on the tablet.
+      During inspection of Alfacalcidol SGC 1 mcg, complainant observed deformed capsules leaking oily substance inside the box.
+      During administration of Cortisone Tablets 25 mg, consumer observed tablets were harder than usual and difficult to cut accurately.
+      During inspection of Betamethasone and Dexchlorpheniramine Maleate Tablets (0.25 mg/2 mg), healthcare professional observed broken tablets in the container.
+      During dispensing of Oseltamivir Phosphate Capsules 75 mg, customer observed only 8 capsules present instead of 10 capsules in the bottle.
+      During inspection of the product bottle, customer observed tablets dented or shaved off on the back surface and tablets of different sizes in multiple bottles.
+      During inspection of the product bottle, pharmacist observed a strong odor from the product and confirmed similar odor in pharmacy stock.
+      During administration of Macrogol 13.71 g sachets powder for oral solution, patient observed a soapy taste.
+      During inspection of Omega-3-Acid Ethyl Esters Capsules USP [1 g], reporter observed shortage of 3-4 capsules and smaller-sized capsules in bottles.
+      During opening of Alfacalcidol Soft Gelatin Capsules (SGC) 0.25 mcg, customer observed missing sealing foil from the packaging.
+      During administration of the medication, consumer observed foul odor from the capsules and consumed 02 capsules without experiencing side effects.
+      During inspection of HealthyLax, unpleasant odor was observed from the product.
+      During inspection of Cholecalciferol Capsules [1000 IU], patient observed missing desiccant from the bottle and capsules stuck together.
+      During administration of Sodium Sulfate, Potassium Sulfate and Magnesium Sulfate Oral Solution (17.5 g/3.13 g/1.6 g), patient experienced itching of skin, redness, loss of consciousness, and breathing difficulty.
+
+      Example with no activity/action stated in the input (do not fabricate "During inspection of"):
+      Description: Product Name: Prednisone Tablets 5 mg. Consumer reported that the tablets disintegrate and were crumbled. (no activity/action field provided)
+      → Consumer reported that Prednisone Tablets 5 mg were disintegrated and crumbled.
+
+      Example with an activity stated, but the issue was actually identified during a separate, later event (still use the "During <activity> of" opening for the stated activity — do not fall back to the no-activity structure just because a different downstream event is where the defect was found):
+      Description: Consumer took the first dose of the product as directed, followed by a second dose 12 hours later. The following day, during a scheduled colonoscopy, the physician reported that bowel preparation was inadequate due to residual bowel contents causing a cloudy visual field.
+      → During administration of the product, consumer reported that it did not achieve complete bowel cleansing despite following the dosing instructions as directed, and the colonoscopy was reported to have inadequate bowel preparation due to residual bowel contents causing a cloudy visual field.
 
       Example with multiple distinct complaints (do not drop any):
       Description: Complaint 1: Customer reported a foreign particle embedded in an Amoxicillin Capsule 500mg from Batch A. Complaint 2: Same customer separately reported that a Paracetamol Tablet 500mg from Batch B had an unusual odor.

@@ -177,6 +177,7 @@ async def search(
         instruments=body.instruments if not any(i.lower() == "all" for i in body.instruments) else None,
         materials=body.materials if not any(m.lower() == "all" for m in body.materials) else None,
         sfg_code=body.product_code if not any(m.lower() == "all" for m in body.product_code) else None,
+        exclude_id=str(body.exclude_id) if body.exclude_id is not None else None,
     )
 
     # Map search_type to internal format
@@ -199,7 +200,8 @@ async def search(
             "locations": filters.locations,
             "instruments": filters.instruments,
             "materials": filters.materials,
-            "sfg_code": filters.sfg_code
+            "sfg_code": filters.sfg_code,
+            "exclude_id": filters.exclude_id,
         },
 #        "query_analysis": {},
         "determined_search_type": "",
@@ -226,7 +228,7 @@ async def search(
     # Assemble response
 
     # Always prefer final ranked results if available
-    ranked = get_final_ranked_results(state=final_state)
+    ranked = get_final_ranked_results(state=final_state)[: body.top_k]
 
     # Construct dynamic llmData by awaiting temporary functions
     # Pass `final_state` to these functions so that later on, they can use the actual search results to generate dynamic content.
