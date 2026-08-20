@@ -103,10 +103,18 @@ class SearchRequest(BaseModel):
     # )
     
     top_k: int = Field(
-        default=10, 
-        ge=1, 
-        le=5000, 
+        default=10,
+        ge=1,
+        le=5000,
         description="Number of ranked results to return"
+    )
+
+    exclude_id: Optional[Any] = Field(
+        None,
+        description="Deviation ID to exclude from results. Set this to the "
+        "current investigation's own ID when searching for similar historical "
+        "events using its own problem statement, so the record doesn't match "
+        "itself.",
     )
 
 #-------------------------------------------------------------------------------------
@@ -154,6 +162,22 @@ class SearchResponse(BaseModel):
     # source_citations: list[SourceCitation]
     search_metadata: dict[str, Any] = Field(default_factory=dict)
     llmData: LlmData
+
+
+class RelevanceJudgment(BaseModel):
+    """One candidate's relevance verdict from the post-search relevance filter."""
+    id: str = Field(..., description="Candidate id, exactly as given in the input")
+    relevant: bool = Field(
+        ...,
+        description="True only if this candidate shares the same underlying failure "
+        "mechanism as the current problem statement, not just topical/surface similarity",
+    )
+    reason: str = Field(..., description="Short phrase explaining the judgment")
+
+
+class RelevanceFilterResponse(BaseModel):
+    """Structured output of the relevance filter LLM call — one judgment per candidate."""
+    judgments: list[RelevanceJudgment]
 
 
 #-------------------------------------------------------------------------------------

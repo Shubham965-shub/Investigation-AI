@@ -68,7 +68,7 @@ def build_section_score(
         rationale = v.rationale if v is not None else _MISSING_NOTE
         evidence = v.evidence_quote if v is not None else ""
 
-        norm_verdict, marks, applicable = resolve_checkpoint(cp, raw_verdict)
+        norm_verdict, marks, applicable = resolve_checkpoint(cp, raw_verdict, rationale)
         marks_total += marks
         if applicable:
             applicable_max += cp.max_marks

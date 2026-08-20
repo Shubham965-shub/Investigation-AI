@@ -139,21 +139,6 @@ async def map_to_archetype(state: Any) -> Any:
 
 
 
-def _sanitize_search_query(query: str, max_terms: int = 5) -> str:
-    """Strip characters that break tsquery; keep only the top N unique meaningful words."""
-    if not query:
-        return ""
-    cleaned = re.sub(r"[^\w\s\-]", "", query)
-    unique_words: list[str] = []
-    for word in cleaned.split():
-        word = word.strip()
-        if word and len(word) > 2 and word not in unique_words:
-            unique_words.append(word)
-            if len(unique_words) >= max_terms:
-                break
-    return " ".join(unique_words)
-
-
 async def build_search_query(state: Any) -> Any:
     """Build a structured semantic search phrase from trackwise fields.
 
