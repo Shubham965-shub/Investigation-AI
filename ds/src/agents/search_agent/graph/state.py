@@ -22,7 +22,11 @@ class SearchState(TypedDict, total=False):
     # ── Query analysis (set by analyze_query) ───────────────
 #    query_analysis: dict[str, Any]
     determined_search_type: str   # "keyword" | "semantic" | "hybrid"
-    
+    distilled_query: str          # LLM-distilled retrieval phrase, set only
+                                   # when the raw query is long free text —
+                                   # absent/unset otherwise (nodes fall back
+                                   # to raw `query` in that case)
+
     # ── Intermediate results ────────────────────────────────
     keyword_results: list[dict[str, Any]]
     semantic_results: list[dict[str, Any]]

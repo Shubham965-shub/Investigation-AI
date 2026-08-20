@@ -15,6 +15,7 @@ sys.path.insert(0, str(PROJECT_ROOT_DIR))
 import asyncpg
 from config.settings import settings
 from src.agents.search_agent.api.services.filters import SearchFilters, build_filter_clause
+from src.utils.text import extract_search_terms
 
 kw_logger = logging.getLogger(__name__)
 
@@ -25,15 +26,20 @@ TARGET_SEARCH_FIELDS: dict[str, str] = {
 }
 
 
-def build_tsquery_format(raw_input: str) -> str:
+def build_tsquery_format(raw_input: str, max_terms: int = 0) -> str:
     """
     Transforms plain text into a valid PostgreSQL ``tsquery`` structured format.
-    Whitespace splitting provides an inclusive AND-based filter strategy.
+
+    Uses alphanumeric token extraction (not whitespace-split + naive join)
+    so punctuation, batch-number fragments, percentages, brackets, and
+    hyphenated compounds in ``raw_input`` can never produce invalid tsquery
+    syntax. ``max_terms=0`` (default) applies no cap here — term-count
+    policy belongs to the caller; this function's only job is validity.
     """
-    words = raw_input.strip().split()
-    if not words:
+    terms = extract_search_terms(raw_input, max_terms=max_terms or 0)
+    if not terms:
         return ""
-    return " & ".join(words)
+    return " & ".join(terms)
 
 
 def _build_from_clause() -> str:
