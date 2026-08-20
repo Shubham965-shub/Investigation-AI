@@ -221,7 +221,7 @@ export function TaskCritiquePage() {
                       <span
                         className="error-badge"
                         title={uploadError[section.task_index]}
-                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}
+                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       >
                         ⚠ {uploadError[section.task_index]}
                       </span>
