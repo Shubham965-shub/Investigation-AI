@@ -190,11 +190,12 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         return await _build_state(record_id, deviation_id)
 
     # Real DS endpoints (per the user, 2026-08-06: module 6/RC & CAPA Critique
-    # uses these two single-purpose endpoints, not the combined
-    # /critique/critique-rc-conclusion-and-capa (used by neither module now —
-    # module 5/Task Critique calls the genuinely per-task
-    # /critique/analyse-task-report instead, see routers/task_critique.py) —
-    # called BEFORE persisting anything, so a transient DS failure doesn't
+    # uses these two single-purpose endpoints, not a combined one — module 5/
+    # Task Critique calls the genuinely per-task /critique/analyse-task-report
+    # instead, see routers/task_critique.py). ds used to also expose a combined
+    # /critique/critique-rc-conclusion-and-capa endpoint returning both
+    # categories in one call, but no caller ever used it — removed 2026-08-20.
+    # Called BEFORE persisting anything, so a transient DS failure doesn't
     # burn one of the 3 real upload attempts.
     # problem_statement lets DS reject an irrelevant/mismatched upload with a
     # 422 before running any critique LLM calls (see ds's relevance_validation.py).
@@ -231,9 +232,9 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     await save_critiques(
         report_id,
         rc_recommendations=rc_conclusion["recommendations"],
-        rc_strengths=rc_conclusion["strengths"],
+        rc_summary=rc_conclusion["rc_conclusion_text"],
         capa_recommendations=capa["recommendations"],
-        capa_strengths=capa["strengths"],
+        capa_summary=capa["capa_text"],
     )
 
     # The 3rd attempt is final regardless of decision mix (see
