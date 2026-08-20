@@ -13,6 +13,8 @@ from src.agents.search_agent.graph.nodes import (
     analyze_query,
     combine_results_node,
     keyword_search_node,
+    relevance_filter_node,
+    rerank_candidates_node,
     semantic_search_node,
 )
 from src.agents.search_agent.graph.state import SearchState
@@ -29,10 +31,12 @@ def build_search_graph(pool: asyncpg.Pool, llm: LLMClient):
     search_graph = StateGraph(SearchState)
 
     # Nodes Definition
-    search_graph.add_node("analyze_query", partial(analyze_query))
+    search_graph.add_node("analyze_query", partial(analyze_query, llm=llm))
     search_graph.add_node("keyword_search", partial(keyword_search_node, pool=pool))
     search_graph.add_node("semantic_search", partial(semantic_search_node, pool=pool, llm=llm))
     search_graph.add_node("combine_results", combine_results_node)
+    search_graph.add_node("rerank_candidates", partial(rerank_candidates_node, llm=llm))
+    search_graph.add_node("relevance_filter", partial(relevance_filter_node, llm=llm))
 
     # Flow Configuration
     search_graph.set_entry_point("analyze_query")
@@ -65,7 +69,9 @@ def build_search_graph(pool: asyncpg.Pool, llm: LLMClient):
 
     search_graph.add_edge("semantic_search", "combine_results")
 
-    search_graph.add_edge("combine_results", END)
+    search_graph.add_edge("combine_results", "rerank_candidates")
+    search_graph.add_edge("rerank_candidates", "relevance_filter")
+    search_graph.add_edge("relevance_filter", END)
 
     return search_graph.compile()
 

@@ -1,0 +1,47 @@
+active: v1
+versions:
+  v1:
+    description: Judge whether each candidate historical event shares the current problem statement's underlying failure mechanism, filtering out surface-similar but mechanistically different events
+    created_at: '2026-08-19T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical QA investigator judging whether historical events are
+      genuinely relevant to a CURRENT investigation — not just similar in wording,
+      product, or test type.
+
+      IMPORTANT: the current problem statement below describes only an observed
+      SYMPTOM. Its root cause is not yet known — that is exactly why this search is
+      being run. Do NOT expect or require a root cause on the query side.
+
+      CURRENT PROBLEM STATEMENT (symptom only, no known cause yet):
+      {query}
+
+      For each CANDIDATE below, you are given its own description (the symptom as
+      originally filed) AND its actual documented root cause (determined after
+      investigation). Use both:
+
+      - Compare the candidate's description against the current problem statement
+        for genuine failure-mode / mechanism-class similarity (same equipment
+        subsystem, same type of procedural gap, same class of instrument fault) —
+        not merely the same product name, test name, or narrative phrasing.
+      - Use the candidate's documented root cause to CONFIRM or RULE OUT that
+        similarity. Two events can describe an almost identical symptom yet turn
+        out to be caused by unrelated mechanisms (e.g. two "RH excursion" events
+        where one was a dehumidifier limit-switch failure and the other was a
+        cooling-tower water shortage) — such candidates must be judged NOT relevant
+        even though the description reads similarly.
+      - If a candidate's root cause is inconclusive or not yet determined (e.g. "no
+        laboratory error identified", "refer to another investigation"), judge
+        based on description-level symptom similarity alone, and say so briefly in
+        your reason.
+
+      Judge relevant=true ONLY when the candidate plausibly shares the SAME
+      underlying failure mechanism as what the current problem statement describes.
+      Judge relevant=false for candidates that are topically or lexically similar
+      but mechanistically different, or for candidates on an unrelated topic
+      entirely.
+
+      CANDIDATES (JSON array of {{id, description, root_cause}}):
+      {candidates_json}
+
+      Return exactly one judgment per candidate id listed above. Do not add or
+      omit any id.

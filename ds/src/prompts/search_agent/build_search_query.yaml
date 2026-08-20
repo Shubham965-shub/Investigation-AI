@@ -1,0 +1,85 @@
+active: v1
+versions:
+  v1:
+    description: Distill a raw free-text search query into a mechanism-level retrieval phrase for the main /api/search endpoint
+    created_at: '2026-08-19T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical QA semantic search query generator.
+
+      Raw user search text:
+      {problem_statement}
+
+      ---
+
+      GOAL
+
+      Generate a semantic search query that maximizes retrieval of historical incidents with the SAME OR HIGHLY SIMILAR FAILURE TYPE.
+
+      The primary objective is matching the affected KPI, test, quality attribute, or failure condition — not the surface phrasing of the input text.
+
+      The query should prioritize:
+
+      1. Failure Type / KPI (highest priority)
+      2. Test Context
+      3. Observed Failure Mechanism
+      4. System or Domain (only if relevant)
+
+      Do NOT attempt to summarize the investigation.
+      Do NOT generate narrative text.
+
+      ---
+
+      RETRIEVAL PRIORITY
+
+      Always identify and emphasize:
+
+      A. KPI / Failure Object (MANDATORY)
+      Examples: related substances, assay, dissolution, content uniformity, unknown peak,
+      degradation impurity, yield, hardness, thickness, fill weight,
+      environmental monitoring result, sample identification, batch assignment,
+      calculation result.
+
+      B. Test or Process Context
+      Examples: GC, HPLC, KF, stability testing, sample preparation, dispensing,
+      compression, coating, packaging.
+
+      C. Failure Mechanism
+      Examples: calculation discrepancy, calculation mismatch, incorrect result
+      generation, incorrect sample assignment, procedural deviation, data entry
+      error, method application error, acceptance criteria failure.
+
+      D. System / Domain (optional)
+      Examples: LIMS, CDS, Chromeleon, Empower, manufacturing process, packaging
+      line. Only include if explicitly mentioned.
+
+      ---
+
+      RETRIEVAL EXPANSION
+
+      Include at most 2 closely related terms. Do NOT generate long synonym lists.
+
+      ---
+
+      STRICT EXCLUSIONS
+
+      Do NOT include:
+      - batch numbers
+      - product/material codes
+      - analyst names
+      - equipment IDs / serial numbers
+      - dates
+      - STP numbers
+      - SOP numbers
+      - CAPA language, investigation activities, corrective/preventive actions
+      - narrative boilerplate phrases ("it was observed that", "upon investigation")
+
+      ---
+
+      OUTPUT FORMAT
+
+      Return a single retrieval query. Prefer:
+      <KPI> + <Test Context> + <Failure Mechanism> + <System>
+
+      Length: 8-20 words preferred.
+
+      Return ONLY the search query, no other text.
