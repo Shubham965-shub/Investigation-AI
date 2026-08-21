@@ -11,9 +11,11 @@ from fastapi.responses import JSONResponse
 
 from src.agents.critique.api.schemas import (
     CritiqueInputSchema, CritiqueOutSchema, TaskSchema, CritiqueRCIRequest,
-    RCConclusionCritiqueResponse, CAPACritiqueResponse, RCIReportCritiqueResponse,
+    RCConclusionCritiqueResponse, CAPACritiqueResponse,
 )
-from src.agents.critique.api.services.rci_report_extraction import extract_full_document_text
+from src.agents.critique.api.services.rci_report_extraction import (
+    extract_full_document_text, extract_rci_report_sections,
+)
 from src.agents.critique.api.services.rci_critique_service import critique_in_batches
 from src.agents.critique.api.services.reformatter import reformat_to_investigation_plan_payload
 from src.agents.critique.api.services.relevance_validation import validate_document_relevance
@@ -116,19 +118,32 @@ def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueRespo
     return capa_result
 
 
-def _extract_problem_statement(full_doc_text: str) -> str:
-    """Pull the problem statement text from the full markdown document."""
-    m = re.search(
-        r"problem\s+(?:statement|description)[^\n]*\n+(.+?)(?=\n\n|\Z)",
-        full_doc_text, re.IGNORECASE | re.DOTALL,
-    )
-    if m:
-        return m.group(1).strip()
-    m = re.search(
-        r"problem\s+(?:statement|description)\s*[:\-]\s*(.+)",
-        full_doc_text, re.IGNORECASE,
-    )
-    return m.group(1).strip() if m else ""
+def _format_capa_text(capa_overall_text: str, capa_items: List[dict]) -> str:
+    """Plain-text rendering of the report's own CAPA section — the free text above the table
+    plus each action row, verbatim from the document, no LLM involved."""
+    lines = [capa_overall_text] if capa_overall_text else []
+    for item in capa_items:
+        line = item.get("description") or ""
+        if not line:
+            continue
+        extras = [v for v in (item.get("responsibility"), item.get("due_date")) if v]
+        if extras:
+            line += " (" + ", ".join(extras) + ")"
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+async def _report_section_summaries(temp_path: Path) -> tuple[str, str]:
+    """(rc_conclusion_text, capa_text) pulled directly from the report's own sections via
+    plain docx parsing (extract_rci_report_sections) — never LLM-generated. Best-effort: a
+    report whose sections don't match the expected heading/table layout degrades to empty
+    strings rather than failing the critique."""
+    try:
+        sections = await asyncio.to_thread(extract_rci_report_sections, temp_path)
+    except Exception:
+        logger.warning("Non-LLM section extraction failed for %s", temp_path, exc_info=True)
+        return "", ""
+    return sections["rc_conclusion_text"], _format_capa_text(sections["capa_overall_text"], sections["capa_items"])
 
 
 async def _save_and_extract(file: UploadFile) -> tuple[Path, str]:
@@ -267,64 +282,6 @@ async def extract(file: UploadFile = File(...)) -> JSONResponse:
 # ── Task report critique endpoints ────────────────────────────────────────────
 
 @router.post(
-    "/critique-rc-conclusion-and-capa",
-    tags=["critique"],
-    response_model=RCIReportCritiqueResponse,
-    summary="Critique RC conclusion and CAPA from a task report (full document)",
-)
-async def critique_rc_conclusion_and_capa(
-    event_type: str,
-    problem_statement: str,
-    file: UploadFile = File(..., description="Investigation task report (.docx)"),
-    previous_rc_recommendations: str = "",
-    previous_capa_recommendations: str = "",
-) -> RCIReportCritiqueResponse:
-    _require_docx(file)
-    temp_path = None
-    try:
-        temp_path, full_doc_text = await _save_and_extract(file)
-        llm_instance = LLMClient()
-        await validate_document_relevance(
-            llm_instance,
-            problem_statement=problem_statement,
-            event_type=event_type,
-            document_text=full_doc_text,
-            document_label="task report",
-        )
-        user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
-
-        rc_result, capa_result = await asyncio.gather(
-            llm_instance.get_structured_response(
-                system_prompt=_with_previous_recommendations(
-                    rc_conclusion_system_prompt, _parse_previous_recommendations(previous_rc_recommendations)
-                ) + "\n" + guard_rail_text,
-                user_prompt=user_prompt,
-                structure=RCConclusionCritiqueResponse,
-            ),
-            llm_instance.get_structured_response(
-                system_prompt=_with_previous_recommendations(
-                    capa_system_prompt, _parse_previous_recommendations(previous_capa_recommendations)
-                ) + "\n" + guard_rail_text,
-                user_prompt=user_prompt,
-                structure=CAPACritiqueResponse,
-            ),
-        )
-        return RCIReportCritiqueResponse(
-            problem_statement=_extract_problem_statement(full_doc_text),
-            rc_conclusion=_suppress_recurrence_claims_without_citation(rc_result),
-            capa=_cap_recommendations(capa_result),
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Task report analysis failed for file: %s", file.filename)
-        raise HTTPException(status_code=500, detail="Failed to analyse task report")
-    finally:
-        await file.close()
-        _cleanup(temp_path)
-
-
-@router.post(
     "/critique-rc-conclusion",
     tags=["critique"],
     response_model=RCConclusionCritiqueResponse,
@@ -356,7 +313,9 @@ async def critique_rc_conclusion(
             ) + "\n" + guard_rail_text,
             user_prompt=user_prompt,
             structure=RCConclusionCritiqueResponse,
+            temperature=0,
         )
+        result.rc_conclusion_text, _ = await _report_section_summaries(temp_path)
         return _suppress_recurrence_claims_without_citation(result)
     except HTTPException:
         raise
@@ -400,6 +359,7 @@ async def critique_capa(
             ) + "\n" + guard_rail_text,
             user_prompt=user_prompt,
             structure=CAPACritiqueResponse,
+            temperature=0,
         )
         if result.capa_status == "missing":
             raise HTTPException(
@@ -409,6 +369,7 @@ async def critique_capa(
                     "report. Please reupload a report that includes a CAPA section."
                 ),
             )
+        _, result.capa_text = await _report_section_summaries(temp_path)
         return _cap_recommendations(result)
     except HTTPException:
         raise

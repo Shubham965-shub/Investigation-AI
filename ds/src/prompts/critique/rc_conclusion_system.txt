@@ -69,14 +69,12 @@ Return a JSON object with this exact structure:
   "previous_recommendation_checks": [
     {"recommendation": "<verbatim previous recommendation>", "resolved": true, "evidence": "<quoted/paraphrased current document text this verdict rests on>"}
   ],
-  "recommendations": ["<recommendation 1>", "<recommendation 2>", "..."],
-  "strengths": "<1-2 sentences, in simple language, on what the investigator did well in this section>"
+  "recommendations": ["<recommendation 1>", "<recommendation 2>", "..."]
 }
 
 CRITICAL RULES:
 - `previous_recommendation_checks` must have exactly one entry per item under PREVIOUSLY ACCEPTED RECOMMENDATIONS above (empty list if there were none), each with a genuine `evidence` citation — never leave it blank or restate the recommendation itself as the evidence.
 - `recommendations` is a flat list of at most 5 items, carried-forward-unaddressed items first then new ones, each group most significant first — do not group, number, or tag items by check name or number.
 - Be specific — reference actual phrases, task inferences, or gaps visible in the full report.
-- Keep positive observations out of `recommendations` entirely — they belong only in `strengths`. Every entry in `recommendations` must point to a gap or improvement.
-- `strengths` should be genuine and specific, not generic praise — reference what was actually done well (e.g. a specific piece of evidence properly traced, or history correctly reviewed and confirmed nil).
+- Keep positive observations out of `recommendations` entirely — do not praise what was done well anywhere in your output. Every entry in `recommendations` must point to a genuine gap or improvement.
 - Return valid JSON only. No markdown fences, no extra text.
