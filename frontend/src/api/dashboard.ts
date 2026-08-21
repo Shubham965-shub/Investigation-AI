@@ -46,6 +46,9 @@ export interface ProblemStatementRecordResponse {
   event_type: EventType;
   trackwise_fields: TrackwiseFields;
   problem_statement: string | null;
+  // True once Evidence Collection has any real data — Problem Statement is
+  // read-only at that point (see ProblemStatementPage.tsx's lockedForEditing).
+  locked_for_editing?: boolean;
 }
 
 export function getProblemStatementRecord(

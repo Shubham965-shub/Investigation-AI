@@ -183,10 +183,22 @@ export function InterviewQuestionnairePage() {
     }, 1500);
   }
 
+  function showCopied(index: number) {
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
+  }
+
   function handleCopyItem(index: number, description: string) {
     navigator.clipboard.writeText(description).then(() => {
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
+      if (copiedIndex === index) {
+        // Already showing "Copied" — flash back to "Copy" for a split second
+        // first, so re-clicking while already copied is visibly acknowledged
+        // instead of looking like the click did nothing.
+        setCopiedIndex(null);
+        setTimeout(() => showCopied(index), 150);
+      } else {
+        showCopied(index);
+      }
     });
   }
 
@@ -205,6 +217,7 @@ export function InterviewQuestionnairePage() {
         </div>
 
         <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any question is not required in this investigation.</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
         {error && <p className="error-banner">{error}</p>}
@@ -227,12 +240,13 @@ export function InterviewQuestionnairePage() {
                   <button
                     type="button"
                     className="btn-outline"
-                    style={{ flexShrink: 0, padding: 6 }}
+                    style={{ flexShrink: 0, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6 }}
                     onClick={() => handleCopyItem(index, item.description)}
-                    aria-label="Copy"
+                    aria-label={copiedIndex === index ? "Copied" : "Copy"}
                     title={copiedIndex === index ? "Copied" : "Copy"}
                   >
                     <img src={copyIcon} alt="" width={14} height={14} />
+                    {copiedIndex === index && "Copied"}
                   </button>
                 </div>
               </div>
@@ -244,7 +258,7 @@ export function InterviewQuestionnairePage() {
       <div className="footer-actions split">
         <button type="button" className="btn-secondary" onClick={() => setShowAddDialog(true)}>
           <img src={addPlusIcon} alt="" width={16} height={16} />
-          Add Your Own Question
+          Add Your Own Recommendation
         </button>
         <button type="button" className="btn-primary" onClick={() => setShowConfirm(true)}>
           {saved ? "Saved" : "Agree and Next"}
@@ -265,7 +279,6 @@ export function InterviewQuestionnairePage() {
       {showConfirm && (
         <ConfirmDialog
           title="Accept Interview Questionnaire?"
-          message="Are you sure you want to accept the Interview Questionnaire and lock it for this investigation?"
           onCancel={() => setShowConfirm(false)}
           onConfirm={handleAgreeAndNext}
         />

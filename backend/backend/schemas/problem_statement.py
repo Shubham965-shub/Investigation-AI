@@ -47,3 +47,8 @@ class ProblemStatementRecord(BaseModel):
     # already-complete (read-only trackwise fields) even without a real
     # generated problem_statement, when stage >= 1.
     stage: int = 0
+    # True once Evidence Collection (the next step) has any real data — same
+    # "downstream work has begun, stop editing upstream" rule RCI Plan's own
+    # locked_for_editing already uses, one step earlier in the wizard
+    # (2026-08-21, per the user).
+    locked_for_editing: bool = False

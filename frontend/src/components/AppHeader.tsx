@@ -16,7 +16,7 @@ import { AppFeedbackButton } from "./AppFeedbackButton";
 // found via a one-off live-DB query: 19 open investigations, next-highest
 // was 14. Hardcoded rather than fetched, since this dropdown is meant to be
 // removed once the demo need has passed.
-const DEMO_VIEW_AS_INVESTIGATOR = "Veena N Chavan";
+const DEMO_VIEW_AS_INVESTIGATOR = "Karthik R";
 
 // "Ajay Pathania" -> "Ajay P", "Ajay Kumar Pathania" -> "Ajay K P" (2026-08-18,
 // per the user) — first name in full, every remaining name reduced to its
@@ -206,7 +206,7 @@ export function AppHeader() {
                     }}
                   >
                     <option value="">— My account —</option>
-                    <option value={DEMO_VIEW_AS_INVESTIGATOR}>{DEMO_VIEW_AS_INVESTIGATOR} (most open investigations)</option>
+                    <option value={DEMO_VIEW_AS_INVESTIGATOR}>{DEMO_VIEW_AS_INVESTIGATOR}</option>
                   </select>
                 </div>
 

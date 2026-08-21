@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from backend.clients.ds_client import ds_post
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
-from backend.db.generated_content_queries import fetch_problem_statement, save_problem_statement
+from backend.db.generated_content_queries import fetch_evidence_items, fetch_problem_statement, save_problem_statement
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row, fetch_investigation_statuses
 from backend.schemas.problem_statement import (
@@ -65,6 +65,7 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=extended),
         problem_statement=await fetch_problem_statement(deviation_id),
         stage=stage_for(row["status"]),
+        locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
     )
 
 
