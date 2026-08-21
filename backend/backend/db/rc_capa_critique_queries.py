@@ -5,7 +5,7 @@ propagates.
 
 One row per attempt — never replaced (each upload is a fresh INSERT), so
 history across all attempts is naturally preserved, unlike Task Critique's
-single upserted row. Each category's summary/strengths/recommendations live
+single upserted row. Each category's summary/recommendations live
 directly on that row as separate rc_*/capa_* columns (2026-08-07, per the
 user) — matching Task Critique's "one row, recommendations as an inline
 JSONB array" shape — rather than the previous normalized
@@ -47,8 +47,8 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
             rows = await conn.fetch(
                 """
                 SELECT id, attempt_number, file_name, is_gospel,
-                       rc_summary, rc_strengths, rc_recommendations,
-                       capa_summary, capa_strengths, capa_recommendations,
+                       rc_summary, rc_recommendations,
+                       capa_summary, capa_recommendations,
                        rc_score, capa_score, total_score, score_breakdown, uploaded_at
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
@@ -73,13 +73,11 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                     {
                         "category": "rc_impact",
                         "summary": r["rc_summary"],
-                        "strengths": r["rc_strengths"],
                         "recommendations": _parse_recommendations(r["rc_recommendations"]),
                     },
                     {
                         "category": "capa",
                         "summary": r["capa_summary"],
-                        "strengths": r["capa_strengths"],
                         "recommendations": _parse_recommendations(r["capa_recommendations"]),
                     },
                 ],
@@ -120,16 +118,17 @@ async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
 async def save_critiques(
     report_id: int,
     rc_recommendations: List[str],
-    rc_strengths: str,
+    rc_summary: str,
     capa_recommendations: List[str],
-    capa_strengths: str,
+    capa_summary: str,
 ) -> None:
     """Persists both fixed categories' critique directly onto the report row.
-    Neither RCConclusionCritiqueResponse nor CAPACritiqueResponse has a dedicated
-    summary field, so both categories' summary is just their strengths string —
-    positive-only, matching Task Critique's summary (2026-08-18, per the user).
-    rc_summary previously echoed DS's rc_conclusion_text (the investigator's own
-    conclusion text, not a critique verdict); that field is no longer persisted.
+    `rc_summary`/`capa_summary` are the report's own RC Conclusion / CAPA section text,
+    pulled by ds via plain docx parsing (extract_rci_report_sections) — never LLM-generated
+    (2026-08-20, per the user: the investigator-facing summary must read exactly what's in
+    their report, not an LLM's paraphrase of it). No separate LLM "strengths" verdict is
+    generated or persisted anymore (2026-08-20, per the user — the rc_strengths/capa_strengths
+    columns still exist on the table but are no longer written or read).
     Recommendation ids are unique per report: rc's run 0..len(rc)-1, capa's
     continue from there."""
     rc_recs = [
@@ -145,16 +144,14 @@ async def save_critiques(
         await conn.execute(
             """
             UPDATE investigation_rc_capa_reports SET
-                rc_summary = $2, rc_strengths = $3, rc_recommendations = $4::jsonb,
-                capa_summary = $5, capa_strengths = $6, capa_recommendations = $7::jsonb
+                rc_summary = $2, rc_recommendations = $3::jsonb,
+                capa_summary = $4, capa_recommendations = $5::jsonb
             WHERE id = $1
             """,
             report_id,
-            rc_strengths,
-            rc_strengths,
+            rc_summary,
             json.dumps(rc_recs),
-            capa_strengths,
-            capa_strengths,
+            capa_summary,
             json.dumps(capa_recs),
         )
 

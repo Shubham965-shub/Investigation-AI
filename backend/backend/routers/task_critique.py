@@ -245,13 +245,15 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # Real, genuinely per-task DS endpoint (ds/src/agents/critique/api/routes/
     # task_report_critique_route.py) — 7-dimension critique with vision
     # analysis on embedded photos. This path used to be shadowed by
-    # critique_route.py's RC+CAPA endpoint registering the identical path
-    # (both /critique/analyse-task-report, first-registered-wins routing) —
-    # fixed 2026-08-06 by moving that one to its own path,
+    # critique_route.py's combined RC+CAPA endpoint registering the identical
+    # path (both /critique/analyse-task-report, first-registered-wins routing)
+    # — fixed 2026-08-06 by moving that one to its own path,
     # /critique/critique-rc-conclusion-and-capa (see routers/rc_capa_critique.py,
-    # which already used the two even-more-specific split endpoints and so
-    # was never affected by this collision). Called BEFORE persisting anything,
-    # so a transient DS failure doesn't burn one of the 3 real upload attempts.
+    # which already used the two even-more-specific split endpoints and so was
+    # never affected by this collision). That combined endpoint was never
+    # actually called by any module and was removed entirely on 2026-08-20.
+    # Called BEFORE persisting anything, so a transient DS failure doesn't
+    # burn one of the 3 real upload attempts.
     # problem_statement + task_description let DS reject an irrelevant/mismatched
     # upload with a 422 before running any critique LLM calls — task_description
     # catches the narrower case of the right investigation's report being uploaded

@@ -369,7 +369,6 @@ export interface RcCapaRecommendation {
 export interface RcCapaCritique {
   category: "rc_impact" | "capa";
   summary: string | null;
-  strengths: string | null;
   recommendations: RcCapaRecommendation[];
 }
 
