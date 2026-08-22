@@ -123,12 +123,15 @@ async def save_critiques(
     capa_summary: str,
 ) -> None:
     """Persists both fixed categories' critique directly onto the report row.
-    `rc_summary`/`capa_summary` are the report's own RC Conclusion / CAPA section text,
-    pulled by ds via plain docx parsing (extract_rci_report_sections) — never LLM-generated
-    (2026-08-20, per the user: the investigator-facing summary must read exactly what's in
-    their report, not an LLM's paraphrase of it). No separate LLM "strengths" verdict is
-    generated or persisted anymore (2026-08-20, per the user — the rc_strengths/capa_strengths
-    columns still exist on the table but are no longer written or read).
+    `rc_summary`/`capa_summary` are sourced from the report's own RC Conclusion / CAPA section
+    text, pulled by ds via plain docx parsing (extract_rci_report_sections, no LLM), then
+    condensed by ds to 3-4 plain-language sentences since the full verbatim section is too
+    long for a dashboard summary card (2026-08-20, per the user) — the condensation step is
+    forbidden from adding any fact not already in the extracted text, so this is still not a
+    critique verdict or an LLM's independent judgment of the report. No separate LLM
+    "strengths" verdict is generated or persisted anymore (2026-08-20, per the user — the
+    rc_strengths/capa_strengths columns still exist on the table but are no longer written or
+    read).
     Recommendation ids are unique per report: rc's run 0..len(rc)-1, capa's
     continue from there."""
     rc_recs = [

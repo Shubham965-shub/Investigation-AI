@@ -44,6 +44,7 @@ critique_system_prompt = _load_prompt("critique_system.txt")
 critique_user_prompt = _load_prompt("critique_user.txt")
 rc_conclusion_system_prompt = _load_prompt("rc_conclusion_system.txt")
 capa_system_prompt = _load_prompt("capa_system.txt")
+condense_summary_system_prompt = _load_prompt("condense_summary.txt")
 
 llm = LLMClient()
 
@@ -113,7 +114,15 @@ def _suppress_recurrence_claims_without_citation(rc_result: RCConclusionCritique
 
 def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueResponse:
     """Hard cap at 5 recommendations (still-unaddressed carried-forward ones first) in case the
-    model over-generates despite the prompt limit."""
+    model over-generates despite the prompt limit. Also a code-side backstop for capa_status
+    "missing"/"not_required": the prompt already tells the model not to propose recommendations
+    in that case (there's no real CAPA to critique), but if it does anyway, force both lists
+    empty here rather than trusting it — there is nothing to accept or reject when no CAPA was
+    proposed or the report explicitly says none is needed."""
+    if capa_result.capa_status in ("missing", "not_required"):
+        capa_result.recommendations = []
+        capa_result.previous_recommendation_checks = []
+        return capa_result
     capa_result.recommendations = _prioritize_and_cap(capa_result.recommendations)
     return capa_result
 
@@ -133,17 +142,40 @@ def _format_capa_text(capa_overall_text: str, capa_items: List[dict]) -> str:
     return "\n".join(lines).strip()
 
 
+async def _condense_section_text(label: str, text: str) -> str:
+    """Shrinks the report's own verbatim section text to a 3-4 sentence plain-language
+    summary for display (2026-08-20, per the user — the full verbatim section is too long
+    for a dashboard summary card). Condensation only — condense_summary.txt forbids adding
+    any fact not already in `text`; the source of truth stays the report's own text, this
+    just makes it fit. Best-effort: a failure here must not fail the critique itself, it
+    just falls back to showing the untouched verbatim text."""
+    if not text.strip():
+        return text
+    try:
+        return (await llm.chat(text, system=condense_summary_system_prompt)).strip()
+    except Exception:
+        logger.warning("Section summary condensation failed for %s", label, exc_info=True)
+        return text
+
+
 async def _report_section_summaries(temp_path: Path) -> tuple[str, str]:
     """(rc_conclusion_text, capa_text) pulled directly from the report's own sections via
-    plain docx parsing (extract_rci_report_sections) — never LLM-generated. Best-effort: a
-    report whose sections don't match the expected heading/table layout degrades to empty
-    strings rather than failing the critique."""
+    plain docx parsing (extract_rci_report_sections, no LLM), then condensed to a short
+    plain-language summary via _condense_section_text. Best-effort: a report whose sections
+    don't match the expected heading/table layout degrades to empty strings rather than
+    failing the critique."""
     try:
         sections = await asyncio.to_thread(extract_rci_report_sections, temp_path)
     except Exception:
         logger.warning("Non-LLM section extraction failed for %s", temp_path, exc_info=True)
         return "", ""
-    return sections["rc_conclusion_text"], _format_capa_text(sections["capa_overall_text"], sections["capa_items"])
+    rc_text = sections["rc_conclusion_text"]
+    capa_text = _format_capa_text(sections["capa_overall_text"], sections["capa_items"])
+    rc_summary, capa_summary = await asyncio.gather(
+        _condense_section_text("rc_conclusion", rc_text),
+        _condense_section_text("capa", capa_text),
+    )
+    return rc_summary, capa_summary
 
 
 async def _save_and_extract(file: UploadFile) -> tuple[Path, str]:

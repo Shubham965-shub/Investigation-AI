@@ -23,9 +23,11 @@ class RcCapaRecommendation(BaseModel):
 
 class RcCapaCritique(BaseModel):
     category: Literal["rc_impact", "capa"]
-    # The report's own RC Conclusion / CAPA section text, pulled by ds via plain docx
-    # parsing (extract_rci_report_sections) — never LLM-generated (2026-08-20, per the
-    # user). No separate LLM "strengths" verdict is generated or shown here anymore.
+    # Sourced from the report's own RC Conclusion / CAPA section text, pulled by ds via
+    # plain docx parsing (extract_rci_report_sections, no LLM), then condensed by ds to
+    # 3-4 plain-language sentences (2026-08-20, per the user) — condensation only, never
+    # adds a fact not in the extracted text. No separate LLM "strengths" verdict is
+    # generated or shown here anymore.
     summary: Optional[str] = None
     recommendations: List[RcCapaRecommendation] = []
 
