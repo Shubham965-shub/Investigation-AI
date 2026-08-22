@@ -114,7 +114,15 @@ def _suppress_recurrence_claims_without_citation(rc_result: RCConclusionCritique
 
 def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueResponse:
     """Hard cap at 5 recommendations (still-unaddressed carried-forward ones first) in case the
-    model over-generates despite the prompt limit."""
+    model over-generates despite the prompt limit. Also a code-side backstop for capa_status
+    "missing"/"not_required": the prompt already tells the model not to propose recommendations
+    in that case (there's no real CAPA to critique), but if it does anyway, force both lists
+    empty here rather than trusting it — there is nothing to accept or reject when no CAPA was
+    proposed or the report explicitly says none is needed."""
+    if capa_result.capa_status in ("missing", "not_required"):
+        capa_result.recommendations = []
+        capa_result.previous_recommendation_checks = []
+        return capa_result
     capa_result.recommendations = _prioritize_and_cap(capa_result.recommendations)
     return capa_result
 
