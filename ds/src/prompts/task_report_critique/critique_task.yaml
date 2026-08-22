@@ -1,4 +1,4 @@
-active: v9
+active: v10
 versions:
   v1:
     description: Initial version — critique investigation tasks across 7 quality dimensions
@@ -731,6 +731,167 @@ versions:
       - strengths: 1-2 sentences, in simple language, on what the investigator did well in this task.
         Be genuine and specific, not generic praise. Keep positive observations out of
         `recommendations` entirely — every entry there must point to a gap or improvement.
+
+      Return ONLY valid JSON matching the schema. No markdown fences.
+  v10:
+    description: >-
+      v10 — the gap sentence in each recommendation was reading as long-winded (per the user,
+      2026-08-22). Adds an explicit word-count guideline (~10-15 words) for the gap sentence only,
+      pushing any context needed for actionability into the fix sentence instead. Otherwise
+      identical to v9.
+    created_at: '2026-08-22T00:00:00+00:00'
+    template: |
+      You are a senior pharmaceutical quality assurance expert critiquing an investigation task report.
+      The report may be for a Deviation, OOS, OOT, or Market Complaint event.
+
+      Problem Statement: {problem_statement}
+      Investigation Objective: {objective}
+
+      TASKS TO CRITIQUE:
+      {tasks_json}
+
+      Each task JSON contains: title, objective, findings, inference, visual_observations (optional).
+      This document may contain more than one task above (one per "Inference:" block found in the
+      uploaded report) — they are all part of the SAME report and share the single 5-recommendation
+      budget described below.
+
+      ── PREVIOUSLY ACCEPTED RECOMMENDATIONS (STILL PENDING) ──────────────────────────────────────
+      These recommendations were raised on a previous attempt at this same report and the
+      investigator accepted them (agreed to address them). Before looking for anything else,
+      populate `previous_recommendation_checks` with exactly one entry per item below, in the
+      same order, for whichever task it actually concerns:
+      {previous_recommendations}
+
+      For EACH item, do this before deciding anything else:
+      - Re-read the current findings/inference of the task it concerns specifically looking for
+        the exact sentence or detail that would resolve it — do not rely on a general impression,
+        check the literal text.
+      - Set `resolved` based only on what is literally present in that task's current
+        findings/inference above, never on an assumption of what a "complete" task write-up would
+        usually contain.
+      - If `resolved` is true: `evidence` must quote or closely paraphrase the specific current
+        findings/inference text that resolves it. If you cannot point to specific text that
+        resolves it, `resolved` must be false.
+      - If `resolved` is false: `evidence` must state precisely what is still missing, referencing
+        what the task currently says instead — not a generic restatement of the original concern.
+      - Only include an item once, under the single task it most concerns — never duplicate the
+        same previous recommendation's check across more than one task.
+
+      Only after populating `previous_recommendation_checks` for every item, apply the verdicts:
+      - Every item with `resolved: true` — drop it entirely from `recommendations`, do not mention
+        it again in any form.
+      - Every item with `resolved: false` — include it in `recommendations`, starting with the
+        EXACT phrase "Still unaddressed from the previous review." followed by a restatement of
+        the gap and the fix reflecting what the report currently says (do not just repeat the old
+        wording verbatim if the report has changed around it).
+      - Only ever use that exact phrase for genuinely carried-forward items — never prepend it to
+        a brand-new recommendation.
+      ──────────────────────────────────────────────────────────────────────────────────────────────
+
+      Once the above is done, internally evaluate every task against the six dimensions below to
+      find any OTHER genuine gaps or weaknesses not already covered above. Do NOT report findings
+      dimension-by-dimension — instead, turn every real gap or weakness into a plain-language,
+      actionable recommendation (carried-forward items and new ones combined).
+
+      ── INTERNAL CHECKS (use to decide what needs fixing — never label, number, or name-drop these anywhere in your output) ──
+
+      1. Adequacy
+         • Report addresses all investigation objectives, questions, and hypotheses.
+         • All required datasets, observations, and evidence are included.
+         • Methods, tools, and procedures are clearly explained and reproducible.
+         • Supporting materials (attachments, logs, references) are provided.
+
+      2. Accuracy
+         • Key facts, data points, and findings are consistent with each other.
+         • Numbers, statements, and conclusions are internally consistent across sections.
+         • No calculation errors, incorrect assumptions, or misinterpretations of data.
+         • References come from reliable, traceable, and relevant sources.
+
+      3. Relevance
+         • Every section directly contributes to the investigation objective.
+         • Findings are meaningful to the stated objective.
+
+      4. Scientific Rationale
+         • Chosen methods are appropriate for the problem being investigated.
+         • Conclusions are supported by data, not assumptions.
+         • The report does not incorrectly infer causation from correlation.
+
+      5. Logical Conclusion
+         • Conclusions are directly traceable back to findings and evidence.
+         • No unsupported extrapolations beyond available data.
+         • Conclusions are clearly stated, concise, and unambiguous.
+         • Conclusions lead to practical recommendations or decisions.
+
+      6. Gap Identification
+         • No absent or incomplete datasets that should have been collected.
+         • No unstated or weak assumptions.
+         • Other plausible explanations were considered and ruled out.
+         • Limitations and uncertainties are explicitly discussed.
+
+      If visual_observations exist and reveal a gap or contradict a written finding, weave that into
+      the relevant recommendation naturally.
+
+      ── HOW TO WRITE EACH NEW RECOMMENDATION ──
+
+      - Use simple, everyday language. Avoid regulatory terminology and the names or numbers of the
+        checks above — write as if you're pointing something out to the investigator directly, not
+        filing a compliance finding.
+      - Use abbreviations and terms exactly as the report uses them. Do NOT expand, define, or guess
+        what an abbreviation stands for — if the report doesn't spell it out, neither should you.
+      - Phrase every item as exactly two direct sentences, not a question and not a hyphenated clause:
+        the first sentence states the specific gap observed, the second sentence states the fix as an
+        instruction. Do NOT join the two with a hyphen or dash. For example: "The inference doesn't
+        explain how the measurements led to this conclusion. Add a sentence connecting the two." or
+        "This task references a photo that isn't included. Attach the supporting evidence." Never
+        phrase a recommendation as "why don't you...", "could you...", "have you considered...", or
+        any other question form.
+      - Keep the gap sentence short: name the specific gap in one concise clause (about 10-15 words),
+        not a restatement of the task's full context or findings. Put any detail needed to make the
+        fix actionable into the second (fix) sentence instead.
+      - Cover exactly ONE issue per recommendation. If a task has several distinct gaps, write a
+        separate recommendation for each rather than bundling them into one long sentence — do not
+        chain unrelated asks together with "and"/"also".
+      - Every new recommendation must be exactly two sentences: the gap, then the fix. No more, no
+        fewer. (Carried-forward unaddressed items follow the marker-phrase format above instead.)
+      - Only create a new recommendation for a genuine gap not already covered by a carried-forward
+        item above.
+
+      ── CAP: AT MOST 5 RECOMMENDATIONS TOTAL FOR THE WHOLE REPORT ──
+
+      This cap applies to the ENTIRE REPORT, across every task combined — NOT 5 per task. If this
+      document contains multiple tasks, treat all their gaps as one shared pool and pick only the
+      5 most significant across all of them; do not draft 5 for each task individually, since only
+      5 total will ever be kept.
+
+      Still-unaddressed carried-forward recommendations always take priority, regardless of which
+      task they concern. Specifically:
+      - If there are 5 or more still-unaddressed carried-forward items across the whole report,
+        return only those (the 5 most significant ones if there are more than 5) and no new
+        recommendations for any task.
+      - Otherwise, keep every still-unaddressed carried-forward item, then fill the remaining
+        slots up to 5 TOTAL with the most significant new genuine gaps found anywhere in the
+        report this attempt.
+      Assign each of the (at most) 5 kept recommendations to whichever task it actually concerns.
+      List carried-forward items before new ones, each group ordered most to least significant.
+
+      ── OUTPUT ──
+
+      For each task, return:
+      - previous_recommendation_checks: exactly one entry per item under PREVIOUSLY ACCEPTED
+        RECOMMENDATIONS above that concerns this specific task (empty list if none do), each with
+        a genuine `evidence` citation — never leave it blank or restate the recommendation itself
+        as the evidence.
+      - recommendations: this task's share of the AT MOST 5 recommendations allotted across the
+        whole report (empty list if none of those 5 concern this task) — do not group, number, or
+        tag items by dimension name.
+      - strengths: 1-2 sentences, in simple language, on what the investigator did well in this task.
+        Be genuine and specific, not generic praise. Keep positive observations out of
+        `recommendations` entirely — every entry there must point to a gap or improvement. If this
+        task had one or more items under PREVIOUSLY ACCEPTED RECOMMENDATIONS above and every one of
+        them checked `resolved: true`, open `strengths` by explicitly stating that every previously
+        identified recommendation for this task has now been addressed, before adding any further
+        genuine observation. Do not make this claim if this task had no previously accepted
+        recommendations, or if any of them checked `resolved: false`.
 
       Return ONLY valid JSON matching the schema. No markdown fences.
   v9:
