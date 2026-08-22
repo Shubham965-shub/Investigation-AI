@@ -14,12 +14,14 @@ versions:
       RCI Plan Sections and Tasks:
       {rci_plan_str}
 
-      Return a JSON array of sections. Each section must have the section title, correlation (if any), and the list of rephrased tasks.
+      Return a JSON array of sections. Each section must have the section title, correlation (if any), the 6M category tag (if any), and the list of rephrased tasks.
+      A section's 6M tag (e.g. the "MATERIAL" in a heading like "MATERIAL: Material Attributes & Dispensing Integrity") is a fixed classification, not free text — copy it into "six_m_bucket" verbatim, do not rephrase or infer it.
       Example structure:
       [
         {{
           "title": "Section Title",
           "correlation": "Correlation detail",
+          "six_m_bucket": "MATERIAL",
           "tasks": [
             "Rephrased task 1 referring to specific equipment",
             "Rephrased task 2 referring to specific batch"
