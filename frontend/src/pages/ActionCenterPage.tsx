@@ -53,6 +53,17 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   overdue: { status: "overdue", label: "Overdue" },
 };
 
+// dim_event.escalation_level ("L1".."L5", or "Not Applicable"/null for most
+// rows) -> the same tone as the status bucket it corresponds to (per the
+// user): L1/L2 = on-track, L3/L4 = at-risk-of-delay, L5 = overdue.
+const ESCALATION_TONE: Record<string, "success" | "warning" | "danger"> = {
+  L1: "success",
+  L2: "success",
+  L3: "warning",
+  L4: "warning",
+  L5: "danger",
+};
+
 // Default table order (before the user picks a column to sort by): most
 // overdue first (2026-08-21, per the user). Sorting by bucket rather than
 // raw due_date, since open_investigation_status is Trackwise's own opaque
@@ -617,8 +628,15 @@ export function ActionCenterPage() {
                     </td>
                     <td>{inv.start_date ?? "—"}</td>
                     <td>{inv.due_date ?? "—"}</td>
-                    <td>
-                      <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
+                    <td className="ac-status-cell">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>{statusInfo.label}</span>
+                        {inv.escalation_level && ESCALATION_TONE[inv.escalation_level] && (
+                          <span className={`escalation-bubble ${ESCALATION_TONE[inv.escalation_level]}`}>
+                            {inv.escalation_level}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <button

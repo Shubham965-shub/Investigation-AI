@@ -377,6 +377,10 @@
   min-width: 140px;
 }
 
+.ac-status-cell {
+  min-width: 160px;
+}
+
 .ac-progress-top {
   display: flex;
   justify-content: space-between;
@@ -410,6 +414,24 @@
 .status-pill.overdue { color: var(--color-danger-text); border-color: var(--color-danger-text); }
 .status-pill.unassigned { color: var(--color-text-muted); border-color: var(--color-text-muted); }
 .status-pill.cancelled { color: var(--color-danger-text); border-color: var(--color-danger-text); }
+
+/* Escalation-level bubble (L1-L5), shown next to the now-plain-text status —
+   filled, unlike .status-pill's outline, so the two read as distinct signals. */
+.escalation-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.escalation-bubble.success { background: var(--color-success-bg); color: var(--color-success-text); }
+.escalation-bubble.warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.escalation-bubble.danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
 
 .ac-inv-card-header {
   display: flex;

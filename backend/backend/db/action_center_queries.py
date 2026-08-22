@@ -60,12 +60,13 @@ QE_TYPE_TO_STAT_LABEL: Dict[str, str] = {
 }
 
 _OPEN_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.escalation_level,
         e.module,
         e.module_risk_status,
         e.open_investigation_status,
@@ -113,12 +114,13 @@ async def fetch_open_investigations() -> List[asyncpg.Record]:
 # open-investigations-only. See action_center.py for how the two lists are
 # combined.
 _CANCELLED_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.escalation_level,
         e.module,
         e.module_risk_status,
         e.open_investigation_status,

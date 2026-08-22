@@ -172,6 +172,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -207,6 +208,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -487,6 +489,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=True,
+                escalation_level=i["escalation_level"],
             )
             for i in cancelled_enriched
         ]
@@ -507,6 +510,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=i["is_cancelled"],
+                escalation_level=i["escalation_level"],
             )
             for i in enriched
         ]

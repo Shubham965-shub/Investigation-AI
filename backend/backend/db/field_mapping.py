@@ -97,6 +97,16 @@ def _merge_root_cause_category(row: asyncpg.Record) -> Optional[str]:
     return joined or None
 
 
+def _as_string_list(row: asyncpg.Record, col: str) -> List[str]:
+    """Like _val, but for a text[] column consumed as an actual list — the
+    inverse of _val_joined, which flattens the same kind of column to a
+    single string for schemas that declare it a plain str field instead."""
+    v = _val(row, col)
+    if isinstance(v, list):
+        return [str(item) for item in v]
+    return [str(v)] if v else []
+
+
 def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
     """Wraps a plain-text column into the single-element list
     ExtendedDeviationTrackwiseFields's list-typed fields expect.
@@ -115,8 +125,10 @@ def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
     return [str(v)] if v else []
 
 
-def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = False) -> Dict[str, Any]:
-    fields = _type_specific_trackwise_fields(row, qe_type, extended=extended)
+def build_trackwise_fields(
+    row: asyncpg.Record, qe_type: str, extended: bool = False, for_rci_report: bool = False
+) -> Dict[str, Any]:
+    fields = _type_specific_trackwise_fields(row, qe_type, extended=extended, for_rci_report=for_rci_report)
     # Universal, regardless of event type (2026-08-07, per the user) —
     # dim_investigator.investigator via fact_qms_event.investigator_key, and
     # dim_rci.rci_key via fact_qms_event.rci_key — the genuine Trackwise RCI
@@ -132,7 +144,9 @@ def build_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = F
     return fields
 
 
-def _type_specific_trackwise_fields(row: asyncpg.Record, qe_type: str, extended: bool = False) -> Dict[str, Any]:
+def _type_specific_trackwise_fields(
+    row: asyncpg.Record, qe_type: str, extended: bool = False, for_rci_report: bool = False
+) -> Dict[str, Any]:
     event_type = QE_TYPE_TO_EVENT_TYPE.get(qe_type)
 
     if event_type == "Deviation":
@@ -156,18 +170,36 @@ def _type_specific_trackwise_fields(row: asyncpg.Record, qe_type: str, extended:
                     "Observation Date": _val(row, "observation_date"),
                     "Observation Time": _val(row, "observation_time"),
                     "Failure Duration": _val(row, "failure_duration"),
-                    "Related Market": _val_joined(row, "related_market"),
-                    "Related Customer": _val_joined(row, "related_customer"),
+                    # RciReportDeviationTrackwiseFields overrides these four to the
+                    # opposite shape from ExtendedDeviationTrackwiseFields (List for
+                    # Related Market/Customer, plain str for Immediate Actions/Impact
+                    # Details) — see ds/src/agents/shared/schemas.py's own comments on
+                    # those overrides. Send the raw column shape for rci_report,
+                    # keep the joined/wrapped shape RCI Plan's schema expects otherwise.
+                    "Related Market": (
+                        _as_string_list(row, "related_market") if for_rci_report else _val_joined(row, "related_market")
+                    ),
+                    "Related Customer": (
+                        _as_string_list(row, "related_customer") if for_rci_report else _val_joined(row, "related_customer")
+                    ),
                     "Equipment ID": _val(row, "instrument_equipment_id"),  # equipment_number [DROPPED] 2026-07-24; reuses the same column "Instrument ID Number" uses
                     "Equipment Number": _val(row, "instrument_equipment_id"),  # per backend engineer (2026-07-29): same source column as Equipment ID/Instrument ID Number, no separate column exists
                     "Deviation Owner": _val(row, "owner_name"),
                     "Originator": _val(row, "originator"),
-                    "Immediate Actions": _val_as_list(row, "immediate_actions"),
+                    "Immediate Actions": _val(row, "immediate_actions") if for_rci_report else _val_as_list(row, "immediate_actions"),
                     "Impact on Deviation Batches": _val(row, "impact_on_deviation_batches"),
-                    "Impact Details": _val_as_list(row, "impact_details"),
+                    "Impact Details": _val(row, "impact_details") if for_rci_report else _val_as_list(row, "impact_details"),
                     "Immediate Cause Known": _val(row, "immediate_cause_known"),
                     "Cause Detail": _val(row, "cause_detail"),
                     "Proposal for Resolution": _val_as_list(row, "proposal_for_resolution"),
+                    # Only declared on RciReportDeviationTrackwiseFields (RCI Plan's
+                    # ExtendedDeviationTrackwiseFields has no such field at all) — the
+                    # LLM's Correction & Remedial Action section had no real source
+                    # data without this and kept generating an empty section, failing
+                    # ds's own internal-consistency check every time (found live,
+                    # 2026-08-21). Harmless to always include: extra dict keys are
+                    # ignored by schemas that don't declare them.
+                    "Correction or Remedial Action": _val(row, "correction_or_remedial_action"),
                 }
             )
         return fields
