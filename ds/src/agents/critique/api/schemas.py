@@ -119,8 +119,10 @@ class RCConclusionCritiqueRequest(BaseModel):
 
 
 class RCConclusionCritiqueResponse(BaseModel):
-    # Overwritten by critique_route.py after the LLM call returns with the report's own
-    # verbatim Section 7/8 text (extract_rci_report_sections, no LLM) — not the model's echo.
+    # Overwritten by critique_route.py after the critique LLM call returns — sourced from the
+    # report's own verbatim Section 7/8 text (extract_rci_report_sections, no LLM; not the
+    # model's echo), then condensed to 3-4 plain-language sentences by a separate LLM pass
+    # (condense_summary.txt) that's forbidden from adding any fact not already in that text.
     rc_conclusion_text: str
     # Declared before `recommendations` so structured-output generation reasons through each
     # previously accepted item, with cited evidence, before writing the final list.
@@ -153,6 +155,8 @@ class CAPACritiqueResponse(BaseModel):
     capa_status: Literal["missing", "not_required", "evaluated"] = "evaluated"
     previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
-    # Verbatim CAPA section text from the report itself (extract_rci_report_sections,
-    # no LLM involved) — set by critique_route.py after the LLM call returns, not by the model.
+    # Set by critique_route.py after the critique LLM call returns — sourced from the CAPA
+    # section text extracted from the report itself (extract_rci_report_sections, no LLM),
+    # then condensed to 3-4 plain-language sentences (see rc_conclusion_text above for the
+    # same pattern).
     capa_text: str = ""
