@@ -13,6 +13,7 @@ import { FileDropzone } from "../components/FileDropzone";
 import { TaskCritiqueGuidelines } from "../components/TaskCritiqueGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { scoreGrade } from "../utils/scoreGrade";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -207,6 +208,11 @@ export function TaskCritiquePage() {
                   )}
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
+                    {section.upload_count > 0 && (
+                      <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+                        Attempt {section.upload_count} of {section.max_uploads}
+                      </span>
+                    )}
                     {section.latest_report && (
                       <>
                         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, boxSizing: "border-box" }}>
@@ -241,44 +247,47 @@ export function TaskCritiquePage() {
                   {section.can_upload && (
                     <FileDropzone compact disabled={busy} loading={busy} label="Upload Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
                   )}
-                  {hasScore && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        padding: "16px 24px",
-                        borderRadius: 6,
-                        background: "var(--color-success-bg)",
-                        border: "1px solid var(--color-success-text)",
-                      }}
-                    >
+                  {hasScore && (() => {
+                    const grade = scoreGrade(section.latest_report!.task_score!);
+                    return (
                       <div
                         style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: "50%",
-                          border: "1.5px solid var(--color-success-text)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          flexShrink: 0,
+                          gap: 8,
+                          padding: "16px 24px",
+                          borderRadius: 6,
+                          background: grade.bg,
+                          border: `1px solid ${grade.border}`,
                         }}
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-success-text)" }}>
-                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "50%",
+                            border: `1.5px solid ${grade.border}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: grade.text }}>
+                            <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                        <div style={{ textAlign: "center" }}>
+                          <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                            Task Score <ScoreBreakdownTooltip tables={section.latest_report!.score_breakdown} />
+                          </p>
+                          <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{section.latest_report!.task_score}%</p>
+                        </div>
                       </div>
-                      <div style={{ textAlign: "center" }}>
-                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                          Task Score <ScoreBreakdownTooltip tables={section.latest_report!.score_breakdown} />
-                        </p>
-                        <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{section.latest_report!.task_score}%</p>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
 

@@ -218,6 +218,7 @@ export function InterviewQuestionnairePage() {
 
         <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any question is not required in this investigation.</p>
         <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>Additional questions may be asked during the interview as needed.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
         {error && <p className="error-banner">{error}</p>}
