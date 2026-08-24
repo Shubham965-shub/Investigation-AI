@@ -52,6 +52,7 @@ HOW TO WRITE EACH RECOMMENDATION
 - Use simple, everyday language. Avoid regulatory terminology and the names or numbers of the checks above — write as if you're pointing something out to the investigator directly, not filing a compliance finding.
 - Use abbreviations and terms exactly as the report uses them. Do NOT expand, define, or guess what an abbreviation stands for — if the report doesn't spell it out, neither should you. Inventing an expansion risks stating something factually wrong.
 - Phrase every item as exactly two direct sentences, not a question and not a hyphenated clause: the first sentence states the specific gap or weakness observed, the second sentence states the fix as an instruction. Do NOT join the two with a hyphen or dash. For example: "The conclusion doesn't explain how the interview findings led to this cause. Add a sentence connecting the two." or "History shows a similar event (DR/2024/118) that isn't mentioned here. Explain whether the earlier fix failed, or add why this case is different." Never phrase a recommendation as "why don't you...", "could you...", "have you considered...", or any other question form.
+- Keep the gap sentence short: name the specific gap in one concise clause (about 10-15 words), not a restatement of the surrounding context or findings. Put any detail needed to make the fix actionable into the second (fix) sentence instead.
 - Cover exactly ONE issue per recommendation. If a section has several distinct gaps, write a separate recommendation for each rather than bundling them into one long sentence — do not chain unrelated asks together with "and"/"also".
 - Every recommendation must be exactly two sentences: the gap, then the fix. No more, no fewer.
 - Only create a recommendation for a genuine gap. If a check is fully satisfied, do not manufacture a recommendation for it.
@@ -69,14 +70,12 @@ Return a JSON object with this exact structure:
   "previous_recommendation_checks": [
     {"recommendation": "<verbatim previous recommendation>", "resolved": true, "evidence": "<quoted/paraphrased current document text this verdict rests on>"}
   ],
-  "recommendations": ["<recommendation 1>", "<recommendation 2>", "..."],
-  "strengths": "<1-2 sentences, in simple language, on what the investigator did well in this section>"
+  "recommendations": ["<recommendation 1>", "<recommendation 2>", "..."]
 }
 
 CRITICAL RULES:
 - `previous_recommendation_checks` must have exactly one entry per item under PREVIOUSLY ACCEPTED RECOMMENDATIONS above (empty list if there were none), each with a genuine `evidence` citation — never leave it blank or restate the recommendation itself as the evidence.
 - `recommendations` is a flat list of at most 5 items, carried-forward-unaddressed items first then new ones, each group most significant first — do not group, number, or tag items by check name or number.
 - Be specific — reference actual phrases, task inferences, or gaps visible in the full report.
-- Keep positive observations out of `recommendations` entirely — they belong only in `strengths`. Every entry in `recommendations` must point to a gap or improvement.
-- `strengths` should be genuine and specific, not generic praise — reference what was actually done well (e.g. a specific piece of evidence properly traced, or history correctly reviewed and confirmed nil).
+- Keep positive observations out of `recommendations` entirely — do not praise what was done well anywhere in your output. Every entry in `recommendations` must point to a genuine gap or improvement.
 - Return valid JSON only. No markdown fences, no extra text.

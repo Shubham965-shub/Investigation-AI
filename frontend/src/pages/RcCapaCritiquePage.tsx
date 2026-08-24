@@ -18,6 +18,7 @@ import { FileDropzone } from "../components/FileDropzone";
 import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { BoldText } from "../components/BoldText";
+import { scoreGrade } from "../utils/scoreGrade";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
@@ -257,45 +258,48 @@ export function RcCapaCritiquePage() {
             </p>
           </div>
 
-          {report?.total_score != null && (
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 12,
-                padding: 16,
-                borderRadius: 8,
-                background: "var(--color-success-bg)",
-                border: "1px solid var(--color-success-text)",
-              }}
-            >
+          {report?.total_score != null && (() => {
+            const grade = scoreGrade(report.total_score);
+            return (
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border: "1.5px solid var(--color-success-text)",
+                  width: "100%",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  flexShrink: 0,
+                  gap: 12,
+                  padding: 16,
+                  borderRadius: 8,
+                  background: grade.bg,
+                  border: `1px solid ${grade.border}`,
                 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2">
-                  <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    border: `1.5px solid ${grade.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
+                    <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
+                  </p>
+                  <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{report.total_score}%</p>
+                </div>
               </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
-                </p>
-                <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{report.total_score}%</p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {report && (report.rc_score != null || report.capa_score != null) && (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -304,46 +308,49 @@ export function RcCapaCritiquePage() {
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
               ]
                 .filter((s) => s.value != null)
-                .map((s) => (
-                  <div
-                    key={s.label}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 12,
-                      padding: 13,
-                      borderRadius: 8,
-                      background: "var(--color-surface)",
-                      border: "1px solid var(--color-card-border)",
-                    }}
-                  >
+                .map((s) => {
+                  const grade = scoreGrade(s.value!);
+                  return (
                     <div
+                      key={s.label}
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        border: "1.5px solid var(--color-success-text)",
+                        width: "100%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        flexShrink: 0,
+                        gap: 12,
+                        padding: 13,
+                        borderRadius: 8,
+                        background: grade.bg,
+                        border: `1px solid ${grade.border}`,
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2">
-                        <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          border: `1.5px solid ${grade.border}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
+                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                          {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
+                        </p>
+                        <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: grade.text }}>{s.value}%</p>
+                      </div>
                     </div>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
-                      </p>
-                      <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>{s.value}%</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           )}
 

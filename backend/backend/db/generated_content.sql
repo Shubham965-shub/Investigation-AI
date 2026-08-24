@@ -203,3 +203,22 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_deviation_id ON investigation_rc_capa_reports(deviation_id);
+
+-- RCI Report (module step 7 of 7) — one row per investigation, upserted in
+-- place on regenerate (2026-08-21, per the user: no "attempt" concept in
+-- this module's UI, unlike Task Critique/RC & CAPA, so no history table).
+-- report is the full 11-section RciReportSections payload (see
+-- schemas/rci_report.py), stored as one JSONB blob rather than normalized
+-- into columns — the same convention investigation_problem_statements uses,
+-- just for a much larger nested shape. mc_confirmed/manual_entries persist
+-- across regenerations so the investigator doesn't have to re-enter them
+-- every time; both are inputs to ds's POST /rci-report/generate, not
+-- generated output.
+CREATE TABLE IF NOT EXISTS investigation_rci_reports (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    report JSONB,
+    mc_confirmed BOOLEAN,
+    manual_entries JSONB NOT NULL DEFAULT '{}'::jsonb,
+    generated_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

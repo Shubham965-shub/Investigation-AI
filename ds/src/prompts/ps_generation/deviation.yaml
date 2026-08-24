@@ -1,4 +1,4 @@
-active: v5
+active: v6
 versions:
   v1:
     description: Original deviation prompt — output-only examples, batch number preserved in output
@@ -649,8 +649,8 @@ versions:
       Observed By: Sasikumar
       → During review of the media preparation record, Supervisor Sasikumar (ID:112015) observed that two weight prints were not available in the microbiological media preparation record prepared by Akash (ID:114708). Additionally, during compilation of the MLT method suitability report for Trazadone, analyst Sivagayathri (ID:117832) observed that page number 10 of 10 of Annexure 1 was not available in the report.
   v5:
-    description: 'Person names no longer appear in the output, per the user, 2026-08-18: generalized every named individual to their functional role (Role-Only Reference Rule), dropped employee IDs attached to a role for the same reason, and added a Same-Role Disambiguation Rule so two people sharing one role (e.g. two analysts) are still distinguishable by sequence/action rather than by name. Named customers/organizations are unaffected \u2014 only person names are suppressed. Added an "Activity Must Come From an Actual Stated Action, Not a Field Name Rule" \u2014 the activity context was sometimes being fabricated from a nearby document/SOP/limit-name field (e.g. "During BMR compression" fusing in "BMR" from a limit name; "During review of the IT Security SOP" substituting the Deviation To field for the real stated activity, "the MedixCorp customer audit") instead of the actual stated activity \u2014 plus a worked example (Example 18) reinforcing it alongside the Customer/Organization Name Preservation Rule.'
-    created_at: '2026-08-18T00:00:00+00:00'
+    description: "Bug fix, 2026-08-20: record 505113 (a Deviation) generated \"the observer observed batch yield...\", fabricating the banned placeholder even though the source explicitly stated a role, \"PDN person Mr. Yeshwanth\" (PDN is this system Trackwise abbreviation for Production, confirmed recurring across many live Deviation records via the QA DB, not a one-off). Root cause: the Role-First Reference Rule example list only named formal titles (supervisor/QA operator/reviewer/analyst/auditor) and gave the model no signal that a \"<department> person/personnel/operator\" phrasing, especially with an abbreviated department like \"PDN\", counts as a real stated role rather than an unrecognized label to fall back away from. Broadened the rule to explicitly cover the \"<department> person/personnel/operator\" pattern. Also, per new Problem Statement rules issued by Ajay Pathania, 2026-08-20 (only a role may ever appear for whoever identified a non-conformance, never a name): removed the Role-First Reference Rule's name-fallback (previously, an individual with no stated role had their bare name surface in the output, e.g. \"prepared by Akash\") and replaced it with a neutral, non-identifying reference (\"the individual\") that is used only when no real role is stated in the source; updated the Multiple Roles In One Finding Rule's matching fallback the same way; and fixed Examples 11, 12, and 17, which previously surfaced a bare name or, in Example 17's case, a role (\"the supervisor\") that was never actually stated in that record's input."
+    created_at: '2026-08-20T00:00:00+00:00'
     template: |
       Generate a concise Deviation problem statement by rewriting the provided details in a professional GMP-compliant format.
 
@@ -680,13 +680,13 @@ versions:
       * Use only information explicitly provided in the input.
       * Mention product/material name, activity/stage, area, line, equipment, instrument, document reference (SOP/BMR/BPR/STP), observed value, and requirement/limit only if explicitly provided.
       * Full Product/Material Name Preference Rule: If the structured product/material name field contains an abbreviated or coded short name (e.g. an internal SKU-style label from a product master list, such as "Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX"), but the free-text description explicitly states the full, non-abbreviated product name elsewhere (e.g. "Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG"), use the FULL descriptive name in the problem statement instead of the abbreviated code — both refer to the same product, and the full name is what a reader needs. If no full descriptive name appears anywhere else in the source, and the structured product/material name is itself a fused, spaceless string combining the drug name, dosage form, strength, pack size, and/or brand/manufacturer suffix (e.g. "AlfacalcidolSGC1.0mcg30'sZentiva-Italy"), do NOT use that raw fused string as-is — reformat it into a readable name by inserting spaces at the natural word/number boundaries, keeping only the drug name, dosage form, and strength, and dropping the trailing pack-size (e.g. "30's") and brand/manufacturer suffix (e.g. "Zentiva-Italy"), e.g. "AlfacalcidolSGC1.0mcg30'sZentiva-Italy" → "Alfacalcidol SGC 1.0 mcg". Only keep the raw fused string as-is if it cannot be confidently split into these components.
-      * Role-First Reference Rule: When the source gives the individual a real, recognizable functional role or title (e.g. "supervisor", "QA operator", "reviewer", "analyst", "auditor", or a role implied by an explicit field label like "Prepared By"), generalize to that role instead of the name (e.g. "the supervisor", "the operator", "the preparer") — and do not attach that person's employee ID next to the role either, since an ID re-identifies the individual the same way a name would. If the source does NOT give a real, usable functional role for the individual — only a bare name, or an unclear/ambiguous label that isn't an actual job role or title — use the person's name instead. Do NOT invent a generic placeholder like "the observer" when no real role is stated; a vague made-up role is worse than just using the name. This does not apply to named customers/vendors/organizations, which are covered separately below.
+      * Role-First Reference Rule: Never include a person's name in the problem statement, under any circumstance — always generalize the individual to a reference instead. When the source gives the individual a real, recognizable functional role or title, generalize to that role (e.g. "the supervisor", "the operator", "PDN person", "IPQA personnel") — and do not attach that person's employee ID next to the role either. If the source gives NO real, usable functional role for the individual (e.g. a bare field label such as "Prepared By: Akash" with no title), generalize to a neutral, non-identifying reference such as "the individual" instead — never fall back to using their name, and never attach an employee ID to that neutral reference either. Do NOT invent a specific, unstated role (e.g. writing "the supervisor" when no title was actually given in the source) — only use a role that is explicitly stated, even an abbreviated one; otherwise use the neutral "the individual" reference. This does not apply to named customers/vendors/organizations, which are covered separately below.
       * Customer/Organization Name Preservation Rule: If a specific customer, vendor, auditor organization, or other named entity is explicitly provided and relevant to the activity context (e.g. "the ClearPath Labs customer audit"), you MUST include that specific name — do not generalize it to a role-only reference (e.g. "the customer audit", "a vendor audit") when a named organization is given in the input. This applies the same principle as the individual-name rule above to organization names.
       * If both an observed value and a requirement/limit are provided, state them together in the format: "<observed value> against <requirement/limit>".
       * Preserve all identifiers exactly as provided, including equipment IDs, instrument IDs, SOP numbers, document references, employee IDs, and sample identifiers. Do NOT include batch numbers or AR numbers.
       * Supporting Citation Preservation Rule: A document reference can play two different roles in an observation — (a) it can BE the subject of the finding itself (e.g. "the checklist, Annexure 19, was not performed"), or (b) it can be cited as the AUTHORITY/BASIS for a requirement that was violated (e.g. "the interval must be 20-30 days per SOP X, Annexure 15"). Preserve BOTH kinds — do not drop a supporting-authority citation just because a broader SOP name for the same requirement is already mentioned, and do not drop it in favor of a different citation that is the subject of another finding in the same statement. If an observation states a specific requirement/limit AND cites a specific clause/annexure/section number as where that requirement comes from, include that specific number alongside the requirement, not just the parent SOP name.
       * Same-Role Disambiguation Rule: If a single finding involves two or more individuals who share the SAME role (e.g. two different analysts — one who initiated a step, another who observed the issue), do not collapse them into one ambiguous "the analyst" reference — distinguish them by what each one did or by sequence (e.g. "one analyst" / "a second analyst", or "the initiating analyst" / "the observing analyst"), the same way the Multiple Batch/Sample Result Rule elsewhere disambiguates same-parameter results by sequence rather than by name.
-      * Multiple Roles In One Finding Rule: If a SINGLE finding involves more than one individual in different roles (e.g. one person performed/initiated the activity, a different person observed/identified the issue, another reviewed or verified it), you MUST include EVERY one of their roles — do not keep only the role of whoever observed/identified the issue and drop the others. Use the primary <role if relevant> slot in the Structure below for whoever directly observed/identified the deviation, and append the other individuals' roles as trailing clauses, e.g. ", performed by <Role A>" and/or ", reviewed by <Role C>" — mirroring how OOS/OOT statements append "tested by ... and reviewed by ...". Use each person's real functional role if one is stated, or their name if no real role is given, per the Role-First Reference Rule above. This is distinct from the Same-Role Disambiguation Rule above, which covers two people sharing the identical role within one finding.
+      * Multiple Roles In One Finding Rule: If a SINGLE finding involves more than one individual in different roles (e.g. one person performed/initiated the activity, a different person observed/identified the issue, another reviewed or verified it), you MUST include EVERY one of their roles — do not keep only the role of whoever observed/identified the issue and drop the others. Use the primary <role if relevant> slot in the Structure below for whoever directly observed/identified the deviation, and append the other individuals' roles as trailing clauses, e.g. ", performed by <Role A>" and/or ", reviewed by <Role C>" — mirroring how OOS/OOT statements append "tested by ... and reviewed by ...". Use each person's real functional role if one is stated, or a neutral non-identifying reference (e.g. "the individual") if no real role is given, per the Role-First Reference Rule above. This is distinct from the Same-Role Disambiguation Rule above, which covers two people sharing the identical role within one finding.
       * Do not introduce root cause, impact, risk, product quality assessment, investigation details, CAPA, corrective action, preventive action, conclusion, or outcome unless explicitly stated in the source text.
       * Do not use subjective, interpretive, or speculative language.
       * Repeated Measurement Summarization Rule: For a single finding backed by repeated measurements, time-series data, tabulated results, or trend data of the SAME parameter, summarize the observed condition and applicable requirement/limit without listing individual readings, timestamps, or measurement points.
@@ -834,11 +834,11 @@ versions:
       Observed By: Loganathan N
       → During fill manufacturing of Dutasteride 0.5 mg Soft Gelatin Capsules, mixing was performed for 19 minutes against the BMR specification of 30 minutes, resulting in deviation from the expected mixing time.
 
-      Example 11 (multiple distinct, separately numbered observations — do not drop any; every named individual generalized to role only):
+      Example 11 (multiple distinct, separately numbered observations — do not drop any; individuals with a real stated role generalized to that role; a bare field-label name with no real role, "Prepared By: Akash", generalized to a neutral non-identifying reference instead of surfacing the name):
       Title: Weight printouts and Annexure page not available in media preparation record and MLT method suitability report
       Description: Observation 1: During review of media preparation record, Supervisor Sasikumar observed that two weight prints of media were not available in the microbiological media preparation record. Name of the Media: Soybean Casein Digest Broth 0.1% Polysorbate 80. Prepared By: Akash. Observation 2: During compilation of MLT method suitability report of material Trazadone, analyst Sivagayathri observed that page number 10 of 10 of Annexure 1 is not available in the report. Material Name: Trazadone SR.
       Observed By: Sasikumar
-      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record for Soybean Casein Digest Broth 0.1% Polysorbate 80, prepared by the preparer. Additionally, during compilation of the MLT method suitability report for Trazadone SR, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
+      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record for Soybean Casein Digest Broth 0.1% Polysorbate 80, prepared by the individual. Additionally, during compilation of the MLT method suitability report for Trazadone SR, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
 
       Example 13 (multiple individuals in different roles within ONE finding — generalize every one to role only, disambiguating two people who share the same role by sequence rather than by name):
       Title: Bracketing standard area %RSD not meeting acceptance criteria in RS test
@@ -865,18 +865,18 @@ versions:
       Observed By: Anita Verma
       → During monitoring of the assay sequence for AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG, a second analyst observed that the sequence was interrupted at Bin No. 8 on instrument 1070-HPLC-2290, initiated by one analyst.
 
-      Example 12 (a named individual with an employee ID — generalize to role only and drop the ID too, since an ID re-identifies the person the same way a name does):
+      Example 12 (one individual has a real stated role plus an employee ID — generalize to role and drop the ID; another has only a bare field-label name and an ID, no real role — generalize to a neutral non-identifying reference and drop the ID too, since it would re-identify them the same way the name would):
       Title: Weight printouts and Annexure page not available in media preparation record and MLT method suitability report
       Description: Observation 1: During review of media preparation record, Supervisor Sasikumar (ID:112015) observed that two weight prints of media were not available in the microbiological media preparation record. Prepared By: Akash (ID:114708). Observation 2: During compilation of MLT method suitability report of material Trazadone, analyst Sivagayathri (ID:117832) observed that page number 10 of 10 of Annexure 1 is not available in the report.
       Observed By: Sasikumar
-      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record, prepared by the preparer. Additionally, during compilation of the MLT method suitability report for Trazadone, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
+      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record, prepared by the individual. Additionally, during compilation of the MLT method suitability report for Trazadone, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
 
-      Example 17 (structured product/material field is a fused, spaceless string with no separate full name anywhere in the source — reformat it into a readable name instead of using it as-is):
+      Example 17 (structured product/material field is a fused, spaceless string with no separate full name anywhere in the source — reformat it into a readable name instead of using it as-is; "Observed By: Manjunatha S.m" gives only a bare name with no stated role — generalize to a neutral non-identifying reference, do not fabricate a title like "the supervisor" for it):
       Title: Missing Tamper-Evident Sticker Observed During Packed Stock Verification of Alfacalcidol SGC 1mcg, Batch# 75500666B
       Product Name / Material Name: AlfacalcidolSGC1.0mcg30'sZentiva-Italy
       Description: During packed stock verification in CVC-3 Secondary Packing, it was observed that 9 cartons in Shipper No. 19 were pasted with tamper-evident seals on only one side instead of both sides as per the approved packing procedure. Product name:AlfacalcidolSGC1.0mcg30'sZentiva-Italy
       Observed By: Manjunatha S.m
-      → During packed stock verification in CVC-3, the supervisor observed that 9 cartons in Shipper No. 19 were pasted with tamper-evident seals on only one side instead of both sides as per the approved packing procedure for Alfacalcidol SGC 1.0 mcg.
+      → During packed stock verification in CVC-3, the individual observed that 9 cartons in Shipper No. 19 were pasted with tamper-evident seals on only one side instead of both sides as per the approved packing procedure for Alfacalcidol SGC 1.0 mcg.
 
       Example 18 (the activity actually stated is a customer audit, but Deviation To names an unrelated internal SOP — use the stated activity and its named organization, do NOT substitute the SOP/document name as the activity):
       Title: Date modification privilege available for dissolution instrument
@@ -886,4 +886,264 @@ versions:
       Description: During the MedixCorp customer audit, the auditor Mr. Suresh Kamath identified that date change privilege was available for the dissolution instrument (1070-DISA-2210).
       Observed By: Suresh Kamath
       → During the MedixCorp customer audit, the auditor observed that date change privilege was available for the Dissolution Apparatus 1070-DISA-2210.
+  v6:
+    description: "Bug fix / rule change, 2026-08-21: a dry run of a real Deviation record (a backup-schedule non-conformance against SOP AL/IT/052) against the active v5 prompt surfaced two issues, and the user separately asked for two more changes to land in this same version rather than new versions. (1) The output leaked raw calendar dates (\"13/06/2025 to 25/07/2025\") into the problem statement — a direct violation of the file's own date-exclusion rule — because the only way the model had to express \"the interval exceeded the 20-30 day requirement\" was via the two source dates, and it is not allowed to calculate the actual day-gap itself. Added a Date-Derived Interval Rule clarifying that a stated duration/frequency requirement (e.g. \"20 to 30 days\") is not a banned \"date\" and may be preserved, but the observed side of the comparison must be phrased qualitatively when only raw calendar dates are available in the source — never leaked as dates, and never a self-calculated duration. (2) The output still failed to preserve the specific Annexure (Annexure 15) cited as the authority for that interval requirement — the same failure mode the Supporting Citation Preservation Rule and Example 15 already target, just for a different record's citation (Example 15 models an Annexure 7/9 pair in a calibration-domain analogue; this record's own Annexure 15/19 pair was never itself represented in the prompt). Added Example 20, reproducing this exact record, so both fixes are modeled directly — restating the citation rule alone previously did not make it stick for this pattern. (3) Per the user, equipment/instrument IDs are not required and must be excluded from the problem statement, the same way batch numbers and AR numbers already are — the equipment/instrument's NAME may still be mentioned. Previously the \"Preserve all identifiers\" rule explicitly told the model to preserve equipment IDs and instrument IDs, which is why an earlier dry-run output on record 469261 included \"(Equipment ID: SGC/PLM/080)\". Added a dedicated Instrument/Equipment ID Exclusion Rule, removed equipment/instrument IDs from the preserve-identifiers list and from the General/Deviation-specific banned-items lists' complement, and fixed Examples 14, 16, 18, and 20, which previously surfaced an instrument or equipment ID (1070-HPLC-5510, 1070-HPLC-2290, 1070-DISA-2210, SGC/PLM/080) in their expected output — each now keeps the instrument/equipment NAME where one is explicitly given (Example 18's \"Dissolution Apparatus\", Example 20's \"Planetary mixer\") and drops the reference entirely where only a bare ID exists with no separate name (Example 16 had only an ID with no separate name, so the instrument mention is dropped rather than fabricating one). (4) Broader dry-run testing across 5 additional real Deviation records surfaced a Same-Role Disambiguation regression on record 474988 (Quinine Sulfate, sequence interrupted by a controller shutdown) — the source names two different analysts sharing the SAME role (Treesa Johny initiated the test, Avishek Das found the interruption a day later), which the Same-Role Disambiguation Rule already covers almost verbatim in its own rule text, and a near-identical pattern (Example 16, a sequence interrupted at Bin No. 8) already exists as a worked example — yet the model still collapsed both people into a single \"the analyst observed\" reference, dropping the initiating analyst entirely. Restating the rule text alone was insufficient (it was already correct), so: broadened the rule to explicitly cover any verb (\"initiated,\" \"found,\" \"identified,\" \"noted,\" etc.) and any event type (numeric result failure OR a mechanical/process event like a sequence interruption or equipment shutdown), and explicitly forbade keeping only whoever most directly \"found\" the issue while treating the other person's action as incidental setup; added Example 21, reproducing record 474988 verbatim, since a same-topic example (16) already existed but evidently was not close enough in verb choice (\"observed\" vs. \"found\") to generalize reliably. (5) Per the user, record 505113 (the same PDN/Yeshwanth batch-yield record the Role-First Reference Rule was originally fixed against) states the compression yield finding twice — once as \"91.88% limit (93.0 to 100.0)\" and again as \"Actual tablet in kg: 128.500 kg (130.209 to 140.010)\" — the same underlying yield expressed in two different units. A dry run showed the model already picks the percentage and drops the kg restatement, but this was implicit/unenforced behavior with no rule backing it, so it was never guaranteed to hold. Added a Weight/Yield Percentage Preference Rule making this explicit, plus Example 19 — the exact record/expected-output pair the v5 changelog had originally promised for the PDN/Yeshwanth fix but never actually added to the template."
+    created_at: '2026-08-21T00:00:00+00:00'
+    template: |
+      Generate a concise Deviation problem statement by rewriting the provided details in a professional GMP-compliant format.
 
+      Details:
+      {formatted_fields}
+
+      General rules:
+      - Use ONLY the information explicitly provided in the input fields.
+      - Do not include date, time, batch number, AR number, SR number, equipment ID, or instrument ID in the problem statement, even if provided in the input fields.
+      - Do NOT infer, assume, calculate, expand, or add missing information.
+      - Do NOT mention that information is missing, not provided, unknown, or unspecified.
+      - Do NOT add root cause, impact assessment, CAPA, corrective action, preventive action, conclusion, or investigation outcome.
+      - Do NOT change factual values such as product names, employee IDs, observed values, limits, or SOP numbers.
+      - Preserve the original meaning and event flow as much as possible.
+      - Correct only obvious grammar, spacing, punctuation, and readability issues.
+      - Keep the statement concise, factual, objective, and suitable for GMP/quality documentation.
+      - Return only the final problem statement text.
+      - Do not return JSON.
+      - Do not include headings, bullets, explanations, or notes.
+      - Use the structure in Structure section below as a guideline if applicable, but only if it can be directly supported by the input data.
+      - Refer the real world examples for the expected style and format of the problem statement for each event type.
+
+      Deviation-specific rules:
+
+      * Do not include date, time, timestamp, duration, clock references, batch number, AR number, SR number, equipment ID, or instrument ID in the problem statement.
+      * Describe only the observed deviation, discrepancy, abnormality, defect, non-conformance, or documentation error.
+      * Use only information explicitly provided in the input.
+      * Mention product/material name, activity/stage, area, line, equipment, instrument, document reference (SOP/BMR/BPR/STP), observed value, and requirement/limit only if explicitly provided.
+      * Full Product/Material Name Preference Rule: If the structured product/material name field contains an abbreviated or coded short name (e.g. an internal SKU-style label from a product master list, such as "Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX"), but the free-text description explicitly states the full, non-abbreviated product name elsewhere (e.g. "Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG"), use the FULL descriptive name in the problem statement instead of the abbreviated code — both refer to the same product, and the full name is what a reader needs. If no full descriptive name appears anywhere else in the source, and the structured product/material name is itself a fused, spaceless string combining the drug name, dosage form, strength, pack size, and/or brand/manufacturer suffix (e.g. "AlfacalcidolSGC1.0mcg30'sZentiva-Italy"), do NOT use that raw fused string as-is — reformat it into a readable name by inserting spaces at the natural word/number boundaries, keeping only the drug name, dosage form, and strength, and dropping the trailing pack-size (e.g. "30's") and brand/manufacturer suffix (e.g. "Zentiva-Italy"), e.g. "AlfacalcidolSGC1.0mcg30'sZentiva-Italy" → "Alfacalcidol SGC 1.0 mcg". Only keep the raw fused string as-is if it cannot be confidently split into these components.
+      * Instrument/Equipment ID Exclusion Rule: Do NOT include an equipment ID, instrument ID, or serial/asset number (e.g. "Equipment ID: SGC/PLM/080", "1070-HPLC-2290", "1070-DISA-2210") in the problem statement, even when explicitly provided in the input — treat these the same as batch numbers and AR numbers, which are already excluded. The equipment or instrument's NAME (e.g. "Planetary mixer", "Dissolution Apparatus", "HPLC system") is NOT an ID and may still be mentioned when explicitly provided, per the rule above — only the numeric/alphanumeric identifier itself is excluded. If the source gives ONLY an ID with no separate name for that piece of equipment/instrument, drop the equipment/instrument reference entirely rather than fabricating a generic name for it.
+      * Role-First Reference Rule: Never include a person's name in the problem statement, under any circumstance — always generalize the individual to a reference instead. When the source gives the individual a real, recognizable functional role or title, generalize to that role (e.g. "the supervisor", "the operator", "PDN person", "IPQA personnel") — and do not attach that person's employee ID next to the role either. If the source gives NO real, usable functional role for the individual (e.g. a bare field label such as "Prepared By: Akash" with no title), generalize to a neutral, non-identifying reference such as "the individual" instead — never fall back to using their name, and never attach an employee ID to that neutral reference either. Do NOT invent a specific, unstated role (e.g. writing "the supervisor" when no title was actually given in the source) — only use a role that is explicitly stated, even an abbreviated one; otherwise use the neutral "the individual" reference. This does not apply to named customers/vendors/organizations, which are covered separately below.
+      * Customer/Organization Name Preservation Rule: If a specific customer, vendor, auditor organization, or other named entity is explicitly provided and relevant to the activity context (e.g. "the ClearPath Labs customer audit"), you MUST include that specific name — do not generalize it to a role-only reference (e.g. "the customer audit", "a vendor audit") when a named organization is given in the input. This applies the same principle as the individual-name rule above to organization names.
+      * If both an observed value and a requirement/limit are provided, state them together in the format: "<observed value> against <requirement/limit>".
+      * Preserve all identifiers exactly as provided, including SOP numbers, document references, employee IDs, and sample identifiers. Do NOT include batch numbers, AR numbers, equipment IDs, or instrument IDs — see the Instrument/Equipment ID Exclusion Rule above.
+      * Supporting Citation Preservation Rule: A document reference can play two different roles in an observation — (a) it can BE the subject of the finding itself (e.g. "the checklist, Annexure 19, was not performed"), or (b) it can be cited as the AUTHORITY/BASIS for a requirement that was violated (e.g. "the interval must be 20-30 days per SOP X, Annexure 15"). Preserve BOTH kinds — do not drop a supporting-authority citation just because a broader SOP name for the same requirement is already mentioned, and do not drop it in favor of a different citation that is the subject of another finding in the same statement. If an observation states a specific requirement/limit AND cites a specific clause/annexure/section number as where that requirement comes from, include that specific number alongside the requirement, not just the parent SOP name.
+      * Date-Derived Interval Rule: A stated requirement/limit that is itself a duration or frequency (e.g. "once every 90 days", "between 20 and 30 days") is NOT a banned "date" under the date-exclusion rule above — preserve it exactly as given, since it is a requirement value, not a calendar date. However, if the only way to express what was actually observed is by citing the underlying calendar dates the interval would be computed from (e.g. two activity dates, such as two backup dates in different months), do NOT include those calendar dates in the problem statement, and do NOT calculate the elapsed duration between them yourself — that would be adding information not explicitly given. Instead, state the observed condition qualitatively without asserting a specific actual duration or date, e.g. "was not carried out within the required interval" rather than leaking the raw dates or computing a date-derived value.
+      * Same-Role Disambiguation Rule: If a single finding involves two or more individuals who share the SAME role (e.g. two different analysts — one who initiated a step, another who observed the issue), do not collapse them into one ambiguous "the analyst" reference — distinguish them by what each one did or by sequence (e.g. "one analyst" / "a second analyst", or "the initiating analyst" / "the observing analyst"), the same way the Multiple Batch/Sample Result Rule elsewhere disambiguates same-parameter results by sequence rather than by name. This applies regardless of which verb the source uses for each person's action — "initiated," "started," "performed," "observed," "found," "identified," "noted," etc. all count — and regardless of whether the finding is a numeric result failure or a mechanical/process event (e.g. a sequence interruption, an equipment shutdown, a system malfunction). Do NOT keep only the person who most directly "found" or "identified" the end result and silently drop the other just because their action (e.g. merely "initiating" a test) seems like incidental setup — if the source names two people sharing a role within the SAME finding, both must appear, no matter which of their two actions reads as more central to the narrative.
+      * Multiple Roles In One Finding Rule: If a SINGLE finding involves more than one individual in different roles (e.g. one person performed/initiated the activity, a different person observed/identified the issue, another reviewed or verified it), you MUST include EVERY one of their roles — do not keep only the role of whoever observed/identified the issue and drop the others. Use the primary <role if relevant> slot in the Structure below for whoever directly observed/identified the deviation, and append the other individuals' roles as trailing clauses, e.g. ", performed by <Role A>" and/or ", reviewed by <Role C>" — mirroring how OOS/OOT statements append "tested by ... and reviewed by ...". Use each person's real functional role if one is stated, or a neutral non-identifying reference (e.g. "the individual") if no real role is given, per the Role-First Reference Rule above. This is distinct from the Same-Role Disambiguation Rule above, which covers two people sharing the identical role within one finding.
+      * Weight/Yield Percentage Preference Rule: If the source states the SAME underlying quantity (e.g. batch yield, material weight, fill weight) BOTH as a percentage against a percentage limit AND as an absolute weight/quantity (e.g. in kg, g, or units) against a corresponding absolute limit, use ONLY the percentage value and its percentage limit in the problem statement — do NOT also state the absolute weight/quantity value, even though it was explicitly provided. The percentage is the normalized, comparable figure; restating the same fact again in absolute units is redundant, not a second finding.
+      * Do not introduce root cause, impact, risk, product quality assessment, investigation details, CAPA, corrective action, preventive action, conclusion, or outcome unless explicitly stated in the source text.
+      * Do not use subjective, interpretive, or speculative language.
+      * Repeated Measurement Summarization Rule: For a single finding backed by repeated measurements, time-series data, tabulated results, or trend data of the SAME parameter, summarize the observed condition and applicable requirement/limit without listing individual readings, timestamps, or measurement points.
+      * Multiple Distinct Observations Rule: If the input describes two or more separately identified, unrelated observations or findings — such as those explicitly numbered or labeled "Observation 1", "Observation 2", etc., or describing different activities, dates, materials, documents, records, or people — you MUST include EVERY distinct observation in the problem statement. Do NOT drop, merge into one, or summarize away any numbered/distinct observation. Give each observation its own clause following the Structure below (its own activity context, KPI/attribute/condition, and observation statement), and join the clauses with "Additionally," (or "; " for a terser join). This rule is distinct from the Repeated Measurement Summarization Rule above, which applies only when multiple data points describe the SAME finding/parameter, not when they describe genuinely separate findings.
+
+      Activity Context Rules:
+
+      * Begin the statement with an activity context that identifies where or during which activity the issue was observed.
+      * The activity context must be derived only from information explicitly present in the input.
+      * Use the most specific activity associated with identification of the issue.
+      * Do not infer, generalize, or create activities that are not stated.
+      * No Fabricated Activity Rule: Do NOT default to "inspection" (or any other activity word) as generic filler when the input does not explicitly state that activity — this includes cases where a piece of equipment mentioned in the observation (e.g. "Rapid Mixer Granulator") tempts a plausible-sounding but unstated activity like "inspection of the Rapid Mixer Granulator." The activity context must name the actual process/activity stated in the input (e.g. "granulation," "packing," "review"), not an activity implied by an equipment or product name that happens to appear in the observation. If the only activity explicitly stated is, say, "granulation," use that — do not substitute "inspection" of a piece of equipment named later in the same sentence, and do not repeat that equipment's name in both the activity context and the observation clause.
+      * Activity Must Come From an Actual Stated Action, Not a Field Name Rule: The activity context must be built from an actual activity/action word or phrase explicitly stated in the input (e.g. "batch setting," "compression," "customer audit," "review of the media preparation record") — never from a document reference, SOP name, or specification/limit name that merely happens to appear nearby. Two specific failure patterns to avoid:
+        * Do not fuse part of a limit/specification field's name into the activity phrase. E.g. if the input says "hardness parameter... unable to set in BMR Alert limit" and separately states the activity as "during batch setting," the activity is "batch setting" — do NOT write "During BMR compression in process," which fuses "BMR" (from "BMR Alert limit"/"BMR Limit," a specification field) into a fabricated activity phrase.
+        * Do not substitute the Deviation To field's SOP/document name for the activity actually stated in the free text. E.g. if the source says "During the MedixCorp customer audit, the auditor identified..." and Deviation To is "IT Security SOP," the stated activity is "the MedixCorp customer audit" — do NOT write "During review of the IT Security SOP," which replaces the real stated activity with a document-reference field the source never described as an activity. (This also means the named organization, "MedixCorp," must survive — see the Customer/Organization Name Preservation Rule below; the activity context and that rule work together here, not separately.)
+      * Preferred activity context formats include:
+        * During review of ...
+        * During analysis of ...
+        * During testing of ...
+        * During inspection of ...
+        * During verification of ...
+        * During reconciliation of ...
+        * During qualification of ...
+        * During execution of ...
+        * During retrieval of ...
+        * During manufacturing activity ...
+        * During packing activity ...
+        * During LIMS entry ...
+        * Upon review of ...
+        * While performing ...
+      * Area/Location Code Conciseness Rule: If the source names a location as an area/room code followed by a department or sub-function name (e.g. "CVC-3 Secondary Packing", "CVC-3 Primary Packing"), use just the area/room code in the activity context (e.g. "CVC-3") and drop the trailing department/sub-function name — the code alone is sufficient to identify the location, and the department name is redundant detail. Only keep the fuller form if the source gives no standalone area/room code (e.g. the location is stated only as a department name with no code at all).
+
+      KPI / Attribute / Condition Rules:
+
+      * Clearly state the specific KPI, attribute, condition, record, result, parameter, equipment status, document field, or requirement involved in the deviation.
+      * Use the most specific observable fact available from the input.
+      * Avoid generic phrases such as: issue observed, discrepancy noted, problem identified, deviation found.
+      * Prefer specific observations such as: batch number updated incorrectly, AR number entered incorrectly, audit trail entry deleted, yield observed below limit, product traces observed, qualification status missed, training not included in curriculum.
+      * Grammatical Correctness Rule (final check, most important): Before returning the statement, re-read it end to end and confirm it is fully grammatically correct — every clause has a clear subject and verb that agree, tense is consistent throughout, articles and prepositions read naturally, and the sentence flows as prose a person would write, not a concatenation of fields. This is a polish pass on wording, NOT a license to change content: fix awkward phrasing by rewording it, never by dropping an identifier, value, or activity, and never by introducing an activity, equipment mention, or detail that is not explicitly stated in the input, even if that would make the sentence read more smoothly. Every identifier and value required by the rules above (SOP/document references, employee IDs, observed values, limits) MUST still be present after this check — if you cannot make the sentence grammatical while keeping all of them, keep the content and accept a slightly less elegant sentence rather than silently omitting or fabricating anything.
+
+      Structure:
+
+      <Activity context>, <observer/role if relevant> observed <KPI/attribute/condition> <observation statement>.
+
+          Where:
+          - For a single observation:
+          <observation statement> = "as <observed value> against <requirement/limit>"
+
+          - For multiple repeated measurements, trend data, or tabulated results of the SAME parameter:
+          <observation statement> = "outside the <requirement/limit>"
+          OR
+          <observation statement> = "not meeting the <requirement/limit>"
+          OR
+          <observation statement> = "exceeding the <requirement/limit>"
+          OR
+          <observation statement> = "below the <requirement/limit>"
+
+      <Activity context>, <observer/role if relevant> identified that <specific record, field, identifier, status, or condition> was <incorrectly entered, updated, recorded, assigned, deleted, omitted, or not performed>.
+
+      - For two or more distinct, separately numbered/labeled observations:
+      <Activity context 1>, <observer/role 1 if relevant> observed <KPI/attribute/condition 1> <observation statement 1>. Additionally, <activity context 2>, <observer/role 2 if relevant> observed <KPI/attribute/condition 2> <observation statement 2>.
+      (repeat the "Additionally, ..." clause for each further distinct observation; never omit one)
+
+      - For one finding involving multiple named individuals in different roles:
+      <Activity context>, <role if relevant> observed <KPI/attribute/condition> <observation statement>, performed by <Role A>[, and reviewed by <Role C>].
+      (include every role involved; never keep only the observer's role and drop the others; never substitute a name for a role)
+
+      The final statement should be concise, factual, GMP-compliant, and typically written as a single sentence, or two clauses joined by "Additionally," when the input contains multiple distinct observations.
+
+      Real-world examples (Trackwise input fields → Expected problem statement):
+
+      Example 1:
+      Title: Additional Two checklists Pulled and used for Analysis of Material Lot No:10000525081, without issuance.
+      Deviation To: F1/QC/118
+      Description: During Q1 periodic review of Quality control log books, on 22/04/2026, Ms. Sowjanya. (AQA Reviewer) Identified that, Two checklists of test sheet for gloves log book has been executed by QC analyst Mr. Akhil.S for the material Inspection Lot No: 10000525081 without getting the issuance from QA.
+      Observed By: SRIMANNARAYANA S
+      → During material inspection, two glove test sheet checklists were executed from the log book without QA issuance.
+
+      Example 2:
+      Title: Released samples, expired chemicals & Placebo were not destructed as per the procedure.
+      Deviation To: F1/QC/124/R13
+      Description: On 15/04/2026, during the scheduled internal audit at quality control laboratory, the internal auditor Mr. Pavan Gutti identified expired placebo samples of Ethosuximide Capsules stored in the Sample Management Room, labeling discrepancies in Cholecalciferol 20,000 & 800 IU Capsules, and expired chemicals in the chemical store with labels not defaced.
+      Observed By: Rajesh Kurian
+      → During internal audit, expired placebo samples of Ethosuximide Capsules, labeling discrepancies in Cholecalciferol 20,000 & 800 IU Capsules, and improper handling of released, expired chemicals and placebo materials were observed not in compliance with procedures.
+
+      Example 3:
+      Title: Viscosity Test Performed Prior to Approval of Hypothesis Protocol : TCA Ointment USP 0.05%
+      Product Name / Material Name: Triamcinolone Acetonide Oint USP 0.05%
+      Deviation To: GQA/031
+      Description: As part of OOS investigation ODF/OOS/2026/0105, a hypothesis protocol was prepared to evaluate the impact of structural changes in white petrolatum and ceresin wax on viscosity. However, the viscosity test intended to rule out this potential cause was performed prior to approval of the hypothesis protocol.
+      Observed By: Ravindra MR
+      → During OOS investigation, viscosity testing of Triamcinolone Acetonide Ointment USP 0.05% was performed prior to approval of the hypothesis protocol.
+
+      Example 4:
+      Title: 5 ply shippers dispensed instead of 3 ply shippers for Macrogol Natural 13.72g
+      Product Name / Material Name: Macrovic-13.71 g-30's-ARROW-AUSTRALIA
+      Deviation To: BPR instruction
+      Description: On 02/04/2026 at 16:00 hrs during in process verification, packing person Mr. Yellaraju V observed that 5 ply shippers were dispensed instead of 3 ply shippers for Macrogol Natural 13.72g at Line# 02 secondary packaging area.
+      Observed By: Kumaresan M
+      → During packing, 5-ply shippers were dispensed instead of 3-ply shippers for Macrogol Natural 13.72g, deviating from BPR instruction.
+
+      Example 5:
+      Title: Incorrect Recording of In-Process Check: Overprinting/Embossing and Legibility – A+V Tablets 5/160 mg
+      Product Name / Material Name: Amlo & Vals Tabs 5/160mg[10x7's][EM][Ex]
+      Deviation To: BPR Part B - 2008166L1766/PA/R0
+      Description: On 23/03/2026, during PVR data compilation for Amlodipine and Valsartan Tablets 5mg/160mg by QA (Sheik China Masthan), it was observed that in-process checks for overprinting/embossing and legibility were marked as compliant for plain primary packing material.
+      Observed By: Paramjeet Singh
+      → During PVR data compilation, in-process check for overprinting/embossing and legibility was incorrectly recorded as compliant against BPR specification for Amlodipine and Valsartan Tablets 5/160 mg, even though the primary packing material was plain.
+
+      Example 6:
+      Title: Incorrect sample details updated in instrument application, water content by KF for Tenofovir Disoproxil fumarate.
+      Deviation To: STP No : 1017114/RMSTP
+      Description: On 15/12/2025, analyst Mr. Loganandh Rajendran performed water content by KF analysis for Tenofovir Disoproxil fumarate. Post completion, analyst observed that incorrect sample details were entered in the tiamo application.
+      Observed By: Venkata Gopisairam
+      → During water content analysis by KF as per STP specification, incorrect sample details were entered in the instrument application instead of correct batch details for Tenofovir Disoproxil Fumarate.
+
+      Example 7:
+      Title: Blend Spillage Observed During Compression Process for Ciprofloxacin Tablets 500 mg
+      Product Name / Material Name: Ciprofloxacin Tabs 500mg1X14's-Arrow-AUS
+      Deviation To: BMR
+      Description: On 11/01/2026 at 06:00 hrs, during ongoing compression process, blend spillage was observed for Ciprofloxacin Tablets 500 mg. All spilled blend was collected separately, weighed accurately, and labeled as Rejected Material.
+      Observed By: Manjunath K M T
+      → During compression process, blend spillage of Ciprofloxacin Tablets 500 mg was observed, which is not in line with BMR requirements.
+
+      Example 8:
+      Title: BMR issued as routine instead of validation batch without PVP for Ursodiol Tablets USP [500mg]
+      Product Name / Material Name: Ursodiol Tablets USP 500mg
+      Deviation To: Issuance of BMR/BPR and other document SOP No. F/QA/002
+      Description: On 24/01/2026, during review of change control No. PC-ODF/2024/839, Mr. Hazarathaiah identified that the BMR was issued as routine instead of validation batch without PVP for Ursodiol Tablets USP [500mg].
+      Observed By: Kumar B
+      → During BMR issuance as per SOP, a routine BMR was issued instead of a validation batch with PVP for Ursodiol Tablets USP 500 mg.
+
+      Example 9:
+      Title: Weighed 5mg of indicator in a balance with operational range of 10 mg to 200 g for the Content analysis of SLS- RM.
+      Product Name / Material Name: Sod Lauryl Sulfate BP-USNF-IP-PhEur
+      Description: On 31/12/2025, analyst Ms. Janani G performed content analysis of Sodium Lauryl Sulphate. On 13/01/2026, reviewer Mr. Silambarasan identified that balance 1070-AWBE-0696 used to weigh 5 mg of dithizone indicator is not qualified to weigh below 10 mg. Obtained result: 0.6% (Specification limit: NMT 8.0%).
+      Observed By: Janani G
+      → During content analysis of Sodium Lauryl Sulfate, 5 mg of indicator was weighed using a balance below its operational range, contrary to STP requirements, though the obtained result (0.6%) was within the specification limit (NMT 8.0%).
+
+      Example 10:
+      Title: Incomplete in Mixing Time during Fill Manufacturing of Dutasteride 0.5mg Soft Gelatin Capsules
+      Product Name / Material Name: Dutasteride 0.5mg [SGC]- 6OB
+      Deviation To: Against BMR instruction
+      Description: On 28/01/2026 at 17:00hrs, during fill manufacturing of Dutasteride 0.5mg SGC, the final mixing of Glycerol Monocaprylocaprate and Butylhydroxytoluene mixture was performed for 19 minutes instead of 30 minutes as per BMR instructions Step No. 1.3.
+      Observed By: Loganathan N
+      → During fill manufacturing of Dutasteride 0.5 mg Soft Gelatin Capsules, mixing was performed for 19 minutes against the BMR specification of 30 minutes, resulting in deviation from the expected mixing time.
+
+      Example 11 (multiple distinct, separately numbered observations — do not drop any; individuals with a real stated role generalized to that role; a bare field-label name with no real role, "Prepared By: Akash", generalized to a neutral non-identifying reference instead of surfacing the name):
+      Title: Weight printouts and Annexure page not available in media preparation record and MLT method suitability report
+      Description: Observation 1: During review of media preparation record, Supervisor Sasikumar observed that two weight prints of media were not available in the microbiological media preparation record. Name of the Media: Soybean Casein Digest Broth 0.1% Polysorbate 80. Prepared By: Akash. Observation 2: During compilation of MLT method suitability report of material Trazadone, analyst Sivagayathri observed that page number 10 of 10 of Annexure 1 is not available in the report. Material Name: Trazadone SR.
+      Observed By: Sasikumar
+      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record for Soybean Casein Digest Broth 0.1% Polysorbate 80, prepared by the individual. Additionally, during compilation of the MLT method suitability report for Trazadone SR, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
+
+      Example 13 (multiple individuals in different roles within ONE finding — generalize every one to role only, disambiguating two people who share the same role by sequence rather than by name):
+      Title: Bracketing standard area %RSD not meeting acceptance criteria in RS test
+      Description: Analyst Mr. Karthik Rao (121500) initiated the RS test for the product using the HPLC system. During submission of the sequence, analyst Mr. Vinod Shetty (121501) observed Area% RSD failure for the bracketing standard at injection number 12. Area %RSD obtained: 6.80%, against the limit of NMT 5.0%. Reviewer: Preeti Nambiar (121502).
+      Observed By: Vinod Shetty
+      → During RS testing, initiated by one analyst, a second analyst observed Area% RSD failure for the bracketing standard at injection number 12, with a result of 6.80% against the limit of NMT 5.0%, reviewed by the reviewer.
+
+      Example 14 (named customer/organization — include the organization name, but generalize the individual's name to role only; equipment/instrument ID dropped, instrument name kept, per the Instrument/Equipment ID Exclusion Rule):
+      Title: Access control gap identified during customer audit
+      Description: During the ClearPath Labs customer audit, the auditor Ms. Fatima Noorani identified that shared login credentials were being used on the HPLC data system (1070-HPLC-5510).
+      Observed By: Fatima Noorani
+      → During the ClearPath Labs customer audit, the auditor identified that shared login credentials were being used on the HPLC data system.
+
+      Example 15 (a supporting-authority citation AND a different subject citation, both in one multi-observation statement — preserve both):
+      Title: Balance calibration overdue and calibration checklist not verified
+      Description: Observation 1: During review of balance calibration records, it was identified that calibration was not performed within the frequency defined in SOP QA/EQ/044, Annexure 7, which requires calibration once every 90 days. Last calibration was performed 105 days prior. Observation 2: It was also identified that the calibration verification checklist (Annexure 9) of SOP QA/EQ/044 was not signed off by the reviewer.
+      Observed By: Not Applicable
+      → During review of balance calibration records, it was identified that calibration was not performed within the frequency defined in SOP QA/EQ/044, Annexure 7, as the last calibration was performed 105 days prior against the required 90-day frequency. Additionally, it was identified that the calibration verification checklist (Annexure 9) of SOP QA/EQ/044 was not signed off by the reviewer.
+
+      Example 16 (structured product/material field holds an abbreviated code, but the description gives the full name — use the full name; also two analysts sharing the same role, disambiguated by sequence, not name; the source gives only an instrument ID with no separate instrument name, so the instrument reference is dropped entirely rather than fabricating one, per the Instrument/Equipment ID Exclusion Rule):
+      Title: Sequence interrupted during assay testing
+      Product Name / Material Name: Amlo&ChlorthalidoneTabs 5/12.5mg30sUS-EX
+      Description: On 10/03/2026, analyst Mr. Kiran Bhat initiated the assay sequence for product AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG (1070-HPLC-2290). While monitoring the sequence, analyst Ms. Anita Verma observed that the sequence was interrupted at Bin No. 8. Other details: Product Name: AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG.
+      Observed By: Anita Verma
+      → During monitoring of the assay sequence for AMLODIPINE AND CHLORTHALIDONE TABLETS 5/12.5MG, a second analyst observed that the sequence was interrupted at Bin No. 8, initiated by one analyst.
+
+      Example 12 (one individual has a real stated role plus an employee ID — generalize to role and drop the ID; another has only a bare field-label name and an ID, no real role — generalize to a neutral non-identifying reference and drop the ID too, since it would re-identify them the same way the name would):
+      Title: Weight printouts and Annexure page not available in media preparation record and MLT method suitability report
+      Description: Observation 1: During review of media preparation record, Supervisor Sasikumar (ID:112015) observed that two weight prints of media were not available in the microbiological media preparation record. Prepared By: Akash (ID:114708). Observation 2: During compilation of MLT method suitability report of material Trazadone, analyst Sivagayathri (ID:117832) observed that page number 10 of 10 of Annexure 1 is not available in the report.
+      Observed By: Sasikumar
+      → During review of the media preparation record, the supervisor observed that two weight prints were not available in the microbiological media preparation record, prepared by the individual. Additionally, during compilation of the MLT method suitability report for Trazadone, the analyst observed that page number 10 of 10 of Annexure 1 was not available in the report.
+
+      Example 17 (structured product/material field is a fused, spaceless string with no separate full name anywhere in the source — reformat it into a readable name instead of using it as-is; "Observed By: Manjunatha S.m" gives only a bare name with no stated role — generalize to a neutral non-identifying reference, do not fabricate a title like "the supervisor" for it):
+      Title: Missing Tamper-Evident Sticker Observed During Packed Stock Verification of Alfacalcidol SGC 1mcg, Batch# 75500666B
+      Product Name / Material Name: AlfacalcidolSGC1.0mcg30'sZentiva-Italy
+      Description: During packed stock verification in CVC-3 Secondary Packing, it was observed that 9 cartons in Shipper No. 19 were pasted with tamper-evident seals on only one side instead of both sides as per the approved packing procedure. Product name:AlfacalcidolSGC1.0mcg30'sZentiva-Italy
+      Observed By: Manjunatha S.m
+      → During packed stock verification in CVC-3, the individual observed that 9 cartons in Shipper No. 19 were pasted with tamper-evident seals on only one side instead of both sides as per the approved packing procedure for Alfacalcidol SGC 1.0 mcg.
+
+      Example 18 (the activity actually stated is a customer audit, but Deviation To names an unrelated internal SOP — use the stated activity and its named organization, do NOT substitute the SOP/document name as the activity; the Instrument ID Number is dropped while the separately given Name of the Instrument is kept, per the Instrument/Equipment ID Exclusion Rule):
+      Title: Date modification privilege available for dissolution instrument
+      Deviation To: IT Security SOP
+      Instrument ID Number: 1070-DISA-2210
+      Name of the Instrument: Dissolution Apparatus
+      Description: During the MedixCorp customer audit, the auditor Mr. Suresh Kamath identified that date change privilege was available for the dissolution instrument (1070-DISA-2210).
+      Observed By: Suresh Kamath
+      → During the MedixCorp customer audit, the auditor observed that date change privilege was available for the Dissolution Apparatus.
+
+      Example 20 (a duration/frequency requirement is explicitly given and must be preserved, but the only "observed" data are two raw calendar dates — do not leak the dates or calculate the day-gap yourself; also preserve the specific Annexure citation for the interval requirement, not just the parent SOP name, alongside the separate Annexure for the checklist finding; the equipment's ID (SGC/PLM/080) is dropped while its name (Planetary mixer) is kept, per the Instrument/Equipment ID Exclusion Rule):
+      Title: Manual back-up of the manufacturing equipment was not performed as per the timeline defined in the SOP AL/IT/052
+      Description: Observation 1: During manual backup review in leucine application for the equipment Planetary mixer (Equipment ID: SGC/PLM/080), it was identified that manual backup was not carried out as per the timeline defined in the SOP AL/IT/052. Manual backup taken in the month of June: 13/06/2025. Manual backup taken in the month of July: 25/07/2025. As per SOP AL/IT/052 manual backup of manufacturing equipment / QC instrument which are not connected to network shall be performed once in a month as per Annexure 15. The minimum difference between the previous backup to the current month backup should be 20 days and not more than 30 days. Observation 2: It was also identified that the manual backup review checklist, Checklist (Annexure 19) of SOP AL/IT/052, was not performed for the month of June and July 2025.
+      Observed By: Roy, Abhijit
+      → During manual backup review in leucine application for Planetary mixer, the individual observed that manual backup was not carried out within the required interval of 20 to 30 days defined in SOP AL/IT/052, Annexure 15. Additionally, the individual observed that the manual backup review checklist, Annexure 19 of SOP AL/IT/052, was not performed for the month of June and July 2025.
+
+      Example 21 (two different analysts sharing the SAME role — one initiated the test, a different one later found the resulting issue; disambiguate by sequence, do not collapse into one "the analyst" reference just because only one of them technically "found" the problem, and do not drop the initiating analyst as mere incidental setup):
+      Title: Sequence interrupted due to Instrument controller shut down during the test - Other Cinchona Alkaloids-Quinine Sulfate.
+      Description: On 14/10/2025 analyst Ms. Treesa Johny (113206) initiated Other Cinchona Alkaloids by HPLC test by using 1070-HPLC-0032 instrument. On 15/10/2025 while monitoring the sequence analyst Mr. Avishek Das (113375) found that the sequence was interrupted at bin no 16 (Blank injection) due to 'user shutting down the controller while sequence was running'. Other Details: Product Name: Quinine Sulfate tablets [200mg] [FC] Test: Other Cinchona Alkaloids by HPLC Instrument Id: 1070-HPLC-0032
+      Observed By: Mittapalli Reddy, Adinarayana
+      → During Other Cinchona Alkaloids by HPLC testing of Quinine Sulfate tablets [200mg] [FC], initiated by one analyst, a second analyst found that the sequence was interrupted at bin no. 16 (Blank injection) due to the controller being shut down while the sequence was running.
+
+      Example 19 (the SAME batch yield finding is stated both as a percentage against a percentage limit AND as an absolute weight in kg against a corresponding kg limit — use only the percentage, drop the kg restatement entirely; also a department-abbreviation role, "PDN person," and a bare equipment ID with no separate name, both handled by existing rules):
+      Title: Batch yield found below the BMR specified limit after completion of compression process- Haloperidol TABLETS [1.5mg]
+      Product Name / Material Name: Haloperidol tablets 1.5 mg
+      Deviation To: BMR
+      Description: On date 31/07/2026, at 23:45 hrs. during batch completion of product Haloperidol tablets 1.5 mg batch number 72066487, PDN person Mr. Yeshwanth observed that, yield at compression stage was 91.88 % against BMR specified limit of 93.00 to 100.00%. Details as below: Product: Haloperidol tablets 1.5 mg Product code: 2003609 Batch no: 72066487 Batch size: 10,00,000 Observed yield: 91.88% limit (93.0 to 100.0) Actual tablet in kg: 128.500 kg ( 130.209 to 140.010 ) Equipment ID: ODF-TAC-LVM-CMR-COM-267
+      Observed By: Nirmal Roy.
+      → During compression of Haloperidol tablets 1.5 mg, the PDN person observed batch yield at compression stage as 91.88% against the BMR specified limit of 93.00 to 100.00%.

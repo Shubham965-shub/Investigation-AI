@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rci", tags=["RCI Plan"])
 
 _OBJECTIVE_PREFIX = re.compile(r'^\s*objective\s*[:/]?\s*', re.IGNORECASE)
+_BULLET_PREFIX = re.compile(r'^[•\-\*]\s*')
 
 
 def _split_title_and_objective(raw: str) -> Tuple[str, Optional[str]]:
@@ -110,20 +111,27 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
     """
     Expected Excel Structure
 
-    Row 1:
-        Confirmed Assay Failure (Level 2)
+    Sheet tab name:
+        Confirmed Assay Failure
+
+    Row 1 (free text, ignored for naming):
+        Confirmed Assay Failure (Level 2)   /   Event: Confirmed Assay Failure ...
 
     Row 2:
         Sr.No. | RCI PLAN | Tasks | Objective / Rationale
+        (or: Sr.No. | 6M Bucket | Task(s) & objective | Task details)
 
     Row 3+:
         Data rows
 
     Mapping:
-        Archetype Name        -> First row, first cell
+        Archetype Name        -> Sheet tab name (row 1 is descriptive only; matches how
+                                  existing archetypes were seeded, so re-uploads update
+                                  them instead of creating duplicates)
         RCI PLAN             -> Section Title
         Tasks                -> Task Description
         Objective/Rationale  -> Section Correlation
+        6M Bucket            -> Section 6M category (optional; MATERIAL/METHOD/MACHINE/MEASUREMENT/MAN/ENVIRONMENT)
     """
 
     filename = (file.filename or "").strip()
@@ -191,25 +199,22 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                     logger.info(f"Processing worksheet: {sheet_name}")
 
                     # --------------------------------------------------------------
-                    # Read first row -> Archetype Name
+                    # Archetype Name = sheet tab name.
+                    #
+                    # NOT the row-1 cell: that cell often carries a longer,
+                    # differently-worded "Event: ..." label (e.g. tab
+                    # "Confirmed RS Failure" vs cell "Event: Confirmed Related
+                    # Substances (RS) Failure") that doesn't match the archetype
+                    # names already seeded in the DB, which were keyed off the
+                    # tab name. Keying off the row-1 cell instead would insert a
+                    # duplicate archetype per sheet rather than updating the
+                    # existing one.
                     # --------------------------------------------------------------
-                    archetype_row = pd.read_excel(
-                        excel_file,
-                        sheet_name=sheet_name,
-                        header=None,
-                        nrows=1,
-                    )
+                    archetype_name = sheet_name.strip()
 
-                    archetype_name = None
-
-                    for value in archetype_row.iloc[0]:
-                        if pd.notna(value):
-                            archetype_name = str(value).strip()
-                            break
-
-                    if not archetype_name:
+                    if not archetype_name or archetype_name.lower() == "index":
                         logger.warning(
-                            f"Skipping sheet '{sheet_name}' - archetype name not found"
+                            f"Skipping sheet '{sheet_name}' - not a data sheet"
                         )
                         continue
 
@@ -261,6 +266,15 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                         df.columns,
                     )
 
+                    bucket_col = find_col(
+                        [
+                            "6m bucket",
+                            "6 m bucket",
+                            "bucket",
+                        ],
+                        df.columns,
+                    )
+
                     if not section_col or not task_col:
                         logger.warning(
                             "Skipping sheet '%s' — missing required columns "
@@ -278,6 +292,9 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
 
                     if correlation_col:
                         df[correlation_col] = df[correlation_col].ffill()
+
+                    if bucket_col:
+                        df[bucket_col] = df[bucket_col].ffill()
 
                     # Remove rows without tasks
                     df = df.dropna(subset=[task_col])
@@ -378,6 +395,17 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                                 raw_corr = first_corr.iloc[0].strip()
                                 correlation_value = _OBJECTIVE_PREFIX.sub('', raw_corr).strip() or None
 
+                        # ── 6M fishbone category (MATERIAL/METHOD/MACHINE/etc.) ─────
+                        bucket_value = None
+                        if bucket_col:
+                            first_bucket = (
+                                section_group[bucket_col]
+                                .dropna()
+                                .astype(str)
+                            )
+                            if not first_bucket.empty:
+                                bucket_value = first_bucket.iloc[0].strip() or None
+
                         # ----------------------------------------------------------
                         # Create section
                         # ----------------------------------------------------------
@@ -387,14 +415,16 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                             (
                                 rci_plan_id,
                                 title,
-                                correlation
+                                correlation,
+                                six_m_bucket
                             )
-                            VALUES ($1, $2, $3)
+                            VALUES ($1, $2, $3, $4)
                             RETURNING id
                             """,
                             plan_id,
                             clean_title,
                             correlation_value,
+                            bucket_value,
                         )
 
                         sections_count += 1
@@ -407,6 +437,7 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> ExcelUploadRespo
                             task_description = str(
                                 row[task_col]
                             ).strip()
+                            task_description = _BULLET_PREFIX.sub('', task_description).strip()
 
                             if (
                                 not task_description

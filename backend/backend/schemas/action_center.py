@@ -53,6 +53,9 @@ class InvestigationRow(BaseModel):
     department: Optional[str] = None
     product: Optional[str] = None
     is_cancelled: bool = False
+    # dim_event.escalation_level — real values live as "L1".."L5" or "Not
+    # Applicable" (6,627/6,686 rows, since most investigations never escalate).
+    escalation_level: Optional[str] = None
 
 
 class ChartBar(BaseModel):

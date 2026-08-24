@@ -53,6 +53,31 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   overdue: { status: "overdue", label: "Overdue" },
 };
 
+// dim_event.escalation_level ("L1".."L5", or "Not Applicable"/null for most
+// rows) -> the same tone as the status bucket it corresponds to (per the
+// user): L1/L2 = on-track, L3/L4 = at-risk-of-delay, L5 = overdue.
+const ESCALATION_TONE: Record<string, "success" | "warning" | "danger"> = {
+  L1: "success",
+  L2: "success",
+  L3: "warning",
+  L4: "warning",
+  L5: "danger",
+};
+
+// Default table order (before the user picks a column to sort by): most
+// overdue first (2026-08-21, per the user). Sorting by bucket rather than
+// raw due_date, since open_investigation_status is Trackwise's own opaque
+// determination — not always strictly derivable from due_date alone (see
+// project memory on overdue/delay/on-track logic) — so an explicit bucket
+// isn't guaranteed to line up with a plain due_date sort. Within the same
+// bucket, earliest due date (most overdue, or soonest due) sorts first.
+const DEFAULT_SORT_BUCKET_PRIORITY: Record<string, number> = {
+  overdue: 0,
+  delay: 1,
+  on_track: 2,
+  unassigned: 3,
+};
+
 
 // Matches the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly —
 // sent/received as a plain investigator= value, same as a real name, just
@@ -182,10 +207,6 @@ export function ActionCenterPage() {
   const [deptFilter, setDeptFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [investigatorFilter, setInvestigatorFilter] = useState("");
-  // Preset day-count ("7"/"30"/"180") rather than a raw date-range picker —
-  // matches the simple dropdown pattern the rest of this page uses. Computed
-  // into an actual "start_date_from" date at fetch time.
-  const [startPreset, setStartPreset] = useState("");
   // Default view excludes cancelled investigations entirely (2026-08-13, per
   // the user) — toggled on via a button rather than mixed into the normal
   // list.
@@ -206,21 +227,34 @@ export function ActionCenterPage() {
     setInvestigatorFilter(viewAsInvestigator ?? "");
     setPage(1);
   }, [viewAsInvestigator]);
+  // Clears the Site filter back to "All Sites" on leaving investigator view
+  // — deliberately keyed only on viewAsInvestigator (not summary), so this
+  // never fires while the admin is browsing normally and picks their own
+  // site filter (which also triggers a summary refetch).
+  useEffect(() => {
+    if (!viewAsInvestigator) setSiteFilter("");
+  }, [viewAsInvestigator]);
+  // Once that investigator's data comes back, the Site filter reflects their
+  // real site instead of "All Sites" — the Investigator filter pill itself
+  // is hidden entirely while in this view (rendered further down), since
+  // picking a different investigator here would fight the header's own
+  // control (2026-08-21, per the user).
+  useEffect(() => {
+    if (!viewAsInvestigator || !summary) return;
+    const site = summary.investigations.find((inv) => inv.investigator === viewAsInvestigator)?.site;
+    if (site) setSiteFilter(site);
+  }, [viewAsInvestigator, summary]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setDbError(null);
-    const startDateFrom = startPreset
-      ? new Date(Date.now() - Number(startPreset) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      : undefined;
     getActionCenterSummary({
       site: siteFilter || undefined,
       department: deptFilter || undefined,
       product: productFilter || undefined,
       investigator: investigatorFilter || undefined,
-      startDateFrom,
       status: showCancelled ? "cancelled" : "open",
       criticality: (criticalityFilter as "critical" | "non_critical") || undefined,
     })
@@ -236,7 +270,7 @@ export function ActionCenterPage() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, startPreset, showCancelled, criticalityFilter]);
+  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, showCancelled, criticalityFilter]);
 
   // Only show the full-page skeleton on the very first load. Once we have a
   // summary, a filter-driven refetch just dims the existing content in place
@@ -275,13 +309,17 @@ export function ActionCenterPage() {
     ? [...visibleInvestigations].sort((a, b) =>
         compareForSort(getSortValue(a, sortColumn), getSortValue(b, sortColumn), sortDirection)
       )
-    : visibleInvestigations;
-  const rawStatusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
-  // Investigator view (2026-08-14, per the user) — once the table is scoped
-  // to one specific investigator (via the filter dropdown or the header's
-  // "view as" demo control), the Unassigned bucket card no longer applies,
-  // so only Overdue/Delay/On Track show.
-  const statusCards = investigatorFilter ? rawStatusCards.filter((c) => c.key !== "unassigned") : rawStatusCards;
+    : [...visibleInvestigations].sort((a, b) => {
+        const bucketDiff = (DEFAULT_SORT_BUCKET_PRIORITY[a.bucket] ?? 4) - (DEFAULT_SORT_BUCKET_PRIORITY[b.bucket] ?? 4);
+        if (bucketDiff !== 0) return bucketDiff;
+        return compareForSort(parseDisplayDateMs(a.due_date), parseDisplayDateMs(b.due_date), "asc");
+      });
+  // All 4 status cards always show, even when scoped to one investigator (via
+  // the filter dropdown or the header's "view as" demo control) who happens to
+  // have zero investigations in a given bucket — a zero count is still shown
+  // rather than the card disappearing (2026-08-21, per the user; previously
+  // "Unassigned" was hidden entirely for investigator views).
+  const statusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
   const totalPages = Math.max(1, Math.ceil(sortedInvestigations.length / PAGE_SIZE));
@@ -443,7 +481,7 @@ export function ActionCenterPage() {
                     setPage(1);
                   }}
                 >
-                  Major/Minor
+                  Major & Minor
                 </button>
               </div>
             </div>
@@ -481,28 +519,19 @@ export function ActionCenterPage() {
               defaultLabel="Product"
               options={summary.filter_options.products}
             />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={investigatorFilter}
-              onChange={(v) => {
-                setInvestigatorFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="All Investigators"
-              options={summary.filter_options.investigators}
-              formatOption={formatInvestigatorLabel}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={startPreset}
-              onChange={(v) => {
-                setStartPreset(v);
-                setPage(1);
-              }}
-              defaultLabel="All Time (Start Date)"
-              options={["7", "30", "180"]}
-              formatOption={(v) => (v === "7" ? "Last week" : v === "30" ? "Last month" : "Last 6 months")}
-            />
+            {!viewAsInvestigator && (
+              <FilterSelect
+                className="ac-filter-pill"
+                value={investigatorFilter}
+                onChange={(v) => {
+                  setInvestigatorFilter(v);
+                  setPage(1);
+                }}
+                defaultLabel="All Investigators"
+                options={summary.filter_options.investigators}
+                formatOption={formatInvestigatorLabel}
+              />
+            )}
             <button
               type="button"
               className={`ac-filter-pill${showCancelled ? " active" : ""}`}
@@ -599,8 +628,15 @@ export function ActionCenterPage() {
                     </td>
                     <td>{inv.start_date ?? "—"}</td>
                     <td>{inv.due_date ?? "—"}</td>
-                    <td>
-                      <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
+                    <td className="ac-status-cell">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>{statusInfo.label}</span>
+                        {inv.escalation_level && ESCALATION_TONE[inv.escalation_level] && (
+                          <span className={`escalation-bubble ${ESCALATION_TONE[inv.escalation_level]}`}>
+                            {inv.escalation_level}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <button

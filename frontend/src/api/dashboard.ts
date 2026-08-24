@@ -46,6 +46,9 @@ export interface ProblemStatementRecordResponse {
   event_type: EventType;
   trackwise_fields: TrackwiseFields;
   problem_statement: string | null;
+  // True once Evidence Collection has any real data — Problem Statement is
+  // read-only at that point (see ProblemStatementPage.tsx's lockedForEditing).
+  locked_for_editing?: boolean;
 }
 
 export function getProblemStatementRecord(
@@ -369,7 +372,6 @@ export interface RcCapaRecommendation {
 export interface RcCapaCritique {
   category: "rc_impact" | "capa";
   summary: string | null;
-  strengths: string | null;
   recommendations: RcCapaRecommendation[];
 }
 
@@ -474,6 +476,7 @@ export interface InvestigationRowResponse {
   department: string | null;
   product: string | null;
   is_cancelled: boolean;
+  escalation_level: string | null;
 }
 
 export interface FilterOptions {
@@ -617,4 +620,346 @@ export function getAnalyticsSummary(filters?: AnalyticsFilters): Promise<Analyti
   if (filters?.startDateFrom) params.set("start_date_from", filters.startDateFrom);
   const qs = params.toString();
   return apiGet<AnalyticsSummaryResponse>(`/analytics/summary${qs ? `?${qs}` : ""}`);
+}
+
+// ── RCI Report ──────────────────────────────────────────────────────────
+// Field names/types mirror backend/backend/schemas/rci_report.py 1:1, which
+// itself mirrors ds's own schemas verbatim — see that file's docstring.
+
+export interface SourcedTextItem {
+  value: string;
+  source: "trackwise" | "manual_entry_required" | "manual_entry_provided" | "synthesized";
+}
+
+export interface ExecutiveSummarySection {
+  summary: string;
+  problem_description: string;
+  immediate_containment_action: string;
+  determination_of_root_cause: string;
+  root_cause_probable_cause_statement: string;
+  impact_assessment: string;
+  correction_conclusion_preventive_actions: string;
+  conclusion_statement: string;
+}
+
+export interface DescriptionOfEventSection {
+  what_happened: string;
+  when_happened: string;
+  who_identified: string;
+  where_it_happened: string;
+  nonconforming_reference: SourcedTextItem;
+  how_detected: SourcedTextItem;
+}
+
+export type ImpactType = "Direct" | "Indirect" | "Not applicable";
+
+export interface MaterialProductImpactItem {
+  material_product_batch: string;
+  stage: string;
+  quantity_involved: string;
+  quantity_on_hold: SourcedTextItem;
+  type_of_impact: ImpactType;
+}
+
+export interface EquipmentActionChecklist {
+  operation_suspended: boolean;
+  on_hold_label_affixed: boolean;
+  other_action_taken: boolean;
+  other_action_specify: string;
+}
+
+export interface EquipmentImpactItem {
+  equipment_instrument: SourcedTextItem;
+  identification_number: SourcedTextItem;
+  actions_initiated: EquipmentActionChecklist;
+}
+
+export interface InitialImpactAssessmentSection {
+  material_product_impacts: MaterialProductImpactItem[];
+  equipment_impacts: EquipmentImpactItem[];
+  immediate_actions: string[];
+}
+
+export interface HistoryReviewRow {
+  event_number: string;
+  event_title: string;
+  capa_description: string;
+  capa_implementation_date: string;
+}
+
+export interface HistoryReviewSection {
+  lookback_months: number;
+  rows: HistoryReviewRow[];
+  no_similar_events_found: boolean;
+  closing_narrative: string;
+  batches_manufactured_note?: string | null;
+}
+
+export type RCAMethod =
+  | "Why-Why Analysis"
+  | "Fishbone / Ishikawa"
+  | "Fault Tree Analysis"
+  | "Flowchart / Process Mapping"
+  | "GEMBA Walk"
+  | "Failure Mode Effective Analysis (FMEA)"
+  | "Not explicitly stated";
+export type SixMFactor = "Man" | "Machine" | "Material" | "Method" | "Measurement" | "Mother Nature";
+
+export const RCA_METHOD_OPTIONS: RCAMethod[] = [
+  "Why-Why Analysis",
+  "Fishbone / Ishikawa",
+  "Fault Tree Analysis",
+  "Flowchart / Process Mapping",
+  "GEMBA Walk",
+  "Failure Mode Effective Analysis (FMEA)",
+  "Not explicitly stated",
+];
+export const SIX_M_FACTOR_OPTIONS: SixMFactor[] = ["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"];
+
+export interface InvestigationTaskFinding {
+  sop_reference?: string | null;
+  finding: string;
+}
+
+export interface InvestigationTaskSubsection {
+  title: string;
+  six_m_factors: SixMFactor[];
+  findings: InvestigationTaskFinding[];
+}
+
+export interface InvestigationTaskGroup {
+  section_title: string;
+  subsections: InvestigationTaskSubsection[];
+}
+
+export interface InvestigationTaskSection {
+  rca_method_evidence: string;
+  rca_methods_used: RCAMethod[];
+  groups: InvestigationTaskGroup[];
+}
+
+export interface RootCauseTaxonomy {
+  category: SixMFactor;
+  sub_category: string;
+}
+
+export interface RootCauseConclusionSection {
+  conclusion: string;
+  taxonomy: RootCauseTaxonomy;
+  repeat_occurrence_evidence: string;
+  is_repeat_occurrence: boolean;
+}
+
+export interface ImpactSubsectionItem {
+  applicable: boolean;
+  narrative: string;
+}
+
+export interface BatchShipperImpact {
+  batch_number: string;
+  number_of_shippers: string;
+  defects: string;
+}
+
+export interface ImpactOnAffectedBatchSubsection extends ImpactSubsectionItem {
+  batch_shipper_table: BatchShipperImpact[];
+}
+
+export interface ImpactAssessmentBatchDispositionSection {
+  impact_on_affected_batches: ImpactOnAffectedBatchSubsection;
+  impact_on_marketed_released_batches: ImpactSubsectionItem;
+  impact_on_other_product_material_area_process: ImpactSubsectionItem;
+  impact_on_regulatory_filing: ImpactSubsectionItem;
+  impact_on_facility_equipment_instrument: ImpactSubsectionItem;
+  impact_on_manufacturing_process_analytical_method: ImpactSubsectionItem;
+  business_continuity: ImpactSubsectionItem;
+  impact_on_data_integrity: ImpactSubsectionItem;
+  stability_repackaging_requirement: ImpactSubsectionItem;
+  patient_safety: ImpactSubsectionItem;
+  others_as_applicable: ImpactSubsectionItem;
+  conclusion: string;
+  medical_investigation_summary?: string | null;
+  health_hazard_evaluation?: string | null;
+  impact_justification?: string | null;
+}
+
+// Plain (non-table) ImpactSubsection fields on ImpactAssessmentBatchDispositionSection,
+// in display order — impact_on_affected_batches is handled separately (it has the
+// extra batch_shipper_table).
+export const IMPACT_SUBSECTION_FIELDS: { key: keyof ImpactAssessmentBatchDispositionSection; label: string }[] = [
+  { key: "impact_on_marketed_released_batches", label: "Impact on Marketed / Released Batches" },
+  { key: "impact_on_other_product_material_area_process", label: "Impact on Other Product / Material / Area / Process" },
+  { key: "impact_on_regulatory_filing", label: "Impact on Regulatory Filing" },
+  { key: "impact_on_facility_equipment_instrument", label: "Impact on Facility / Equipment / Instrument" },
+  { key: "impact_on_manufacturing_process_analytical_method", label: "Impact on Manufacturing Process / Analytical Method" },
+  { key: "business_continuity", label: "Business Continuity" },
+  { key: "impact_on_data_integrity", label: "Impact on Data Integrity" },
+  { key: "stability_repackaging_requirement", label: "Stability / Repackaging Requirement" },
+  { key: "patient_safety", label: "Patient Safety" },
+  { key: "others_as_applicable", label: "Others, as Applicable" },
+];
+
+export type SeverityTier = "Critical" | "Medium" | "Low";
+export type RepeatabilityTier = "High" | "Medium" | "Low";
+export type DetectabilityTier = "High" | "Medium" | "Low";
+export type RiskLevel = "L1" | "L2" | "L3" | "L4" | "L5";
+
+export interface TierSelection<T extends string> {
+  grounding_evidence: string;
+  tier: T;
+}
+
+export interface RiskFactorScores {
+  severity: TierSelection<SeverityTier>;
+  repeatability: TierSelection<RepeatabilityTier>;
+  detectability: TierSelection<DetectabilityTier>;
+}
+
+export interface RiskAssessmentCandidate {
+  cause_label: string;
+  factors: RiskFactorScores;
+  severity_score: number;
+  repeatability_score: number;
+  detectability_score: number;
+  rpn: number;
+  risk_level: RiskLevel;
+}
+
+export interface RiskAssessmentSection {
+  applicability_reason: string;
+  applicable: "yes" | "no — unconfirmed market complaint";
+  candidates: RiskAssessmentCandidate[];
+}
+
+export interface ObservationStatusItem {
+  observation: string;
+  status: string;
+  reference_number?: string | null;
+}
+
+export interface CorrectionRemedialActionSection {
+  items: ObservationStatusItem[];
+  additional_notes: string[];
+}
+
+export interface CAPAActionItem {
+  description: string;
+  responsibility?: string | null;
+  due_date: string;
+}
+
+export interface InterimControlItem {
+  description: string;
+  responsibility: string;
+  due_date: string;
+}
+
+export interface CAPAExtrapolationItem {
+  applicable: boolean;
+  justification: string;
+  scope_description: string;
+  related_customers: string[];
+  related_markets: string[];
+  capa_numbers: string[];
+  related_change_controls: string[];
+  responsibility: string;
+  due_date: string;
+}
+
+export interface CAPASection {
+  capa_not_applicable_justification?: string | null;
+  capa_actions: CAPAActionItem[];
+  interim_controls: InterimControlItem[];
+  extrapolation: CAPAExtrapolationItem;
+}
+
+export type DurationTier = "short" | "standard" | "extended";
+export type CAPAMechanism = "Procedural / training-based" | "Resource / equipment substitution" | "Other";
+export const DURATION_TIER_OPTIONS: DurationTier[] = ["short", "standard", "extended"];
+export const CAPA_MECHANISM_OPTIONS: CAPAMechanism[] = ["Procedural / training-based", "Resource / equipment substitution", "Other"];
+
+export interface CAPAEffectivenessPlanItem {
+  grounding_evidence: string;
+  capa_mechanism: CAPAMechanism;
+  capa_description: string;
+  effectiveness_check: string[];
+  effectiveness_criteria: string[];
+  responsibility: string;
+  duration_rationale: string;
+  duration_tier: DurationTier;
+  monitoring_duration: string;
+}
+
+export interface CAPAEffectivenessCheckPlanSection {
+  capa_not_applicable_justification?: string | null;
+  generated_plans: CAPAEffectivenessPlanItem[];
+}
+
+export interface AnnexureItem {
+  annexure_no: string;
+  title: string;
+}
+
+export interface ApprovalRow {
+  role: string;
+  name?: string | null;
+  title?: string | null;
+  department?: string | null;
+  signature_date?: string | null;
+}
+
+export interface AnnexuresSection {
+  items: AnnexureItem[];
+}
+
+export interface ApprovalSection {
+  rows: ApprovalRow[];
+}
+
+export interface RciReportSections {
+  event_type: string;
+  executive_summary: ExecutiveSummarySection;
+  description_of_event: DescriptionOfEventSection;
+  initial_impact_assessment: InitialImpactAssessmentSection;
+  history_review: HistoryReviewSection;
+  investigation_task: InvestigationTaskSection;
+  root_cause_conclusion: RootCauseConclusionSection;
+  impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection;
+  risk_assessment: RiskAssessmentSection;
+  correction_remedial_action: CorrectionRemedialActionSection;
+  capa: CAPASection;
+  capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection;
+  annexures: AnnexuresSection;
+  approval: ApprovalSection;
+}
+
+export interface RciReportRecordResponse {
+  record_id: string;
+  event_type: EventType;
+  trackwise_fields: TrackwiseFields;
+  report: RciReportSections | null;
+  generated_at: string | null;
+  can_generate: boolean;
+  mc_confirmed: boolean | null;
+  manual_entries: Record<string, string>;
+}
+
+export function getRciReportRecord(recordId: string): Promise<RciReportRecordResponse | null> {
+  return getRecordOrNull<RciReportRecordResponse>(`/rci-report/${recordId}`);
+}
+
+export function updateRciReportInputs(
+  recordId: string,
+  mcConfirmed: boolean | null,
+  manualEntries: Record<string, string>
+): Promise<RciReportRecordResponse> {
+  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}/inputs`, { mc_confirmed: mcConfirmed, manual_entries: manualEntries });
+}
+
+export function generateRciReport(recordId: string): Promise<RciReportRecordResponse> {
+  return apiPost<RciReportRecordResponse>(`/rci-report/${recordId}/generate`, {});
+}
+
+export function updateRciReportSections(recordId: string, report: RciReportSections): Promise<RciReportRecordResponse> {
+  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}`, report);
 }

@@ -40,6 +40,10 @@ export function ProblemStatementPage() {
   // entry form below switches those fields to read-only instead of letting
   // the user edit already-committed DB data through this form.
   const [recordExists, setRecordExists] = useState(false);
+  // True once Evidence Collection has any real data — hides the "Edit
+  // Problem Statement" option in RecordDetailsModal at that point
+  // (2026-08-21, per the user).
+  const [lockedForEditing, setLockedForEditing] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -73,6 +77,7 @@ export function ProblemStatementPage() {
           }
           setValues(initialValues);
           setProblemStatement(record.problem_statement);
+          setLockedForEditing(record.locked_for_editing ?? false);
         }
         setLoading(false);
       } catch (err) {
@@ -182,6 +187,7 @@ export function ProblemStatementPage() {
         <RecordDetailsModal
           recordId={rid}
           problemStatement={problemStatement}
+          lockedForEditing={lockedForEditing}
           onClose={() => setShowSummaryModal(false)}
           onSaveEdit={(newText) => {
             // Session-only — no backend endpoint yet to persist an edit to an
@@ -279,7 +285,7 @@ export function ProblemStatementPage() {
 
       <div className="footer-actions">
         <button type="button" className="btn-primary" onClick={handleGenerate} disabled={submitting}>
-          {submitting ? "Generating…" : "Save & Generate Problem Statement"}
+          {submitting ? "Refining..." : "Refine Problem Statement"}
         </button>
       </div>
     </div>

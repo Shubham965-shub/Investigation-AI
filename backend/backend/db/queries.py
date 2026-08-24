@@ -36,6 +36,7 @@ SELECT
     e.impact_on_deviation_batches,
     e.impact_details,
     e.proposal_for_resolution,
+    e.correction_or_remedial_action,
     e.market,
     e.related_market,
     e.laboratory_details,
