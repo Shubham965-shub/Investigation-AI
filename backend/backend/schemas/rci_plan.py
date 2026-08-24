@@ -20,6 +20,7 @@ class RciTaskItem(BaseModel):
 class RciSectionItem(BaseModel):
     title: str
     correlation: Optional[str] = None
+    six_m_bucket: Optional[str] = None
     tasks: List[RciTaskItem]
     # Whole-section include/exclude from the final plan (2026-08-20, per the
     # user) — same convention as RciTaskItem.is_checked, one level up.
