@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Awaitable, Dict, Tuple
+from typing import Any, Awaitable, Dict, List, Tuple
 
 from fastapi import APIRouter
 
@@ -68,6 +68,29 @@ def _tw_summary(ctx: RciReportContext) -> str:
     ) or "(no non-empty trackwise fields)"
 
 
+# errors[] is keyed by these same field names (matching RciReportResponse) so
+# callers can match programmatically — this is purely for making the message
+# *text* self-describing, both for a section's own error and for naming a
+# failed/skipped section inside another section's dependency message.
+_SECTION_DISPLAY_NAMES: Dict[str, str] = {
+    "description_of_event": "Description of Event",
+    "initial_impact_assessment": "Initial Impact Assessment",
+    "history_review": "History Review",
+    "investigation_task": "Investigation Task",
+    "root_cause_conclusion": "Root Cause Conclusion",
+    "impact_assessment_batch_disposition": "Impact Assessment & Batch Disposition",
+    "risk_assessment": "Risk Assessment",
+    "correction_remedial_action": "Correction & Remedial Action",
+    "capa": "CAPA",
+    "capa_effectiveness_check_plan": "CAPA Effectiveness Check Plan",
+    "executive_summary": "Executive Summary",
+}
+
+
+def _display_name(section_key: str) -> str:
+    return _SECTION_DISPLAY_NAMES.get(section_key, section_key)
+
+
 # Union of every "required" attribute name across the Deviation/OOS/OOT/Market
 # Complaint trackwise schemas (see shared/schemas.py) — safe to over-list here
 # since ctx.missing_required_tw_fields is already scoped to only the fields
@@ -100,11 +123,41 @@ _SECTION_REQUIRED_TW_FIELDS: Dict[str, set] = {
 }
 
 
-def _section_missing_tw_fields(ctx: RciReportContext, section_key: str) -> list:
-    required = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
-    if not required:
-        return []
-    return sorted(ctx.missing_required_tw_fields & required)
+def _blank(value: Any) -> bool:
+    return not str(value or "").strip()
+
+
+def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
+    """Human-readable descriptions of the specific TrackWise/API field(s) this
+    section needs but are blank — used both to decide whether to skip
+    generating the section, and to name exactly what's missing in errors[]
+    rather than a generic failure message.
+    """
+    missing: List[str] = []
+
+    required_tw = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
+    if required_tw:
+        missing += [
+            f"TrackWise field '{name}'" for name in sorted(ctx.missing_required_tw_fields & required_tw)
+        ]
+
+    # These three aren't in a "required" TW schema (Correction/Remedial and
+    # Impact Details are Optional there — see shared/schemas.py — and Root
+    # Cause Conclusion's real input is the already-critiqued API field, not a
+    # TW one), but each is still the sole/primary content this section is
+    # built from, so a blank value here is just as fatal to the section as a
+    # missing schema-required field is to Description of Event.
+    if section_key == "correction_remedial_action" and _blank(ctx.tw("correction_or_remedial_action")):
+        missing.append("TrackWise field 'correction_or_remedial_action'")
+
+    if section_key in ("root_cause_conclusion", "impact_assessment_batch_disposition"):
+        if _blank(ctx.accepted_rc_conclusion.rc_conclusion_text):
+            missing.append("API field 'accepted_rc_conclusion.rc_conclusion_text'")
+
+    if section_key == "impact_assessment_batch_disposition" and _blank(ctx.tw("impact_details")):
+        missing.append("TrackWise field 'impact_details'")
+
+    return missing
 
 
 # ── Wave 1: 9 independent tasks — each grounded only in ctx ──────────────
@@ -353,7 +406,8 @@ async def _run_named(tasks: Dict[str, Awaitable]) -> Tuple[Dict[str, object], Di
         if isinstance(result, BaseException):
             logger.error("RCI report section '%s' failed to generate", key, exc_info=result)
             values[key] = None
-            errors[key] = str(result) or result.__class__.__name__
+            reason = str(result) or result.__class__.__name__
+            errors[key] = f"{_display_name(key)}: failed to generate — {reason}"
         else:
             values[key] = result
     return values, errors
@@ -381,22 +435,28 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
             exclude_id=ctx.deviation_id,
         ),
         "investigation_task": _generate_investigation_task(llm, ctx),
-        "root_cause_conclusion": _generate_root_cause_conclusion(llm, ctx),
-        "impact_assessment_batch_disposition": _generate_impact_assessment(llm, ctx),
-        "correction_remedial_action": _generate_correction_remedial(llm, ctx),
         "capa": _generate_capa(llm, ctx),
         "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
     }
-    # These two are the only sections built purely from raw TW fields (see
-    # _DESCRIPTIVE_TW_FIELDS) — skip generating them (rather than running with
-    # incomplete grounding) when the specific fields they need are missing.
+    # Each of these has a specific TW/API field it's substantively built from
+    # (see _section_missing_deps) — skip generating a section (rather than
+    # running it ungrounded) when its own field(s) are missing, and name
+    # exactly which field(s) in errors[] instead of a generic failure message.
+    # Every other Wave-1 section (above) has no single required field this
+    # way, so it always runs regardless of what's missing elsewhere.
     for section_key, factory in (
         ("description_of_event", lambda: _generate_description_of_event(llm, ctx)),
         ("initial_impact_assessment", lambda: _generate_initial_impact_assessment(llm, ctx)),
+        ("root_cause_conclusion", lambda: _generate_root_cause_conclusion(llm, ctx)),
+        ("impact_assessment_batch_disposition", lambda: _generate_impact_assessment(llm, ctx)),
+        ("correction_remedial_action", lambda: _generate_correction_remedial(llm, ctx)),
     ):
-        missing = _section_missing_tw_fields(ctx, section_key)
+        missing = _section_missing_deps(ctx, section_key)
         if missing:
-            errors[section_key] = f"skipped: required TrackWise field(s) missing or empty: {', '.join(missing)}"
+            errors[section_key] = (
+                f"{_display_name(section_key)}: skipped — required field(s) missing or empty: "
+                f"{', '.join(missing)}"
+            )
         else:
             wave1_tasks[section_key] = factory()
 
@@ -436,7 +496,10 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     }
     missing = [name for name, value in risk_assessment_deps.items() if value is None]
     if missing:
-        errors["risk_assessment"] = f"skipped: dependent section(s) failed to generate: {', '.join(missing)}"
+        errors["risk_assessment"] = (
+            f"{_display_name('risk_assessment')}: skipped — dependent section(s) failed to generate: "
+            f"{', '.join(_display_name(name) for name in missing)}"
+        )
     else:
         wave2_tasks["risk_assessment"] = _generate_risk_assessment(
             llm, ctx, root_cause, impact_assessment, history_review
@@ -453,7 +516,10 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     }
     missing = [name for name, value in executive_summary_deps.items() if value is None]
     if missing:
-        errors["executive_summary"] = f"skipped: dependent section(s) failed to generate: {', '.join(missing)}"
+        errors["executive_summary"] = (
+            f"{_display_name('executive_summary')}: skipped — dependent section(s) failed to generate: "
+            f"{', '.join(_display_name(name) for name in missing)}"
+        )
     else:
         wave2_tasks["executive_summary"] = _generate_executive_summary(
             llm,
