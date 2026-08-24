@@ -68,6 +68,45 @@ def _tw_summary(ctx: RciReportContext) -> str:
     ) or "(no non-empty trackwise fields)"
 
 
+# Union of every "required" attribute name across the Deviation/OOS/OOT/Market
+# Complaint trackwise schemas (see shared/schemas.py) — safe to over-list here
+# since ctx.missing_required_tw_fields is already scoped to only the fields
+# required by *this* record's actual event type; irrelevant names here just
+# never appear in that set. Description of Event and Initial Impact Assessment
+# are the only two sections built purely from the raw TW field dump
+# (_tw_summary) rather than an already-critiqued upstream artifact (RC & CAPA
+# Critique output, rci_plan_sections, task_critique) — every other section is
+# grounded in one of those instead, so a missing base TW field doesn't block
+# them the way it blocks these two.
+_DESCRIPTIVE_TW_FIELDS = {
+    # Deviation
+    "title", "batch_number_ar_number", "product_material_code", "product_material_name",
+    "deviation_to", "equipment_name", "description", "instrument_id_number",
+    "name_of_the_instrument", "observed_by", "deviation_number", "date_opened",
+    "observation_date", "observation_time", "failure_duration", "related_market",
+    "related_customer", "equipment_id", "equipment_number", "deviation_owner",
+    "originator", "impact_on_deviation_batches", "immediate_cause_known", "cause_detail",
+    # OOS/OOT
+    "laboratory_details", "specification_number", "stability_condition",
+    "stability_protocol_number", "labelled_storage_conditions", "product_type",
+    "stp_number", "stability_time_point",
+    # Market Complaint
+    "date_complaint_received", "complaint_reported_by", "reference_complaint_number",
+    "products_information", "dosage_form", "market", "product_manufacturing_info",
+}
+_SECTION_REQUIRED_TW_FIELDS: Dict[str, set] = {
+    "description_of_event": _DESCRIPTIVE_TW_FIELDS,
+    "initial_impact_assessment": _DESCRIPTIVE_TW_FIELDS,
+}
+
+
+def _section_missing_tw_fields(ctx: RciReportContext, section_key: str) -> list:
+    required = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
+    if not required:
+        return []
+    return sorted(ctx.missing_required_tw_fields & required)
+
+
 # ── Wave 1: 9 independent tasks — each grounded only in ctx ──────────────
 
 
@@ -330,36 +369,49 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     llm = LLMClient()
     pool = await get_db_pool()
 
-    wave1, errors = await _run_named(
-        {
-            "description_of_event": _generate_description_of_event(llm, ctx),
-            "initial_impact_assessment": _generate_initial_impact_assessment(llm, ctx),
-            "history_review": generate_history_review(
-                llm,
-                pool,
-                event_type=ctx.event_type,
-                search_query=ctx.tw("description") or ctx.event_type,
-                lookback_months=ctx.history_lookback_months,
-                narrative_system_prompt=history_review_narrative_system_prompt,
-                exclude_id=ctx.deviation_id,
-            ),
-            "investigation_task": _generate_investigation_task(llm, ctx),
-            "root_cause_conclusion": _generate_root_cause_conclusion(llm, ctx),
-            "impact_assessment_batch_disposition": _generate_impact_assessment(llm, ctx),
-            "correction_remedial_action": _generate_correction_remedial(llm, ctx),
-            "capa": _generate_capa(llm, ctx),
-            "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
-        }
-    )
-    description_of_event = wave1["description_of_event"]
-    initial_impact_assessment = wave1["initial_impact_assessment"]
-    history_review = wave1["history_review"]
-    investigation_task = wave1["investigation_task"]
-    root_cause = wave1["root_cause_conclusion"]
-    impact_assessment = wave1["impact_assessment_batch_disposition"]
-    correction_remedial = wave1["correction_remedial_action"]
-    capa = wave1["capa"]
-    capa_effectiveness_check_plan = wave1["capa_effectiveness_check_plan"]
+    errors: Dict[str, str] = {}
+    wave1_tasks: Dict[str, Awaitable] = {
+        "history_review": generate_history_review(
+            llm,
+            pool,
+            event_type=ctx.event_type,
+            search_query=ctx.tw("description") or ctx.event_type,
+            lookback_months=ctx.history_lookback_months,
+            narrative_system_prompt=history_review_narrative_system_prompt,
+            exclude_id=ctx.deviation_id,
+        ),
+        "investigation_task": _generate_investigation_task(llm, ctx),
+        "root_cause_conclusion": _generate_root_cause_conclusion(llm, ctx),
+        "impact_assessment_batch_disposition": _generate_impact_assessment(llm, ctx),
+        "correction_remedial_action": _generate_correction_remedial(llm, ctx),
+        "capa": _generate_capa(llm, ctx),
+        "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
+    }
+    # These two are the only sections built purely from raw TW fields (see
+    # _DESCRIPTIVE_TW_FIELDS) — skip generating them (rather than running with
+    # incomplete grounding) when the specific fields they need are missing.
+    for section_key, factory in (
+        ("description_of_event", lambda: _generate_description_of_event(llm, ctx)),
+        ("initial_impact_assessment", lambda: _generate_initial_impact_assessment(llm, ctx)),
+    ):
+        missing = _section_missing_tw_fields(ctx, section_key)
+        if missing:
+            errors[section_key] = f"skipped: required TrackWise field(s) missing or empty: {', '.join(missing)}"
+        else:
+            wave1_tasks[section_key] = factory()
+
+    wave1, wave1_errors = await _run_named(wave1_tasks)
+    errors.update(wave1_errors)
+
+    description_of_event = wave1.get("description_of_event")
+    initial_impact_assessment = wave1.get("initial_impact_assessment")
+    history_review = wave1.get("history_review")
+    investigation_task = wave1.get("investigation_task")
+    root_cause = wave1.get("root_cause_conclusion")
+    impact_assessment = wave1.get("impact_assessment_batch_disposition")
+    correction_remedial = wave1.get("correction_remedial_action")
+    capa = wave1.get("capa")
+    capa_effectiveness_check_plan = wave1.get("capa_effectiveness_check_plan")
 
     # No confirmed structured data source yet for a genuine "batches
     # manufactured in the lookback window" count (all templates require it,
