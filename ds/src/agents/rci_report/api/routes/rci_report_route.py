@@ -157,6 +157,18 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
     if section_key == "impact_assessment_batch_disposition" and _blank(ctx.tw("impact_details")):
         missing.append("TrackWise field 'impact_details'")
 
+    # CAPA is a compile-what-was-already-decided task (see capa_system.txt),
+    # not a generative one — it has nothing to compile when the accepted CAPA
+    # proposal is genuinely empty (RC & CAPA Critique hasn't produced CAPA
+    # items, an overall summary, or even a not-applicable justification yet).
+    # Attempting generation anyway previously caused a hard Pydantic
+    # validation failure (CAPASection requires either capa_actions or
+    # capa_not_applicable_justification) rather than a clean skip.
+    if section_key == "capa":
+        accepted = ctx.accepted_capa
+        if not accepted.capa_items and _blank(accepted.capa_overall_text) and _blank(accepted.capa_not_applicable_justification):
+            missing.append("API field 'accepted_capa' (no CAPA items, overall text, or not-applicable justification)")
+
     return missing
 
 
@@ -179,9 +191,11 @@ def _section_should_skip(ctx: RciReportContext, section_key: str, missing: List[
     "NA" as a normal, expected answer when unsupported) — blank on its own
     should not block generation.
 
-    Correction & Remedial Action and Root Cause Conclusion are each built
-    from a single sole-source field with no partial middle ground and no
-    workflow/data distinction to draw — any missing value there stays fatal.
+    Correction & Remedial Action, Root Cause Conclusion, and CAPA are each
+    built from a single sole-source input (a TW field for the first, an
+    already-accepted API artifact for the other two) with no partial middle
+    ground and no workflow/data distinction to draw — any missing value there
+    stays fatal.
     """
     if not missing:
         return False
@@ -487,7 +501,6 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
             exclude_id=ctx.deviation_id,
         ),
         "investigation_task": _generate_investigation_task(llm, ctx),
-        "capa": _generate_capa(llm, ctx),
         "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
     }
     # Each of these has a specific TW/API field it's substantively built from
@@ -503,6 +516,7 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
         ("root_cause_conclusion", lambda: _generate_root_cause_conclusion(llm, ctx)),
         ("impact_assessment_batch_disposition", lambda: _generate_impact_assessment(llm, ctx)),
         ("correction_remedial_action", lambda: _generate_correction_remedial(llm, ctx)),
+        ("capa", lambda: _generate_capa(llm, ctx)),
     ):
         missing = _section_missing_deps(ctx, section_key)
         if _section_should_skip(ctx, section_key, missing):

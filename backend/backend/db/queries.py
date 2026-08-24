@@ -71,6 +71,7 @@ SELECT
     eq.instrument_equipment_id,
     di.investigator,
     r.rci_key AS rci_number,
+    d.department,
     f.due_date
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
@@ -80,6 +81,7 @@ LEFT JOIN dim_equipment eq ON eq.equipment_key = f.equipment_key
 LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
 LEFT JOIN dim_investigator di ON di.investigator_key = f.investigator_key
 LEFT JOIN dim_rci r ON r.rci_key = f.rci_key
+LEFT JOIN dim_department d ON d.department_key = f.department_key
 WHERE f.deviation_id = $1
 LIMIT 1
 """

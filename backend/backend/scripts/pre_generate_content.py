@@ -127,13 +127,15 @@ SELECT DISTINCT ON (f.deviation_id)
     b.batch_no, e.related_customer, e.originator, e.analyst_name,
     e.owner_name, e.observed_by, p.name_of_material,
     eq.instrument_equipment, eq.instrument_equipment_id,
-    e.root_cause_broad_category, e.root_cause_category, e.root_cause_sub_category
+    e.root_cause_broad_category, e.root_cause_category, e.root_cause_sub_category,
+    d.department
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
 LEFT JOIN dim_product p ON p.product_key = f.product_key
 LEFT JOIN dim_equipment eq ON eq.equipment_key = f.equipment_key
 LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
+LEFT JOIN dim_department d ON d.department_key = f.department_key
 WHERE f.closed_on IS NULL
 ORDER BY f.deviation_id, f.pg_updated_at_timestamp DESC NULLS LAST
 """
