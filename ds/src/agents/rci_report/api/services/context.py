@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional
 
 from src.agents.critique.api.schemas import CAPAItemDetail, TaskAssignmentItem
 from src.agents.rci_plan.schemas import RciSectionItem
@@ -9,6 +9,7 @@ from src.agents.rci_report.api.schemas.request import (
     RciReportGenerationRequest,
 )
 from src.agents.rci_report.api.services.text_cleaning import strip_audit_log_prefix
+from src.agents.shared.schemas import missing_required_trackwise_fields
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,11 @@ class RciReportContext:
     event_type: str
     deviation_id: Optional[str]
     trackwise_fields: Dict[str, Any]  # snake_case keys (by_alias=False), matches live DB column names
+    # Attribute names (from missing_required_trackwise_fields) of TW fields the
+    # request-level validator would previously have hard-rejected the whole
+    # request for — now surfaced so the route can skip only the section(s)
+    # that actually need them (see _SECTION_REQUIRED_TW_FIELDS).
+    missing_required_tw_fields: FrozenSet[str]
     rci_plan_sections: List[RciSectionItem]
     task_critique: List[TaskAssignmentItem]
     accepted_rc_conclusion: AcceptedRCConclusion
@@ -77,6 +83,13 @@ def build_report_context(request: RciReportGenerationRequest) -> RciReportContex
         event_type=request.event_type,
         deviation_id=request.deviation_id,
         trackwise_fields=request.trackwise_fields,
+        missing_required_tw_fields=frozenset(
+            missing_required_trackwise_fields(
+                event_type=request.event_type,
+                normalised_fields=request.trackwise_fields,
+                event_functionality="rci_report",
+            )
+        ),
         rci_plan_sections=request.rci_plan_sections,
         task_critique=request.task_critique,
         accepted_rc_conclusion=request.accepted_rc_conclusion,

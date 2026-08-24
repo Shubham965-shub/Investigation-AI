@@ -68,9 +68,13 @@ class RciReportGenerationRequest(BaseModel):
 
     @validator("trackwise_fields", pre=True)
     def _validate_trackwise_fields(cls, v, values):
+        # strict=False: a missing/blank required field must not block the whole
+        # report — generate_rci_report() attributes it to the specific
+        # section(s) that need it instead (see _SECTION_REQUIRED_TW_FIELDS).
         return validate_trackwise_fields(
             event_type=values.get("event_type", ""),
             event_functionality="rci_report",
             v=v,
             by_alias=False,
+            strict=False,
         )
