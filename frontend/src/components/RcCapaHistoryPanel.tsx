@@ -1,7 +1,7 @@
 import modalClose from "../assets/icons/modal-close.svg";
 import { BoldText } from "./BoldText";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
-import type { RcCapaReport } from "../api/dashboard";
+import type { RcCapaRecommendation, RcCapaReport } from "../api/dashboard";
 
 const CATEGORY_LABEL: Record<"rc_impact" | "capa", string> = {
   rc_impact: "RC Impact Assessment Critique",
@@ -13,6 +13,32 @@ const DECISION_LABEL: Record<"pending" | "accepted" | "rejected", string> = {
   accepted: "Accepted",
   rejected: "Rejected",
 };
+
+function RecommendationList({ recs }: { recs: RcCapaRecommendation[] }) {
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
+      {recs.map((rec) => (
+        <li key={rec.id} style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+          {rec.description}{" "}
+          <span
+            style={{
+              fontWeight: 600,
+              color:
+                rec.decision === "accepted"
+                  ? "var(--color-success-text)"
+                  : rec.decision === "rejected"
+                    ? "var(--color-danger-text)"
+                    : "var(--color-text-muted)",
+            }}
+          >
+            ({DECISION_LABEL[rec.decision]})
+          </span>
+          {rec.reason && ` — ${rec.reason}`}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 // Full audit trail across every RC & CAPA Critique attempt — unlike Task
 // Critique, investigation_rc_capa_reports already keeps a real row per
@@ -84,28 +110,29 @@ export function RcCapaHistoryPanel({ reports, loading, onClose }: { reports: RcC
                         <BoldText text={critique.summary} />
                       </p>
                     )}
-                    {critique.recommendations.length > 0 && (
-                      <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
-                        {critique.recommendations.map((rec) => (
-                          <li key={rec.id} style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-                            {rec.description}{" "}
-                            <span
-                              style={{
-                                fontWeight: 600,
-                                color:
-                                  rec.decision === "accepted"
-                                    ? "var(--color-success-text)"
-                                    : rec.decision === "rejected"
-                                      ? "var(--color-danger-text)"
-                                      : "var(--color-text-muted)",
-                              }}
-                            >
-                              ({DECISION_LABEL[rec.decision]})
-                            </span>
-                            {rec.reason && ` — ${rec.reason}`}
-                          </li>
-                        ))}
-                      </ul>
+                    {critique.category === "rc_impact" ? (
+                      (() => {
+                        const rootCauseRecs = critique.recommendations.filter((r) => r.type !== "impact");
+                        const impactRecs = critique.recommendations.filter((r) => r.type === "impact");
+                        return (
+                          <>
+                            {rootCauseRecs.length > 0 && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Root Cause</p>
+                                <RecommendationList recs={rootCauseRecs} />
+                              </div>
+                            )}
+                            {impactRecs.length > 0 && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Impact Assessment</p>
+                                <RecommendationList recs={impactRecs} />
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()
+                    ) : (
+                      critique.recommendations.length > 0 && <RecommendationList recs={critique.recommendations} />
                     )}
                   </div>
                 ))

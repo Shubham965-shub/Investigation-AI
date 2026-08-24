@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
+from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 
 from src.agents.capa_depth_effectiveness.api.services.capa_depth_effectiveness_service import (
     call_with_retry,
@@ -65,6 +66,136 @@ def _tw_summary(ctx: RciReportContext) -> str:
     return "\n".join(
         f"- {k}: {v}" for k, v in ctx.trackwise_fields.items() if v not in (None, "", [])
     ) or "(no non-empty trackwise fields)"
+
+
+# errors[] is keyed by these same field names (matching RciReportResponse) so
+# callers can match programmatically — this is purely for making the message
+# *text* self-describing, both for a section's own error and for naming a
+# failed/skipped section inside another section's dependency message.
+_SECTION_DISPLAY_NAMES: Dict[str, str] = {
+    "description_of_event": "Description of Event",
+    "initial_impact_assessment": "Initial Impact Assessment",
+    "history_review": "History Review",
+    "investigation_task": "Investigation Task",
+    "root_cause_conclusion": "Root Cause Conclusion",
+    "impact_assessment_batch_disposition": "Impact Assessment & Batch Disposition",
+    "risk_assessment": "Risk Assessment",
+    "correction_remedial_action": "Correction & Remedial Action",
+    "capa": "CAPA",
+    "capa_effectiveness_check_plan": "CAPA Effectiveness Check Plan",
+    "executive_summary": "Executive Summary",
+}
+
+
+def _display_name(section_key: str) -> str:
+    return _SECTION_DISPLAY_NAMES.get(section_key, section_key)
+
+
+# Union of every "required" attribute name across the Deviation/OOS/OOT/Market
+# Complaint trackwise schemas (see shared/schemas.py) — safe to over-list here
+# since ctx.missing_required_tw_fields is already scoped to only the fields
+# required by *this* record's actual event type; irrelevant names here just
+# never appear in that set. Description of Event and Initial Impact Assessment
+# are the only two sections built purely from the raw TW field dump
+# (_tw_summary) rather than an already-critiqued upstream artifact (RC & CAPA
+# Critique output, rci_plan_sections, task_critique) — every other section is
+# grounded in one of those instead, so a missing base TW field doesn't block
+# them the way it blocks these two.
+_DESCRIPTIVE_TW_FIELDS = {
+    # Deviation
+    "title", "batch_number_ar_number", "product_material_code", "product_material_name",
+    "deviation_to", "equipment_name", "description", "instrument_id_number",
+    "name_of_the_instrument", "observed_by", "deviation_number", "date_opened",
+    "observation_date", "observation_time", "failure_duration", "related_market",
+    "related_customer", "equipment_id", "equipment_number", "deviation_owner",
+    "originator", "impact_on_deviation_batches", "immediate_cause_known", "cause_detail",
+    # OOS/OOT
+    "laboratory_details", "specification_number", "stability_condition",
+    "stability_protocol_number", "labelled_storage_conditions", "product_type",
+    "stp_number", "stability_time_point",
+    # Market Complaint
+    "date_complaint_received", "complaint_reported_by", "reference_complaint_number",
+    "products_information", "dosage_form", "market", "product_manufacturing_info",
+}
+_SECTION_REQUIRED_TW_FIELDS: Dict[str, set] = {
+    "description_of_event": _DESCRIPTIVE_TW_FIELDS,
+    "initial_impact_assessment": _DESCRIPTIVE_TW_FIELDS,
+}
+
+
+def _blank(value: Any) -> bool:
+    return not str(value or "").strip()
+
+
+def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
+    """Human-readable descriptions of the specific TrackWise/API field(s) this
+    section is missing — always used to name what's missing in errors[]; for
+    section_keys with no entry in _SECTION_REQUIRED_TW_FIELDS this list is
+    also fully determinative of whether to skip (see _section_should_skip).
+    """
+    missing: List[str] = []
+
+    required_tw = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
+    if required_tw:
+        missing += [
+            f"TrackWise field '{name}'" for name in sorted(ctx.missing_required_tw_fields & required_tw)
+        ]
+
+    # These three aren't in a "required" TW schema (Correction/Remedial and
+    # Impact Details are Optional there — see shared/schemas.py — and Root
+    # Cause Conclusion's real input is the already-critiqued API field, not a
+    # TW one), but each is still the sole/primary content this section is
+    # built from, so a blank value here is just as fatal to the section as
+    # every relevant field being blank is to Description of Event.
+    if section_key == "correction_remedial_action" and _blank(ctx.tw("correction_or_remedial_action")):
+        missing.append("TrackWise field 'correction_or_remedial_action'")
+
+    if section_key in ("root_cause_conclusion", "impact_assessment_batch_disposition"):
+        if _blank(ctx.accepted_rc_conclusion.rc_conclusion_text):
+            missing.append("API field 'accepted_rc_conclusion.rc_conclusion_text'")
+
+    if section_key == "impact_assessment_batch_disposition" and _blank(ctx.tw("impact_details")):
+        missing.append("TrackWise field 'impact_details'")
+
+    return missing
+
+
+def _section_should_skip(ctx: RciReportContext, section_key: str, missing: List[str]) -> bool:
+    """Description of Event and Initial Impact Assessment are each built from
+    a broad set of ~30 TrackWise fields (_DESCRIPTIVE_TW_FIELDS) via
+    _tw_summary, which already omits blank fields from the prompt on its own
+    — so one blank required field (e.g. Market Complaint's
+    complaint_reported_by) shouldn't block the other ~20+ populated fields
+    from ever reaching the LLM. Only skip these two when EVERY relevant
+    required field is blank, i.e. there's truly nothing to ground the section
+    in.
+
+    Impact Assessment & Batch Disposition has two independent inputs, only
+    one of which is a genuine workflow gate: accepted_rc_conclusion.rc_conclusion_text
+    being blank means RC hasn't been accepted yet, so drafting a formal batch
+    disposition (release/hold/reject/rework) would be premature — that alone
+    stays fatal. impact_details is supplementary TW data like the ~30-field
+    sets above (its own prompt already treats most of its 12 subsections'
+    "NA" as a normal, expected answer when unsupported) — blank on its own
+    should not block generation.
+
+    Correction & Remedial Action and Root Cause Conclusion are each built
+    from a single sole-source field with no partial middle ground and no
+    workflow/data distinction to draw — any missing value there stays fatal.
+    """
+    if not missing:
+        return False
+
+    required_tw = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
+    if required_tw is not None:
+        relevant_required = ctx.required_tw_fields & required_tw
+        relevant_missing = ctx.missing_required_tw_fields & required_tw
+        return bool(relevant_required) and relevant_missing == relevant_required
+
+    if section_key == "impact_assessment_batch_disposition":
+        return _blank(ctx.accepted_rc_conclusion.rc_conclusion_text)
+
+    return True
 
 
 # ── Wave 1: 9 independent tasks — each grounded only in ctx ──────────────
@@ -154,7 +285,8 @@ async def _generate_impact_assessment(
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
         f"Accepted Root Cause Conclusion:\n{ctx.accepted_rc_conclusion.rc_conclusion_text}\n\n"
-        f"Cleaned Impact Details:\n{ctx.impact_details_text_clean}\n\n"
+        f"Cleaned Impact Details (may be blank — ground subsections in whatever other "
+        f"context below IS available if so):\n{ctx.impact_details_text_clean}\n\n"
         f"Medical/impact-related TrackWise fields (Market Complaint only, may be blank):\n"
         f"medical_investigation_summary={ctx.tw('medical_investigation_summary')}, "
         f"medical_impact_analysis={ctx.tw('medical_impact_analysis')}, "
@@ -274,24 +406,37 @@ async def _generate_risk_assessment(
 async def _generate_executive_summary(
     llm: LLMClient,
     ctx: RciReportContext,
-    description_of_event: DescriptionOfEventSection,
-    initial_impact_assessment: InitialImpactAssessmentSection,
-    investigation_task: InvestigationTaskSection,
-    root_cause: RootCauseConclusionSection,
-    impact_assessment: ImpactAssessmentBatchDispositionSection,
-    correction_remedial: CorrectionRemedialActionSection,
-    capa: CAPASection,
+    description_of_event: Optional[DescriptionOfEventSection],
+    initial_impact_assessment: Optional[InitialImpactAssessmentSection],
+    investigation_task: Optional[InvestigationTaskSection],
+    root_cause: Optional[RootCauseConclusionSection],
+    impact_assessment: Optional[ImpactAssessmentBatchDispositionSection],
+    correction_remedial: Optional[CorrectionRemedialActionSection],
+    capa: Optional[CAPASection],
 ) -> ExecutiveSummarySection:
-    user_prompt = (
-        f"Event Type: {ctx.event_type}\n\n"
-        f"Description of Event:\n{description_of_event.model_dump_json()}\n\n"
-        f"Initial Impact Assessment:\n{initial_impact_assessment.model_dump_json()}\n\n"
-        f"Investigation Task:\n{investigation_task.model_dump_json()}\n\n"
-        f"Root Cause Conclusion:\n{root_cause.model_dump_json()}\n\n"
-        f"Impact Assessment & Batch Disposition:\n{impact_assessment.model_dump_json()}\n\n"
-        f"Correction & Remedial Action:\n{correction_remedial.model_dump_json()}\n\n"
-        f"CAPA:\n{capa.model_dump_json()}"
-    )
+    sections = {
+        "Description of Event": description_of_event,
+        "Initial Impact Assessment": initial_impact_assessment,
+        "Investigation Task": investigation_task,
+        "Root Cause Conclusion": root_cause,
+        "Impact Assessment & Batch Disposition": impact_assessment,
+        "Correction & Remedial Action": correction_remedial,
+        "CAPA": capa,
+    }
+    missing_names = [name for name, value in sections.items() if value is None]
+
+    prompt_parts = [f"Event Type: {ctx.event_type}"]
+    prompt_parts += [
+        f"{name}:\n{value.model_dump_json()}" for name, value in sections.items() if value is not None
+    ]
+    if missing_names:
+        prompt_parts.append(
+            "The following sections were NOT available for this report and must be treated as "
+            "not-yet-determined, per the system prompt's rules for missing sections — do not imply "
+            "they are complete or fabricate their content: " + ", ".join(missing_names)
+        )
+    user_prompt = "\n\n".join(prompt_parts)
+
     return await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=executive_summary_system_prompt,
@@ -300,6 +445,24 @@ async def _generate_executive_summary(
         ),
         label="executive_summary",
     )
+
+
+async def _run_named(tasks: Dict[str, Awaitable]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    """Runs each named coroutine independently — one section's failure must not
+    discard the others' results (mirrors scoring_service.score_report)."""
+    keys = list(tasks.keys())
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    values: Dict[str, object] = {}
+    errors: Dict[str, str] = {}
+    for key, result in zip(keys, results):
+        if isinstance(result, BaseException):
+            logger.error("RCI report section '%s' failed to generate", key, exc_info=result)
+            values[key] = None
+            reason = str(result) or result.__class__.__name__
+            errors[key] = f"{_display_name(key)}: failed to generate — {reason}"
+        else:
+            values[key] = result
+    return values, errors
 
 
 @router.post(
@@ -312,69 +475,123 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     llm = LLMClient()
     pool = await get_db_pool()
 
-    try:
-        (
-            description_of_event,
-            initial_impact_assessment,
-            history_review,
-            investigation_task,
-            root_cause,
-            impact_assessment,
-            correction_remedial,
-            capa,
-            capa_effectiveness_check_plan,
-        ) = await asyncio.gather(
-            _generate_description_of_event(llm, ctx),
-            _generate_initial_impact_assessment(llm, ctx),
-            generate_history_review(
-                llm,
-                pool,
-                event_type=ctx.event_type,
-                search_query=ctx.tw("description") or ctx.event_type,
-                lookback_months=ctx.history_lookback_months,
-                narrative_system_prompt=history_review_narrative_system_prompt,
-                exclude_id=ctx.deviation_id,
-            ),
-            _generate_investigation_task(llm, ctx),
-            _generate_root_cause_conclusion(llm, ctx),
-            _generate_impact_assessment(llm, ctx),
-            _generate_correction_remedial(llm, ctx),
-            _generate_capa(llm, ctx),
-            _generate_capa_effectiveness_check_plan(llm, ctx),
-        )
+    errors: Dict[str, str] = {}
+    wave1_tasks: Dict[str, Awaitable] = {
+        "history_review": generate_history_review(
+            llm,
+            pool,
+            event_type=ctx.event_type,
+            search_query=ctx.tw("description") or ctx.event_type,
+            lookback_months=ctx.history_lookback_months,
+            narrative_system_prompt=history_review_narrative_system_prompt,
+            exclude_id=ctx.deviation_id,
+        ),
+        "investigation_task": _generate_investigation_task(llm, ctx),
+        "capa": _generate_capa(llm, ctx),
+        "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
+    }
+    # Each of these has a specific TW/API field it's substantively built from
+    # (see _section_missing_deps) — skip generating a section (rather than
+    # running it ungrounded) only when _section_should_skip says there's
+    # nothing left to ground it in, and name exactly which field(s) in
+    # errors[] instead of a generic failure message. Every other Wave-1
+    # section (above) has no single required field this way, so it always
+    # runs regardless of what's missing elsewhere.
+    for section_key, factory in (
+        ("description_of_event", lambda: _generate_description_of_event(llm, ctx)),
+        ("initial_impact_assessment", lambda: _generate_initial_impact_assessment(llm, ctx)),
+        ("root_cause_conclusion", lambda: _generate_root_cause_conclusion(llm, ctx)),
+        ("impact_assessment_batch_disposition", lambda: _generate_impact_assessment(llm, ctx)),
+        ("correction_remedial_action", lambda: _generate_correction_remedial(llm, ctx)),
+    ):
+        missing = _section_missing_deps(ctx, section_key)
+        if _section_should_skip(ctx, section_key, missing):
+            errors[section_key] = (
+                f"{_display_name(section_key)}: skipped — required field(s) missing or empty: "
+                f"{', '.join(missing)}"
+            )
+        else:
+            wave1_tasks[section_key] = factory()
 
-        # No confirmed structured data source yet for a genuine "batches
-        # manufactured in the lookback window" count (all templates require it,
-        # both real reports checked render it) — see GAPS.md. Sourced from
-        # manual_entries only until one is found.
+    wave1, wave1_errors = await _run_named(wave1_tasks)
+    errors.update(wave1_errors)
+
+    description_of_event = wave1.get("description_of_event")
+    initial_impact_assessment = wave1.get("initial_impact_assessment")
+    history_review = wave1.get("history_review")
+    investigation_task = wave1.get("investigation_task")
+    root_cause = wave1.get("root_cause_conclusion")
+    impact_assessment = wave1.get("impact_assessment_batch_disposition")
+    correction_remedial = wave1.get("correction_remedial_action")
+    capa = wave1.get("capa")
+    capa_effectiveness_check_plan = wave1.get("capa_effectiveness_check_plan")
+
+    # No confirmed structured data source yet for a genuine "batches
+    # manufactured in the lookback window" count (all templates require it,
+    # both real reports checked render it) — see GAPS.md. Sourced from
+    # manual_entries only until one is found.
+    if history_review is not None:
         batches_manufactured_note = ctx.manual_entries.get("batches_manufactured_in_lookback")
         if batches_manufactured_note:
             history_review = history_review.model_copy(
                 update={"batches_manufactured_note": batches_manufactured_note}
             )
 
-        risk_assessment, executive_summary = await asyncio.gather(
-            _generate_risk_assessment(llm, ctx, root_cause, impact_assessment, history_review),
-            _generate_executive_summary(
-                llm,
-                ctx,
-                description_of_event,
-                initial_impact_assessment,
-                investigation_task,
-                root_cause,
-                impact_assessment,
-                correction_remedial,
-                capa,
-            ),
+    # Wave 2 sections are grounded in specific Wave-1 results — if a section
+    # they need failed, running them would crash on None instead of producing
+    # a meaningful output, so they're marked failed-by-dependency and skipped.
+    wave2_tasks: Dict[str, Awaitable] = {}
+
+    risk_assessment_deps = {
+        "root_cause_conclusion": root_cause,
+        "impact_assessment_batch_disposition": impact_assessment,
+        "history_review": history_review,
+    }
+    missing = [name for name, value in risk_assessment_deps.items() if value is None]
+    if missing:
+        errors["risk_assessment"] = (
+            f"{_display_name('risk_assessment')}: skipped — dependent section(s) failed to generate: "
+            f"{', '.join(_display_name(name) for name in missing)}"
         )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("RCI report generation failed for event_type=%s", request.event_type)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate RCI report",
+    else:
+        wave2_tasks["risk_assessment"] = _generate_risk_assessment(
+            llm, ctx, root_cause, impact_assessment, history_review
         )
+
+    executive_summary_deps = {
+        "description_of_event": description_of_event,
+        "initial_impact_assessment": initial_impact_assessment,
+        "investigation_task": investigation_task,
+        "root_cause_conclusion": root_cause,
+        "impact_assessment_batch_disposition": impact_assessment,
+        "correction_remedial_action": correction_remedial,
+        "capa": capa,
+    }
+    missing = [name for name, value in executive_summary_deps.items() if value is None]
+    if len(missing) == len(executive_summary_deps):
+        errors["executive_summary"] = (
+            f"{_display_name('executive_summary')}: skipped — no dependent section(s) generated"
+        )
+    else:
+        wave2_tasks["executive_summary"] = _generate_executive_summary(
+            llm,
+            ctx,
+            description_of_event,
+            initial_impact_assessment,
+            investigation_task,
+            root_cause,
+            impact_assessment,
+            correction_remedial,
+            capa,
+        )
+
+    risk_assessment = None
+    executive_summary = None
+    if wave2_tasks:
+        wave2, wave2_errors = await _run_named(wave2_tasks)
+        errors.update(wave2_errors)
+        risk_assessment = wave2.get("risk_assessment")
+        executive_summary = wave2.get("executive_summary")
 
     return RciReportResponse(
         event_type=request.event_type,
@@ -391,4 +608,5 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
         capa_effectiveness_check_plan=capa_effectiveness_check_plan,
         annexures=request.attachments or AnnexuresSection(),
         approval=request.approval_workflow or ApprovalSection(),
+        errors=errors,
     )

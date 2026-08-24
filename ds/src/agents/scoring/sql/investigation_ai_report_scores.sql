@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS public.investigation_ai_report_score_checkpoint (
     id              bigserial PRIMARY KEY,
     run_id          uuid NOT NULL REFERENCES public.investigation_ai_report_score(id) ON DELETE CASCADE,
     section         text NOT NULL,              -- task_report | rc | impact | capa
-    checkpoint_id   text NOT NULL,              -- e.g. '3.1a', '1', '7.2'
+    checkpoint_id   text NOT NULL,              -- e.g. '6.1a', '1', '7.2'
     sub_criteria    text,
     checkpoint_text text,
     max_marks       numeric,

@@ -390,35 +390,46 @@ class ArchetypeInfo(BaseModel):
     reasoning: Optional[str] = Field(None)
 
 
+def _resolve_trackwise_schema(event_type: str, event_functionality: Optional[str] = None):
+    event_type_lower = event_type.lower().strip()
+
+    if event_type_lower == "deviation":
+        if event_functionality == "rci_report":
+            return RciReportDeviationTrackwiseFields
+        elif event_functionality == "rci_plan":
+            return ExtendedDeviationTrackwiseFields
+        return DeviationTrackwiseFields
+    elif event_type_lower in ["oos", "oot", "oos/oot"]:
+        return RciReportOOSTrackwiseFields if event_functionality == "rci_report" else OOSTrackwiseFields
+    elif event_type_lower == "market complaint":
+        return (
+            RciReportMarketComplaintTrackwiseFields
+            if event_functionality == "rci_report"
+            else MarketComplaintTrackwiseFields
+        )
+    raise ValueError(
+        f"Invalid event_type: {event_type}. "
+        "Must be one of: Deviation, OOS, OOT, OOS/OOT, Market Complaint"
+    )
+
+
 def validate_trackwise_fields(
     event_type: str,
     v: Dict[str, Any],
     event_functionality: Optional[str] = None,
     by_alias: bool = False,
+    strict: bool = True,
 ) -> Dict[str, Any]:
-    """Validate and normalise trackwise fields for the given event type."""
-    event_type_lower = event_type.lower().strip()
+    """Validate and normalise trackwise fields for the given event type.
 
-    if event_type_lower == "deviation":
-        if event_functionality == "rci_report":
-            schema = RciReportDeviationTrackwiseFields
-        elif event_functionality == "rci_plan":
-            schema = ExtendedDeviationTrackwiseFields
-        else:
-            schema = DeviationTrackwiseFields
-    elif event_type_lower in ["oos", "oot", "oos/oot"]:
-        schema = RciReportOOSTrackwiseFields if event_functionality == "rci_report" else OOSTrackwiseFields
-    elif event_type_lower == "market complaint":
-        schema = (
-            RciReportMarketComplaintTrackwiseFields
-            if event_functionality == "rci_report"
-            else MarketComplaintTrackwiseFields
-        )
-    else:
-        raise ValueError(
-            f"Invalid event_type: {event_type}. "
-            "Must be one of: Deviation, OOS, OOT, OOS/OOT, Market Complaint"
-        )
+    strict=False tolerates missing/blank required fields instead of raising —
+    they're filled with "" so the model still constructs, and the normalised
+    dict is returned as usual. Genuinely malformed fields (wrong type) still
+    raise either way. Callers that want to know which required fields ended
+    up missing/blank should check missing_required_trackwise_fields() against
+    the returned dict.
+    """
+    schema = _resolve_trackwise_schema(event_type, event_functionality)
 
     empty_fields = [
         field.alias or name
@@ -432,8 +443,16 @@ def validate_trackwise_fields(
         field = schema.model_fields.get(loc_key)
         return field.alias or loc_key if field else loc_key
 
+    patched = v
+    if not strict:
+        patched = dict(v)
+        for name, field in schema.model_fields.items():
+            alias = field.alias or name
+            if field.is_required() and alias not in patched:
+                patched[alias] = ""
+
     try:
-        validated = schema(**v)
+        validated = schema(**patched)
         result = validated.dict(by_alias=by_alias)
     except ValidationError as e:
         missing_fields = [
@@ -455,9 +474,37 @@ def validate_trackwise_fields(
     except Exception as e:
         raise ValueError(f"Invalid trackwise fields for {event_type}: {e}")
 
-    if empty_fields:
+    if empty_fields and strict:
         raise ValueError(
             f"Invalid trackwise fields for {event_type}: "
             f"empty fields: {', '.join(empty_fields)}"
         )
     return result
+
+
+def missing_required_trackwise_fields(
+    event_type: str,
+    normalised_fields: Dict[str, Any],
+    event_functionality: Optional[str] = None,
+) -> List[str]:
+    """Given the dict validate_trackwise_fields(..., by_alias=False) returned,
+    lists which required fields (by attribute name) are still blank — for
+    strict=False callers to attribute missing data to specific fields.
+    """
+    schema = _resolve_trackwise_schema(event_type, event_functionality)
+    return sorted(
+        name
+        for name, field in schema.model_fields.items()
+        if field.is_required() and not str(normalised_fields.get(name, "")).strip()
+    )
+
+
+def required_trackwise_fields(event_type: str, event_functionality: Optional[str] = None) -> List[str]:
+    """Every required field name (by attribute name) for this event type's
+    schema, populated or not — the total universe missing_required_trackwise_fields
+    draws its "missing" subset from. Callers that need to distinguish "some
+    required fields are blank" from "every relevant required field is blank"
+    (rather than treating any single blank field as fatal) compare against this.
+    """
+    schema = _resolve_trackwise_schema(event_type, event_functionality)
+    return sorted(name for name, field in schema.model_fields.items() if field.is_required())
