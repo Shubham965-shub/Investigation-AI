@@ -281,7 +281,10 @@ export function TaskCritiquePage() {
                         </div>
                         <div style={{ textAlign: "center" }}>
                           <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                            Task Score <ScoreBreakdownTooltip tables={section.latest_report!.score_breakdown} />
+                            Task Score{" "}
+                            <ScoreBreakdownTooltip
+                              tables={section.latest_report!.score_breakdown.filter((t) => t.section === "task_report")}
+                            />
                           </p>
                           <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{section.latest_report!.task_score}%</p>
                         </div>

@@ -13,7 +13,7 @@ class CheckpointVerdict(BaseModel):
     """One judgment the LLM returns per rubric checkpoint. No marks — the LLM
     never computes scores; it only judges."""
 
-    id: str = Field(..., description="Rubric checkpoint id, e.g. '3.1a' or '1'")
+    id: str = Field(..., description="Rubric checkpoint id, e.g. '6.1a' or '1'")
     verdict: str = Field(
         ...,
         description="Binary checkpoints: 'Yes' | 'No' | 'NA'. "

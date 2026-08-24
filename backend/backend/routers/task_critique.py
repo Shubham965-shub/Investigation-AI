@@ -90,7 +90,11 @@ async def _score_task_report(
         # same as a scoring failure rather than letting it raise unhandled.
         logger.warning("Task report scoring returned a malformed response for %s", filename, exc_info=True)
         return None, [], True
-    info = data.get("info") or []
+    # Task Score is the task_report_execution rubric only — DS's /score/report
+    # also returns rc/impact/capa tables when it detects them in the same
+    # document (they belong to the separate RC & CAPA Critique score), so they
+    # must not leak into this task's score_breakdown.
+    info = [table for table in (data.get("info") or []) if table.get("section") == "task_report"]
     if not task_report_execution:
         # DS responded successfully but didn't detect a Task Report section in
         # this document (e.g. only an RC/Impact/CAPA section was found) — this
