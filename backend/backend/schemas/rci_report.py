@@ -330,10 +330,6 @@ class RciReportRecord(BaseModel):
     trackwise_fields: Dict[str, Any]
     report: Optional[RciReportSections] = None
     generated_at: Optional[datetime.datetime] = None
-    # True once RC & CAPA Critique's report is locked/complete — generation
-    # needs its accepted RC conclusion + CAPA proposal as real, decided
-    # input, not a half-decided one.
-    can_generate: bool = False
     # Only relevant for event_type == "Market Complaint" — gates Risk
     # Assessment on ds's side (None -> ds defaults to "applicable").
     mc_confirmed: Optional[bool] = None
