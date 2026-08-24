@@ -252,7 +252,10 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
     await save_critiques(
         report_id,
-        rc_recommendations=rc_conclusion["recommendations"],
+        # DS splits these by subject matter (rc_conclusion_system.txt), but the DB/UI still
+        # model "RC Impact Assessment Critique" as one combined category (2026-08-24), so they're
+        # merged back into a single list here.
+        rc_recommendations=rc_conclusion["rc_recommendations"] + rc_conclusion["impact_recommendations"],
         rc_summary=rc_conclusion["rc_conclusion_text"],
         capa_recommendations=capa["recommendations"],
         capa_summary=capa["capa_text"],
