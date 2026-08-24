@@ -14,8 +14,8 @@ const RC_RULES: { label: string; text: string }[] = [
     text: "The root cause evaluation should consider the history of similar events — prior deviations, investigations, and their previously identified root causes.",
   },
   {
-    label: "CAPA Adequacy and Effectiveness Linkage:",
-    text: "The root cause should be actionable and directly addressable by the proposed CAPA, and prior CAPA effectiveness should be evaluated.",
+    label: "Root Cause and Impact Linkage:",
+    text: 'The assessed impact on affected batches, other/marketed batches, and area/process/equipment should be a direct, logical consequence of the established root cause, justified by rationale and evidence rather than a generic "no impact" statement.',
   },
 ];
 

@@ -365,6 +365,11 @@ export function getTaskCritiqueHistory(recordId: string, taskIndex: number): Pro
 export interface RcCapaRecommendation {
   id: number;
   description: string;
+  // Only set for rc_impact category recommendations — "rc" (evidence/
+  // traceability/history) vs "impact" (impact linkage), rendered as two
+  // separate subsections. null for capa recommendations, and for any
+  // rc_impact recommendation saved before this field existed.
+  type: "rc" | "impact" | null;
   decision: "pending" | "accepted" | "rejected";
   reason: string | null;
 }
@@ -939,7 +944,6 @@ export interface RciReportRecordResponse {
   trackwise_fields: TrackwiseFields;
   report: RciReportSections | null;
   generated_at: string | null;
-  can_generate: boolean;
   mc_confirmed: boolean | null;
   manual_entries: Record<string, string>;
 }

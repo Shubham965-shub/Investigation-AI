@@ -530,7 +530,6 @@ export function RciReportPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
 
-  const [canGenerate, setCanGenerate] = useState(false);
   const [report, setReport] = useState<RciReportSections | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
 
@@ -554,7 +553,6 @@ export function RciReportPage() {
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
         if (reportRecord) {
-          setCanGenerate(reportRecord.can_generate);
           setReport(reportRecord.report);
           setGeneratedAt(reportRecord.generated_at);
         }
@@ -718,13 +716,7 @@ export function RciReportPage() {
         </span>
       </div>
 
-      {!canGenerate && (
-        <div className="empty-state">
-          <p>RC &amp; CAPA Critique must be locked/complete before the RCI Report can be generated.</p>
-        </div>
-      )}
-
-      {canGenerate && !report && (
+      {!report && (
         <div className="card" style={{ gap: 12 }}>
           <p className="card-title">Generate RCI Report</p>
           {generateError && <p className="error-banner">{generateError}</p>}

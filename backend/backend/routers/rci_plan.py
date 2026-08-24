@@ -59,14 +59,34 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
     data = await ds_post("/rci/plan", json=request.model_dump())
     response = RciPlanGenerateResponse(**data)
 
+    # TCD defaults to generation day + 5 working days (per the user,
+    # 2026-08-22) — still editable per-section afterward, this just saves the
+    # investigator from having to set every section's TCD by hand. Set on the
+    # response itself (not just the persisted rows below) so the frontend
+    # shows it immediately after generating, without needing a reload.
+    default_due_date = _add_working_days(datetime.datetime.now(datetime.timezone.utc).date(), 5).isoformat()
+
+    # Assignee defaults to whoever's already assigned as this investigation's
+    # investigator (per the user, 2026-08-24) — same "prefill, still editable"
+    # treatment as due_date above, so a case with a real investigator doesn't
+    # start every section on "Unassigned" for no reason. None (left blank)
+    # when the investigation has no investigator assigned yet.
+    default_assignee = None
+    try:
+        row = await fetch_investigation_row(int(record_id))
+        if row:
+            default_assignee = row["investigator"]
+    except ValueError:
+        pass
+
+    for section in response.sections:
+        section.due_date = default_due_date
+        section.assignee = default_assignee
+
     # Persisting is best-effort — a DB/table issue must never break generation
     # itself, especially before generated_content.sql has been run anywhere.
     try:
         deviation_id = int(record_id)
-        # TCD defaults to generation day + 5 working days (per the user,
-        # 2026-08-22) — still editable per-section afterward, this just saves
-        # the investigator from having to set every section's TCD by hand.
-        default_due_date = _add_working_days(datetime.datetime.now(datetime.timezone.utc).date(), 5).isoformat()
         await replace_rci_sections(
             deviation_id,
             [
@@ -74,7 +94,7 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
                     "title": section.title,
                     "correlation": section.correlation,
                     "due_date": default_due_date,
-                    "assignee": None,
+                    "assignee": default_assignee,
                     "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
                 }
                 for section in response.sections
