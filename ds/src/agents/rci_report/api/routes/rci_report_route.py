@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Awaitable, Dict, List, Tuple
+from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter
 
@@ -129,9 +129,9 @@ def _blank(value: Any) -> bool:
 
 def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
     """Human-readable descriptions of the specific TrackWise/API field(s) this
-    section needs but are blank — used both to decide whether to skip
-    generating the section, and to name exactly what's missing in errors[]
-    rather than a generic failure message.
+    section is missing — always used to name what's missing in errors[]; for
+    section_keys with no entry in _SECTION_REQUIRED_TW_FIELDS this list is
+    also fully determinative of whether to skip (see _section_should_skip).
     """
     missing: List[str] = []
 
@@ -145,8 +145,8 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
     # Impact Details are Optional there — see shared/schemas.py — and Root
     # Cause Conclusion's real input is the already-critiqued API field, not a
     # TW one), but each is still the sole/primary content this section is
-    # built from, so a blank value here is just as fatal to the section as a
-    # missing schema-required field is to Description of Event.
+    # built from, so a blank value here is just as fatal to the section as
+    # every relevant field being blank is to Description of Event.
     if section_key == "correction_remedial_action" and _blank(ctx.tw("correction_or_remedial_action")):
         missing.append("TrackWise field 'correction_or_remedial_action'")
 
@@ -158,6 +158,44 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
         missing.append("TrackWise field 'impact_details'")
 
     return missing
+
+
+def _section_should_skip(ctx: RciReportContext, section_key: str, missing: List[str]) -> bool:
+    """Description of Event and Initial Impact Assessment are each built from
+    a broad set of ~30 TrackWise fields (_DESCRIPTIVE_TW_FIELDS) via
+    _tw_summary, which already omits blank fields from the prompt on its own
+    — so one blank required field (e.g. Market Complaint's
+    complaint_reported_by) shouldn't block the other ~20+ populated fields
+    from ever reaching the LLM. Only skip these two when EVERY relevant
+    required field is blank, i.e. there's truly nothing to ground the section
+    in.
+
+    Impact Assessment & Batch Disposition has two independent inputs, only
+    one of which is a genuine workflow gate: accepted_rc_conclusion.rc_conclusion_text
+    being blank means RC hasn't been accepted yet, so drafting a formal batch
+    disposition (release/hold/reject/rework) would be premature — that alone
+    stays fatal. impact_details is supplementary TW data like the ~30-field
+    sets above (its own prompt already treats most of its 12 subsections'
+    "NA" as a normal, expected answer when unsupported) — blank on its own
+    should not block generation.
+
+    Correction & Remedial Action and Root Cause Conclusion are each built
+    from a single sole-source field with no partial middle ground and no
+    workflow/data distinction to draw — any missing value there stays fatal.
+    """
+    if not missing:
+        return False
+
+    required_tw = _SECTION_REQUIRED_TW_FIELDS.get(section_key)
+    if required_tw is not None:
+        relevant_required = ctx.required_tw_fields & required_tw
+        relevant_missing = ctx.missing_required_tw_fields & required_tw
+        return bool(relevant_required) and relevant_missing == relevant_required
+
+    if section_key == "impact_assessment_batch_disposition":
+        return _blank(ctx.accepted_rc_conclusion.rc_conclusion_text)
+
+    return True
 
 
 # ── Wave 1: 9 independent tasks — each grounded only in ctx ──────────────
@@ -247,7 +285,8 @@ async def _generate_impact_assessment(
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
         f"Accepted Root Cause Conclusion:\n{ctx.accepted_rc_conclusion.rc_conclusion_text}\n\n"
-        f"Cleaned Impact Details:\n{ctx.impact_details_text_clean}\n\n"
+        f"Cleaned Impact Details (may be blank — ground subsections in whatever other "
+        f"context below IS available if so):\n{ctx.impact_details_text_clean}\n\n"
         f"Medical/impact-related TrackWise fields (Market Complaint only, may be blank):\n"
         f"medical_investigation_summary={ctx.tw('medical_investigation_summary')}, "
         f"medical_impact_analysis={ctx.tw('medical_impact_analysis')}, "
@@ -367,24 +406,37 @@ async def _generate_risk_assessment(
 async def _generate_executive_summary(
     llm: LLMClient,
     ctx: RciReportContext,
-    description_of_event: DescriptionOfEventSection,
-    initial_impact_assessment: InitialImpactAssessmentSection,
-    investigation_task: InvestigationTaskSection,
-    root_cause: RootCauseConclusionSection,
-    impact_assessment: ImpactAssessmentBatchDispositionSection,
-    correction_remedial: CorrectionRemedialActionSection,
-    capa: CAPASection,
+    description_of_event: Optional[DescriptionOfEventSection],
+    initial_impact_assessment: Optional[InitialImpactAssessmentSection],
+    investigation_task: Optional[InvestigationTaskSection],
+    root_cause: Optional[RootCauseConclusionSection],
+    impact_assessment: Optional[ImpactAssessmentBatchDispositionSection],
+    correction_remedial: Optional[CorrectionRemedialActionSection],
+    capa: Optional[CAPASection],
 ) -> ExecutiveSummarySection:
-    user_prompt = (
-        f"Event Type: {ctx.event_type}\n\n"
-        f"Description of Event:\n{description_of_event.model_dump_json()}\n\n"
-        f"Initial Impact Assessment:\n{initial_impact_assessment.model_dump_json()}\n\n"
-        f"Investigation Task:\n{investigation_task.model_dump_json()}\n\n"
-        f"Root Cause Conclusion:\n{root_cause.model_dump_json()}\n\n"
-        f"Impact Assessment & Batch Disposition:\n{impact_assessment.model_dump_json()}\n\n"
-        f"Correction & Remedial Action:\n{correction_remedial.model_dump_json()}\n\n"
-        f"CAPA:\n{capa.model_dump_json()}"
-    )
+    sections = {
+        "Description of Event": description_of_event,
+        "Initial Impact Assessment": initial_impact_assessment,
+        "Investigation Task": investigation_task,
+        "Root Cause Conclusion": root_cause,
+        "Impact Assessment & Batch Disposition": impact_assessment,
+        "Correction & Remedial Action": correction_remedial,
+        "CAPA": capa,
+    }
+    missing_names = [name for name, value in sections.items() if value is None]
+
+    prompt_parts = [f"Event Type: {ctx.event_type}"]
+    prompt_parts += [
+        f"{name}:\n{value.model_dump_json()}" for name, value in sections.items() if value is not None
+    ]
+    if missing_names:
+        prompt_parts.append(
+            "The following sections were NOT available for this report and must be treated as "
+            "not-yet-determined, per the system prompt's rules for missing sections — do not imply "
+            "they are complete or fabricate their content: " + ", ".join(missing_names)
+        )
+    user_prompt = "\n\n".join(prompt_parts)
+
     return await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=executive_summary_system_prompt,
@@ -440,10 +492,11 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     }
     # Each of these has a specific TW/API field it's substantively built from
     # (see _section_missing_deps) — skip generating a section (rather than
-    # running it ungrounded) when its own field(s) are missing, and name
-    # exactly which field(s) in errors[] instead of a generic failure message.
-    # Every other Wave-1 section (above) has no single required field this
-    # way, so it always runs regardless of what's missing elsewhere.
+    # running it ungrounded) only when _section_should_skip says there's
+    # nothing left to ground it in, and name exactly which field(s) in
+    # errors[] instead of a generic failure message. Every other Wave-1
+    # section (above) has no single required field this way, so it always
+    # runs regardless of what's missing elsewhere.
     for section_key, factory in (
         ("description_of_event", lambda: _generate_description_of_event(llm, ctx)),
         ("initial_impact_assessment", lambda: _generate_initial_impact_assessment(llm, ctx)),
@@ -452,7 +505,7 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
         ("correction_remedial_action", lambda: _generate_correction_remedial(llm, ctx)),
     ):
         missing = _section_missing_deps(ctx, section_key)
-        if missing:
+        if _section_should_skip(ctx, section_key, missing):
             errors[section_key] = (
                 f"{_display_name(section_key)}: skipped — required field(s) missing or empty: "
                 f"{', '.join(missing)}"
@@ -515,10 +568,9 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
         "capa": capa,
     }
     missing = [name for name, value in executive_summary_deps.items() if value is None]
-    if missing:
+    if len(missing) == len(executive_summary_deps):
         errors["executive_summary"] = (
-            f"{_display_name('executive_summary')}: skipped — dependent section(s) failed to generate: "
-            f"{', '.join(_display_name(name) for name in missing)}"
+            f"{_display_name('executive_summary')}: skipped — no dependent section(s) generated"
         )
     else:
         wave2_tasks["executive_summary"] = _generate_executive_summary(

@@ -9,7 +9,7 @@ from src.agents.rci_report.api.schemas.request import (
     RciReportGenerationRequest,
 )
 from src.agents.rci_report.api.services.text_cleaning import strip_audit_log_prefix
-from src.agents.shared.schemas import missing_required_trackwise_fields
+from src.agents.shared.schemas import missing_required_trackwise_fields, required_trackwise_fields
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,11 @@ class RciReportContext:
     # request for — now surfaced so the route can skip only the section(s)
     # that actually need them (see _SECTION_REQUIRED_TW_FIELDS).
     missing_required_tw_fields: FrozenSet[str]
+    # Total required-field universe (populated or not) for this event type —
+    # lets callers tell "some required fields blank" apart from "every
+    # relevant required field blank" instead of treating any single blank
+    # field as fatal to a section (see _tw_gate_should_skip).
+    required_tw_fields: FrozenSet[str]
     rci_plan_sections: List[RciSectionItem]
     task_critique: List[TaskAssignmentItem]
     accepted_rc_conclusion: AcceptedRCConclusion
@@ -89,6 +94,9 @@ def build_report_context(request: RciReportGenerationRequest) -> RciReportContex
                 normalised_fields=request.trackwise_fields,
                 event_functionality="rci_report",
             )
+        ),
+        required_tw_fields=frozenset(
+            required_trackwise_fields(event_type=request.event_type, event_functionality="rci_report")
         ),
         rci_plan_sections=request.rci_plan_sections,
         task_critique=request.task_critique,
