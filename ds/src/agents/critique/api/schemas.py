@@ -124,10 +124,15 @@ class RCConclusionCritiqueResponse(BaseModel):
     # model's echo), then condensed to 3-4 plain-language sentences by a separate LLM pass
     # (condense_summary.txt) that's forbidden from adding any fact not already in that text.
     rc_conclusion_text: str
-    # Declared before `recommendations` so structured-output generation reasons through each
-    # previously accepted item, with cited evidence, before writing the final list.
+    # Declared before the recommendation lists so structured-output generation reasons through
+    # each previously accepted item, with cited evidence, before writing the final lists.
     previous_recommendation_checks: List[PreviousRecommendationCheck] = []
-    recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
+    # Split by subject matter (2026-08-24, per the user): checks 1-3 (evidence, traceability,
+    # history) land in rc_recommendations; check 4 (impact linkage) lands in
+    # impact_recommendations — lets the UI render them as separate subsections under the one
+    # RC Impact Assessment Critique panel.
+    rc_recommendations: List[str]
+    impact_recommendations: List[str]
 
 
 # ---------- CAPA Critique ----------
