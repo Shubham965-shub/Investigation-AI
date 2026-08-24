@@ -142,7 +142,7 @@ async def _build_state(record_id: str, deviation_id: int, row: Any = None) -> Rc
         latest_report=state["latest"],
         sit_review_status=sit_review_status,
         investigator=row["investigator"] if row else None,
-        due_date=row["due_date"].strftime("%d %b %Y") if row and row["due_date"] else None,
+        due_date=row["due_date"].strftime("%d/%m/%Y") if row and row["due_date"] else None,
     )
 
 

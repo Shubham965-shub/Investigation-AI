@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import docx
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from backend.schemas.rci_plan import RciSectionItem
 
@@ -69,7 +70,16 @@ MAX_SIGN_OFF_OWNERS = 4
 
 
 def _set_cell_text(cell, text: str) -> None:
+    """`cell.text = ...` (python-docx) replaces the cell with a brand-new run
+    that has no explicit font set, silently inheriting the template's theme
+    default (Aptos/Calibri-like) instead of the Times New Roman every other
+    static label in this template uses (2026-08-23, per the user: "the table
+    contents are in calbiri font, theres also font discepancies") — force it
+    on every run this creates."""
     cell.text = text or ""
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.name = "Times New Roman"
 
 
 def _format_ddmmyyyy(iso: Optional[str]) -> str:
@@ -98,15 +108,30 @@ def _set_description_paragraph(doc, text: str) -> None:
         first = cell.paragraphs[0]
         if first.runs:
             first.runs[0].text = text
+            first.runs[0].font.name = "Times New Roman"
             for run in first.runs[1:]:
                 run.text = ""
         else:
-            first.add_run(text)
+            first.add_run(text).font.name = "Times New Roman"
         for para in cell.paragraphs[1:]:
             for run in para.runs:
                 run.text = ""
     else:
-        cell.text = text
+        _set_cell_text(cell, text)
+
+
+def _set_problem_statement_label(doc) -> None:
+    """Labels the box directly above the description paragraph (outer row 3,
+    same 1+5 gridSpan shape as row 4's description cell) as "Problem
+    Statement" — the template otherwise gives no indication of what that
+    box holds (2026-08-23, per the user)."""
+    outer = doc.tables[0]
+    cell = outer.rows[3].cells[1]
+    _set_cell_text(cell, "Problem Statement")
+    for paragraph in cell.paragraphs:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in paragraph.runs:
+            run.font.bold = True
 
 
 def build_rci_plan_docx(
@@ -147,6 +172,7 @@ def build_rci_plan_docx(
     _set_cell_text(value_row.cells[3], datetime.date.today().strftime("%d/%m/%Y"))
     # Row 3 intentionally left blank — manual entry, not auto-filled.
 
+    _set_problem_statement_label(doc)
     _set_description_paragraph(doc, trackwise_fields.get("description") or trackwise_fields.get("title") or "")
 
     # ── 2.0 Investigation tasks ─────────────────────────────────────────

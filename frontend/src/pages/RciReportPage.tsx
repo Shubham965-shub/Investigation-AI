@@ -529,6 +529,7 @@ export function RciReportPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
+  const [rciNumber, setRciNumber] = useState<string | null>(null);
 
   const [report, setReport] = useState<RciReportSections | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
@@ -555,6 +556,8 @@ export function RciReportPage() {
         if (reportRecord) {
           setReport(reportRecord.report);
           setGeneratedAt(reportRecord.generated_at);
+          const rci = reportRecord.trackwise_fields?.["RCI Number"];
+          setRciNumber((Array.isArray(rci) ? rci.join(", ") : rci) || null);
         }
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
@@ -668,13 +671,7 @@ export function RciReportPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="card-header">
-        <div>
-          <p className="card-title" style={{ marginBottom: 4 }}>RCI Investigation Report</p>
-          <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-            Comprehensive summary of the investigation process and findings.
-          </p>
-        </div>
+      <div className="card-header" style={{ justifyContent: "flex-end" }}>
         <button
           type="button"
           className="btn-primary"
@@ -700,7 +697,7 @@ export function RciReportPage() {
         <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.85 }}>
           Root Cause Investigation Report
         </p>
-        <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>Record Details — RCI Record-{recordId}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-lg)", fontWeight: 700 }}>Record Details — RCI Record-{rciNumber ?? recordId}</p>
         <span
           style={{
             alignSelf: "flex-start",

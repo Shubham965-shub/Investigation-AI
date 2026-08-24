@@ -3,6 +3,8 @@ import { StatusChart } from "../components/StatusChart";
 import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FilterSelect } from "../components/FilterSelect";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { CriticalityGuidelines } from "../components/CriticalityGuidelines";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
@@ -484,6 +486,7 @@ export function ActionCenterPage() {
                   Major & Minor
                 </button>
               </div>
+              <CriticalityGuidelines />
             </div>
             <p>{summary.total_investigations} investigations total</p>
           </div>
@@ -591,6 +594,15 @@ export function ActionCenterPage() {
                     style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
                   >
                     {col.label}
+                    {col.key === "due_date" && (
+                      <span style={{ marginLeft: 4, display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+                        <InfoTooltip label="How the due date is calculated">
+                          <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
+                            Due date is 30 days from the start date for Deviation, OOS, and OOT events, and 55 days from the start date for Market Complaints.
+                          </p>
+                        </InfoTooltip>
+                      </span>
+                    )}
                     {sortColumn === col.key && (
                       <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
                     )}
