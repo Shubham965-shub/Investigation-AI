@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
+from typing import Awaitable, Dict, Tuple
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 
 from src.agents.capa_depth_effectiveness.api.services.capa_depth_effectiveness_service import (
     call_with_retry,
@@ -302,6 +303,23 @@ async def _generate_executive_summary(
     )
 
 
+async def _run_named(tasks: Dict[str, Awaitable]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    """Runs each named coroutine independently — one section's failure must not
+    discard the others' results (mirrors scoring_service.score_report)."""
+    keys = list(tasks.keys())
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    values: Dict[str, object] = {}
+    errors: Dict[str, str] = {}
+    for key, result in zip(keys, results):
+        if isinstance(result, BaseException):
+            logger.error("RCI report section '%s' failed to generate", key, exc_info=result)
+            values[key] = None
+            errors[key] = str(result) or result.__class__.__name__
+        else:
+            values[key] = result
+    return values, errors
+
+
 @router.post(
     "/generate",
     response_model=RciReportResponse,
@@ -312,21 +330,11 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
     llm = LLMClient()
     pool = await get_db_pool()
 
-    try:
-        (
-            description_of_event,
-            initial_impact_assessment,
-            history_review,
-            investigation_task,
-            root_cause,
-            impact_assessment,
-            correction_remedial,
-            capa,
-            capa_effectiveness_check_plan,
-        ) = await asyncio.gather(
-            _generate_description_of_event(llm, ctx),
-            _generate_initial_impact_assessment(llm, ctx),
-            generate_history_review(
+    wave1, errors = await _run_named(
+        {
+            "description_of_event": _generate_description_of_event(llm, ctx),
+            "initial_impact_assessment": _generate_initial_impact_assessment(llm, ctx),
+            "history_review": generate_history_review(
                 llm,
                 pool,
                 event_type=ctx.event_type,
@@ -335,46 +343,85 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
                 narrative_system_prompt=history_review_narrative_system_prompt,
                 exclude_id=ctx.deviation_id,
             ),
-            _generate_investigation_task(llm, ctx),
-            _generate_root_cause_conclusion(llm, ctx),
-            _generate_impact_assessment(llm, ctx),
-            _generate_correction_remedial(llm, ctx),
-            _generate_capa(llm, ctx),
-            _generate_capa_effectiveness_check_plan(llm, ctx),
-        )
+            "investigation_task": _generate_investigation_task(llm, ctx),
+            "root_cause_conclusion": _generate_root_cause_conclusion(llm, ctx),
+            "impact_assessment_batch_disposition": _generate_impact_assessment(llm, ctx),
+            "correction_remedial_action": _generate_correction_remedial(llm, ctx),
+            "capa": _generate_capa(llm, ctx),
+            "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),
+        }
+    )
+    description_of_event = wave1["description_of_event"]
+    initial_impact_assessment = wave1["initial_impact_assessment"]
+    history_review = wave1["history_review"]
+    investigation_task = wave1["investigation_task"]
+    root_cause = wave1["root_cause_conclusion"]
+    impact_assessment = wave1["impact_assessment_batch_disposition"]
+    correction_remedial = wave1["correction_remedial_action"]
+    capa = wave1["capa"]
+    capa_effectiveness_check_plan = wave1["capa_effectiveness_check_plan"]
 
-        # No confirmed structured data source yet for a genuine "batches
-        # manufactured in the lookback window" count (all templates require it,
-        # both real reports checked render it) — see GAPS.md. Sourced from
-        # manual_entries only until one is found.
+    # No confirmed structured data source yet for a genuine "batches
+    # manufactured in the lookback window" count (all templates require it,
+    # both real reports checked render it) — see GAPS.md. Sourced from
+    # manual_entries only until one is found.
+    if history_review is not None:
         batches_manufactured_note = ctx.manual_entries.get("batches_manufactured_in_lookback")
         if batches_manufactured_note:
             history_review = history_review.model_copy(
                 update={"batches_manufactured_note": batches_manufactured_note}
             )
 
-        risk_assessment, executive_summary = await asyncio.gather(
-            _generate_risk_assessment(llm, ctx, root_cause, impact_assessment, history_review),
-            _generate_executive_summary(
-                llm,
-                ctx,
-                description_of_event,
-                initial_impact_assessment,
-                investigation_task,
-                root_cause,
-                impact_assessment,
-                correction_remedial,
-                capa,
-            ),
+    # Wave 2 sections are grounded in specific Wave-1 results — if a section
+    # they need failed, running them would crash on None instead of producing
+    # a meaningful output, so they're marked failed-by-dependency and skipped.
+    wave2_tasks: Dict[str, Awaitable] = {}
+
+    risk_assessment_deps = {
+        "root_cause_conclusion": root_cause,
+        "impact_assessment_batch_disposition": impact_assessment,
+        "history_review": history_review,
+    }
+    missing = [name for name, value in risk_assessment_deps.items() if value is None]
+    if missing:
+        errors["risk_assessment"] = f"skipped: dependent section(s) failed to generate: {', '.join(missing)}"
+    else:
+        wave2_tasks["risk_assessment"] = _generate_risk_assessment(
+            llm, ctx, root_cause, impact_assessment, history_review
         )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("RCI report generation failed for event_type=%s", request.event_type)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate RCI report",
+
+    executive_summary_deps = {
+        "description_of_event": description_of_event,
+        "initial_impact_assessment": initial_impact_assessment,
+        "investigation_task": investigation_task,
+        "root_cause_conclusion": root_cause,
+        "impact_assessment_batch_disposition": impact_assessment,
+        "correction_remedial_action": correction_remedial,
+        "capa": capa,
+    }
+    missing = [name for name, value in executive_summary_deps.items() if value is None]
+    if missing:
+        errors["executive_summary"] = f"skipped: dependent section(s) failed to generate: {', '.join(missing)}"
+    else:
+        wave2_tasks["executive_summary"] = _generate_executive_summary(
+            llm,
+            ctx,
+            description_of_event,
+            initial_impact_assessment,
+            investigation_task,
+            root_cause,
+            impact_assessment,
+            correction_remedial,
+            capa,
         )
+
+    risk_assessment = None
+    executive_summary = None
+    if wave2_tasks:
+        wave2, wave2_errors = await _run_named(wave2_tasks)
+        errors.update(wave2_errors)
+        risk_assessment = wave2.get("risk_assessment")
+        executive_summary = wave2.get("executive_summary")
 
     return RciReportResponse(
         event_type=request.event_type,
@@ -391,4 +438,5 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
         capa_effectiveness_check_plan=capa_effectiveness_check_plan,
         annexures=request.attachments or AnnexuresSection(),
         approval=request.approval_workflow or ApprovalSection(),
+        errors=errors,
     )
