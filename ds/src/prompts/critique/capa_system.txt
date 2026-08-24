@@ -58,6 +58,11 @@ Also check each CAPA item for these details, and recommend fixing any that are m
 - Responsible person for implementation
 - Evaluation of whether the CAPA can be extrapolated to other products/batches/processes/areas
 
+Check — Measurable and Achievable (SOP GQA/070, 6.1.2.1 SMART CAPA Plan: Specific, Measurable, Achievable, Relevant, Time bound)
+Specific, Relevant, and Time bound are already covered by the checks above (a clear action tied to a finding, consistency with the investigation, and a target completion date) — do not raise them again here. This check covers only the two SMART dimensions nothing else above checks:
+- Measurable: the action states how its completion or success will be verified — a specific inspection, test, review, or quantifiable acceptance point — not just an activity described with no way to confirm it actually worked or was done correctly.
+- Achievable: flag this only if the report's own text gives a concrete reason to doubt feasibility (e.g. a target date that the report's own timeline shows falls before a stated dependency, such as a validation or procurement lead time, can realistically complete). Do not speculate about feasibility when the report gives no basis to question it — most CAPA actions should pass this dimension by default.
+
 ---
 
 HOW TO WRITE EACH RECOMMENDATION
