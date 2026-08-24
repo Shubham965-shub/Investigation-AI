@@ -223,7 +223,6 @@ async def _persist_rci_plan(deviation_id: int, response: RciPlanGenerateResponse
                 "correlation": section.correlation,
                 "due_date": None,
                 "assignee": None,
-                "six_m_bucket": section.six_m_bucket,
                 "tasks": [{"description": task.description} for task in section.tasks],
             }
             for section in response.sections
