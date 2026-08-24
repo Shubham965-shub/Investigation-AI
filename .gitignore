@@ -1,3 +1,6 @@
 # Deploy rollback snapshots (contain resource state, keep local)
 deploy/.qa-rollback-*.json
 .creds.DS_Store
+
+# Workspace
+InvestigationAI.code-workspace

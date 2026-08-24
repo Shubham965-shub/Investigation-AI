@@ -12,6 +12,8 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import { TaskCritiqueGuidelines } from "../components/TaskCritiqueGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { scoreGrade } from "../utils/scoreGrade";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -35,6 +37,7 @@ export function TaskCritiquePage() {
   const [sourceDocUploading, setSourceDocUploading] = useState(false);
   const [busyTaskIndex, setBusyTaskIndex] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<Record<number, string>>({});
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
   useEffect(() => {
     if (!recordId) return;
@@ -119,6 +122,15 @@ export function TaskCritiquePage() {
   async function handleUpload(taskIndex: number, file: File) {
     setBusyTaskIndex(taskIndex);
     setUploadError((prev) => ({ ...prev, [taskIndex]: "" }));
+    // Predicted client-side from the state as of this click — a gospel
+    // upload or the 3rd/final attempt both lock and get scored synchronously
+    // as part of this same request (2026-08-18, per the user).
+    const section = sections?.find((s) => s.task_index === taskIndex);
+    if (section?.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (section && section.upload_count + 1 >= section.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
       if (updated.locked) {
@@ -127,6 +139,7 @@ export function TaskCritiquePage() {
         // detail page.
         setSections((prev) => (prev ? prev.map((s) => (s.task_index === taskIndex ? updated : s)) : prev));
         setBusyTaskIndex(null);
+        setScoring(null);
       } else {
         navigate(`/records/${recordId}/task-critique/${taskIndex}`);
       }
@@ -136,6 +149,7 @@ export function TaskCritiquePage() {
         [taskIndex]: err instanceof ApiError ? String(err.detail) : "Failed to upload report",
       }));
       setBusyTaskIndex(null);
+      setScoring(null);
     }
   }
 
@@ -160,7 +174,7 @@ export function TaskCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">Task Critique History <TaskCritiqueGuidelines /></p>
+        <p className="card-title">Task Critique <TaskCritiqueGuidelines /></p>
         <button
           type="button"
           className="btn-primary"
@@ -188,15 +202,17 @@ export function TaskCritiquePage() {
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                       {index + 1}. {section.title}
                     </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-                      ({section.task_count} {section.task_count === 1 ? "task" : "tasks"})
-                    </span>
                   </div>
                   {section.correlation && (
                     <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
                   )}
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <span className={`status-pill ${section.status}`}>{STATUS_LABEL[section.status]}</span>
+                    {section.upload_count > 0 && (
+                      <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+                        Attempt {section.upload_count} of {section.max_uploads}
+                      </span>
+                    )}
                     {section.latest_report && (
                       <>
                         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, boxSizing: "border-box" }}>
@@ -211,7 +227,7 @@ export function TaskCritiquePage() {
                       <span
                         className="error-badge"
                         title={uploadError[section.task_index]}
-                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}
+                        style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       >
                         ⚠ {uploadError[section.task_index]}
                       </span>
@@ -231,44 +247,47 @@ export function TaskCritiquePage() {
                   {section.can_upload && (
                     <FileDropzone compact disabled={busy} loading={busy} label="Upload Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
                   )}
-                  {hasScore && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        padding: "16px 24px",
-                        borderRadius: 6,
-                        background: "var(--color-success-bg)",
-                        border: "1px solid var(--color-success-text)",
-                      }}
-                    >
+                  {hasScore && (() => {
+                    const grade = scoreGrade(section.latest_report!.task_score!);
+                    return (
                       <div
                         style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: "50%",
-                          border: "1.5px solid var(--color-success-text)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          flexShrink: 0,
+                          gap: 8,
+                          padding: "16px 24px",
+                          borderRadius: 6,
+                          background: grade.bg,
+                          border: `1px solid ${grade.border}`,
                         }}
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-success-text)" }}>
-                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "50%",
+                            border: `1.5px solid ${grade.border}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: grade.text }}>
+                            <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                        <div style={{ textAlign: "center" }}>
+                          <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                            Task Score <ScoreBreakdownTooltip tables={section.latest_report!.score_breakdown} />
+                          </p>
+                          <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{section.latest_report!.task_score}%</p>
+                        </div>
                       </div>
-                      <div style={{ textAlign: "center" }}>
-                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                          Task Score <ScoreBreakdownTooltip tables={section.latest_report!.score_breakdown} />
-                        </p>
-                        <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{section.latest_report!.task_score}%</p>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -283,6 +302,8 @@ export function TaskCritiquePage() {
           );
         })}
       </div>
+
+      {scoring && <ScoringDialog reason={scoring} />}
     </div>
   );
 }

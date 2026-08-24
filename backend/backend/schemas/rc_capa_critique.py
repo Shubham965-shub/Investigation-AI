@@ -66,6 +66,12 @@ class RcCapaState(BaseModel):
     # external SIT review integration yet, so this only ever reaches
     # 'pending' for now (see db/schema.sql's investigation_rc_capa_sit_reviews).
     sit_review_status: Optional[Literal["pending"]] = None
+    # Investigation-level fields (not per-report) for the completion screen's
+    # info badges — sourced from db/queries.py's fetch_investigation_row,
+    # same real dim_investigator/fact_qms_event.due_date columns Action
+    # Center already surfaces.
+    investigator: Optional[str] = None
+    due_date: Optional[str] = None
 
 
 class RecommendationDecisionRequest(BaseModel):

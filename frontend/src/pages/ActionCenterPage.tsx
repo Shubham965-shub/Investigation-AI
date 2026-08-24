@@ -33,12 +33,49 @@ const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
   overdue: "overdue",
 };
 
+// Status cards use hyphenated keys ("on-track") while each investigation
+// row's own bucket field uses underscores ("on_track") — see
+// action_center.py's _bucket_for/_OPEN_STATUS_TO_BUCKET vs its status-card
+// building. Needed to filter the table by clicking a card (2026-08-19, per
+// the user, same click-to-filter UX as the event-type pills below).
+const CARD_KEY_TO_BUCKET: Record<string, string> = {
+  unassigned: "unassigned",
+  "on-track": "on_track",
+  delay: "delay",
+  overdue: "overdue",
+};
+
 // Real backend bucket -> the table/grid status-pill styling + label.
 const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   unassigned: { status: "unassigned", label: "Unassigned" },
-  delay: { status: "due-soon", label: "Due Soon" },
+  delay: { status: "due-soon", label: "At Risk of Delay" },
   on_track: { status: "in-progress", label: "In Progress" },
   overdue: { status: "overdue", label: "Overdue" },
+};
+
+// dim_event.escalation_level ("L1".."L5", or "Not Applicable"/null for most
+// rows) -> the same tone as the status bucket it corresponds to (per the
+// user): L1/L2 = on-track, L3/L4 = at-risk-of-delay, L5 = overdue.
+const ESCALATION_TONE: Record<string, "success" | "warning" | "danger"> = {
+  L1: "success",
+  L2: "success",
+  L3: "warning",
+  L4: "warning",
+  L5: "danger",
+};
+
+// Default table order (before the user picks a column to sort by): most
+// overdue first (2026-08-21, per the user). Sorting by bucket rather than
+// raw due_date, since open_investigation_status is Trackwise's own opaque
+// determination — not always strictly derivable from due_date alone (see
+// project memory on overdue/delay/on-track logic) — so an explicit bucket
+// isn't guaranteed to line up with a plain due_date sort. Within the same
+// bucket, earliest due date (most overdue, or soonest due) sorts first.
+const DEFAULT_SORT_BUCKET_PRIORITY: Record<string, number> = {
+  overdue: 0,
+  delay: 1,
+  on_track: 2,
+  unassigned: 3,
 };
 
 
@@ -111,10 +148,10 @@ function compareForSort(a: string | number | null, b: string | number | null, di
 // action_center_roles for the business-rule placeholders this endpoint
 // encodes (status buckets, pending actions, progress chart).
 
-function renderStatusCard(card: StatusCardResponse) {
+function renderStatusCard(card: StatusCardResponse, active: boolean, onClick: () => void) {
   const cssClass = CARD_KEY_TO_CSS_CLASS[card.key] ?? "unassigned";
   return (
-    <div className={`ac-status-card ${cssClass}`} key={card.key}>
+    <div className={`ac-status-card ${cssClass} ${active ? "active" : ""}`} key={card.key} onClick={onClick}>
       <div className="ac-status-card-header">
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src={STATUS_ICONS[cssClass]} alt="" width={18} height={18} />
@@ -149,23 +186,27 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 }
 
 export function ActionCenterPage() {
-  const { viewAsInvestigator } = useAuth();
+  const { username, viewAsInvestigator } = useAuth();
+  // Ajay Pathania's account is SIT (Site Inspection Team), not a generic
+  // admin (2026-08-18, per the user) — everyone else still defaults to
+  // "Admin View" when not viewing as a specific investigator.
+  const isSitAccount = username?.toLowerCase() === "pathania.ajay@strides.com";
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [previewInvestigation, setPreviewInvestigation] = useState<PreviewInvestigation | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  // Status-card click filter (2026-08-19, per the user) — same client-side
+  // toggle-filter UX as the event-type pills (activeFilter above), just
+  // scoped to a card's bucket instead of an event type.
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
   const [siteFilter, setSiteFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [investigatorFilter, setInvestigatorFilter] = useState("");
-  // Preset day-count ("7"/"30"/"180") rather than a raw date-range picker —
-  // matches the simple dropdown pattern the rest of this page uses. Computed
-  // into an actual "start_date_from" date at fetch time.
-  const [startPreset, setStartPreset] = useState("");
   // Default view excludes cancelled investigations entirely (2026-08-13, per
   // the user) — toggled on via a button rather than mixed into the normal
   // list.
@@ -186,21 +227,34 @@ export function ActionCenterPage() {
     setInvestigatorFilter(viewAsInvestigator ?? "");
     setPage(1);
   }, [viewAsInvestigator]);
+  // Clears the Site filter back to "All Sites" on leaving investigator view
+  // — deliberately keyed only on viewAsInvestigator (not summary), so this
+  // never fires while the admin is browsing normally and picks their own
+  // site filter (which also triggers a summary refetch).
+  useEffect(() => {
+    if (!viewAsInvestigator) setSiteFilter("");
+  }, [viewAsInvestigator]);
+  // Once that investigator's data comes back, the Site filter reflects their
+  // real site instead of "All Sites" — the Investigator filter pill itself
+  // is hidden entirely while in this view (rendered further down), since
+  // picking a different investigator here would fight the header's own
+  // control (2026-08-21, per the user).
+  useEffect(() => {
+    if (!viewAsInvestigator || !summary) return;
+    const site = summary.investigations.find((inv) => inv.investigator === viewAsInvestigator)?.site;
+    if (site) setSiteFilter(site);
+  }, [viewAsInvestigator, summary]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setDbError(null);
-    const startDateFrom = startPreset
-      ? new Date(Date.now() - Number(startPreset) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      : undefined;
     getActionCenterSummary({
       site: siteFilter || undefined,
       department: deptFilter || undefined,
       product: productFilter || undefined,
       investigator: investigatorFilter || undefined,
-      startDateFrom,
       status: showCancelled ? "cancelled" : "open",
       criticality: (criticalityFilter as "critical" | "non_critical") || undefined,
     })
@@ -216,7 +270,7 @@ export function ActionCenterPage() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, startPreset, showCancelled, criticalityFilter]);
+  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, showCancelled, criticalityFilter]);
 
   // Only show the full-page skeleton on the very first load. Once we have a
   // summary, a filter-driven refetch just dims the existing content in place
@@ -240,6 +294,7 @@ export function ActionCenterPage() {
 
   const visibleInvestigations = summary.investigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
+    .filter((inv) => !statusFilter || inv.bucket === CARD_KEY_TO_BUCKET[statusFilter])
     .filter((inv) => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
@@ -254,13 +309,17 @@ export function ActionCenterPage() {
     ? [...visibleInvestigations].sort((a, b) =>
         compareForSort(getSortValue(a, sortColumn), getSortValue(b, sortColumn), sortDirection)
       )
-    : visibleInvestigations;
-  const rawStatusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
-  // Investigator view (2026-08-14, per the user) — once the table is scoped
-  // to one specific investigator (via the filter dropdown or the header's
-  // "view as" demo control), the Unassigned bucket card no longer applies,
-  // so only Overdue/Delay/On Track show.
-  const statusCards = investigatorFilter ? rawStatusCards.filter((c) => c.key !== "unassigned") : rawStatusCards;
+    : [...visibleInvestigations].sort((a, b) => {
+        const bucketDiff = (DEFAULT_SORT_BUCKET_PRIORITY[a.bucket] ?? 4) - (DEFAULT_SORT_BUCKET_PRIORITY[b.bucket] ?? 4);
+        if (bucketDiff !== 0) return bucketDiff;
+        return compareForSort(parseDisplayDateMs(a.due_date), parseDisplayDateMs(b.due_date), "asc");
+      });
+  // All 4 status cards always show, even when scoped to one investigator (via
+  // the filter dropdown or the header's "view as" demo control) who happens to
+  // have zero investigations in a given bucket — a zero count is still shown
+  // rather than the card disappearing (2026-08-21, per the user; previously
+  // "Unassigned" was hidden entirely for investigator views).
+  const statusCards = activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards;
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
   const totalPages = Math.max(1, Math.ceil(sortedInvestigations.length / PAGE_SIZE));
@@ -282,6 +341,11 @@ export function ActionCenterPage() {
     setPage(1);
   }
 
+  function setStatusCardFilter(key: string) {
+    setStatusFilter((prev) => (prev === key ? null : key));
+    setPage(1);
+  }
+
   function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
     return {
       id: inv.id,
@@ -299,11 +363,13 @@ export function ActionCenterPage() {
     <>
     <div className="ac-page-bg">
     <div className="ac-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
-      <h1 className="ac-title">Action Center</h1>
+      <h1 className="ac-title">
+        Action Center{viewAsInvestigator ? ` - Investigator View (${viewAsInvestigator})` : isSitAccount ? " - SIT View" : " - Admin View"}
+      </h1>
 
       <section className="ac-card">
         <div className="ac-total-header">
-          <h2>Total Investigations</h2>
+          <h2>Open Investigations</h2>
           <span className="ac-total-count">{summary.total_investigations}</span>
         </div>
         <div className="ac-stat-pills">
@@ -324,18 +390,19 @@ export function ActionCenterPage() {
       </section>
 
       <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
-        {statusCards.map(renderStatusCard)}
+        {statusCards.map((card) => renderStatusCard(card, statusFilter === card.key, () => setStatusCardFilter(card.key)))}
       </div>
 
+      {false && (
       <div>
         <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
         <div className="ac-pending-grid">
-            {summary.pending_actions.map((action) => {
+            {summary!.pending_actions.map((action) => {
               // Pending actions carry a summary shape (no investigator/stage)
               // — look up the matching full row from summary.investigations
               // (same source list backend-side) to build the same
               // PreviewInvestigation the table/grid rows use.
-              const fullInvestigation = summary.investigations.find((inv) => inv.id === action.id);
+              const fullInvestigation = summary!.investigations.find((inv) => inv.id === action.id);
               // Fixed two-row layout: row 1 = OOS, row 2 = Deviation (see
               // action_center.py) — explicit gridRow so the split stays
               // correct even when one side has fewer than 3 cards, rather
@@ -366,21 +433,58 @@ export function ActionCenterPage() {
                 </div>
               );
             })}
-            {summary.pending_actions.length === 0 && (
+            {summary!.pending_actions.length === 0 && (
               <p style={{ color: "var(--color-text-muted)" }}>No pending actions right now.</p>
             )}
           </div>
         </div>
+      )}
 
+      {false && (
       <div className="ac-card">
         <h2 className="ac-section-title" style={{ marginBottom: 16 }}>Status Of Open Investigations</h2>
         <StatusChart data={chartData} />
       </div>
+      )}
 
       <div className="ac-card">
         <div className="ac-details-header">
           <div className="ac-details-title-group">
-            <h2>Investigation Details</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h2>Investigation Details</h2>
+              <div className="ac-criticality-toggle">
+                <button
+                  type="button"
+                  className={criticalityFilter === "" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("");
+                    setPage(1);
+                  }}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={criticalityFilter === "critical" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("critical");
+                    setPage(1);
+                  }}
+                >
+                  Critical
+                </button>
+                <button
+                  type="button"
+                  className={criticalityFilter === "non_critical" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("non_critical");
+                    setPage(1);
+                  }}
+                >
+                  Major & Minor
+                </button>
+              </div>
+            </div>
             <p>{summary.total_investigations} investigations total</p>
           </div>
           <div className="ac-filters">
@@ -415,39 +519,19 @@ export function ActionCenterPage() {
               defaultLabel="Product"
               options={summary.filter_options.products}
             />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={investigatorFilter}
-              onChange={(v) => {
-                setInvestigatorFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="All Investigators"
-              options={summary.filter_options.investigators}
-              formatOption={formatInvestigatorLabel}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={startPreset}
-              onChange={(v) => {
-                setStartPreset(v);
-                setPage(1);
-              }}
-              defaultLabel="All Time (Start Date)"
-              options={["7", "30", "180"]}
-              formatOption={(v) => (v === "7" ? "Last week" : v === "30" ? "Last month" : "Last 6 months")}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={criticalityFilter}
-              onChange={(v) => {
-                setCriticalityFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="All Criticality"
-              options={["critical", "non_critical"]}
-              formatOption={(v) => (v === "critical" ? "Critical" : "Non-Critical")}
-            />
+            {!viewAsInvestigator && (
+              <FilterSelect
+                className="ac-filter-pill"
+                value={investigatorFilter}
+                onChange={(v) => {
+                  setInvestigatorFilter(v);
+                  setPage(1);
+                }}
+                defaultLabel="All Investigators"
+                options={summary.filter_options.investigators}
+                formatOption={formatInvestigatorLabel}
+              />
+            )}
             <button
               type="button"
               className={`ac-filter-pill${showCancelled ? " active" : ""}`}
@@ -544,8 +628,15 @@ export function ActionCenterPage() {
                     </td>
                     <td>{inv.start_date ?? "—"}</td>
                     <td>{inv.due_date ?? "—"}</td>
-                    <td>
-                      <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
+                    <td className="ac-status-cell">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>{statusInfo.label}</span>
+                        {inv.escalation_level && ESCALATION_TONE[inv.escalation_level] && (
+                          <span className={`escalation-bubble ${ESCALATION_TONE[inv.escalation_level]}`}>
+                            {inv.escalation_level}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <button

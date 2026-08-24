@@ -99,6 +99,11 @@
   border: 1px solid var(--color-card-border);
   background: var(--color-surface);
   overflow: hidden;
+  cursor: pointer;
+}
+
+.ac-status-card.active {
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .ac-status-card.unassigned { border-color: var(--color-card-border); background: var(--color-surface); }
@@ -234,6 +239,32 @@
   flex-wrap: wrap;
 }
 
+.ac-criticality-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-btn);
+  overflow: hidden;
+}
+
+.ac-criticality-toggle button {
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  padding: 5px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ac-criticality-toggle button + button {
+  border-left: 1px solid var(--color-card-border);
+}
+
+.ac-criticality-toggle button.active {
+  background: var(--color-primary);
+  color: #fafafa;
+}
+
 .ac-filter-pill {
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
@@ -346,6 +377,10 @@
   min-width: 140px;
 }
 
+.ac-status-cell {
+  min-width: 160px;
+}
+
 .ac-progress-top {
   display: flex;
   justify-content: space-between;
@@ -375,10 +410,28 @@
 }
 
 .status-pill.in-progress { color: var(--color-success-text); border-color: var(--color-success-text); }
-.status-pill.due-soon { color: var(--color-info-text); border-color: var(--color-info-text); }
+.status-pill.due-soon { color: var(--color-warning-text); border-color: var(--color-warning-text); }
 .status-pill.overdue { color: var(--color-danger-text); border-color: var(--color-danger-text); }
 .status-pill.unassigned { color: var(--color-text-muted); border-color: var(--color-text-muted); }
 .status-pill.cancelled { color: var(--color-danger-text); border-color: var(--color-danger-text); }
+
+/* Escalation-level bubble (L1-L5), shown next to the now-plain-text status —
+   filled, unlike .status-pill's outline, so the two read as distinct signals. */
+.escalation-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.escalation-bubble.success { background: var(--color-success-bg); color: var(--color-success-text); }
+.escalation-bubble.warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.escalation-bubble.danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
 
 .ac-inv-card-header {
   display: flex;

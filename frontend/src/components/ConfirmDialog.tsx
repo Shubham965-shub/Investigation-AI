@@ -11,7 +11,10 @@ export function ConfirmDialog({
   onConfirm,
 }: {
   title: string;
-  message: string;
+  // Optional (2026-08-21, per the user) — Evidence Collection/Interview
+  // Questionnaire's confirm dialogs no longer show a message, just the
+  // title; RCI Plan's still does.
+  message?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -50,7 +53,7 @@ export function ConfirmDialog({
         <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-hero)", lineHeight: 1.3, color: "var(--color-text)" }}>
           {title}
         </p>
-        <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", maxWidth: 420 }}>{message}</p>
+        {message && <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", maxWidth: 420 }}>{message}</p>}
 
         <div style={{ display: "flex", gap: 16, marginTop: 8, width: "100%", justifyContent: "center" }}>
           <button type="button" className="btn-outline" style={{ flex: "0 1 190px", padding: "12px 0", justifyContent: "center" }} onClick={onCancel}>

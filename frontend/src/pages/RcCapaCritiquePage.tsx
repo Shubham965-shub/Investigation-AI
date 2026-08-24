@@ -4,9 +4,11 @@ import {
   decideRcCapaRecommendation,
   getProblemStatementRecord,
   getRcCapaCritique,
+  getRcCapaHistory,
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
   type RcCapaCritique,
+  type RcCapaReport,
   type RcCapaState,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
@@ -16,6 +18,9 @@ import { FileDropzone } from "../components/FileDropzone";
 import { RcConclusionGuidelines, CapaProposalGuidelines } from "../components/RcCapaGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { BoldText } from "../components/BoldText";
+import { scoreGrade } from "../utils/scoreGrade";
+import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -50,6 +55,11 @@ export function RcCapaCritiquePage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [scoring, setScoring] = useState<ScoringReason | null>(null);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReports, setHistoryReports] = useState<RcCapaReport[]>([]);
 
   useEffect(() => {
     if (!recordId) return;
@@ -101,6 +111,14 @@ export function RcCapaCritiquePage() {
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadError(null);
+    // Predicted client-side from the state as of this click — a gospel
+    // upload or the 3rd/final attempt both lock and get scored synchronously
+    // as part of this same request (2026-08-18, per the user).
+    if (state!.next_upload_is_final) {
+      setScoring("gospel");
+    } else if (state!.upload_count + 1 >= state!.max_uploads) {
+      setScoring("final_attempt");
+    }
     try {
       const updated = await uploadRcCapaCritiqueReport(recordId!, file);
       setState(updated);
@@ -108,6 +126,7 @@ export function RcCapaCritiquePage() {
       setUploadError(err instanceof ApiError ? String(err.detail) : "Failed to critique the uploaded report");
     } finally {
       setUploading(false);
+      setScoring(null);
     }
   }
 
@@ -129,6 +148,15 @@ export function RcCapaCritiquePage() {
     if (!reason) return;
     setDecisionBusy(true);
     setDecisionError(null);
+    // Rejecting the LAST still-pending recommendation across BOTH categories
+    // (rc_impact + capa combined — see db/critique_state.py, which flattens
+    // them before applying its all-rejected rule), where every other one is
+    // already rejected too, immediately locks and scores this report.
+    // Predicted client-side from the state as of this click.
+    const allRecs = state!.latest_report!.critiques.flatMap((c) => c.recommendations);
+    if (allRecs.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
+      setScoring("all_decided");
+    }
     try {
       const updated = await decideRcCapaRecommendation(recordId!, recommendationId, "rejected", reason);
       setState(updated);
@@ -137,7 +165,16 @@ export function RcCapaCritiquePage() {
       setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
     } finally {
       setDecisionBusy(false);
+      setScoring(null);
     }
+  }
+
+  function handleOpenHistory() {
+    setShowHistory(true);
+    setHistoryLoading(true);
+    getRcCapaHistory(recordId!)
+      .then(setHistoryReports)
+      .finally(() => setHistoryLoading(false));
   }
 
   async function handlePushToSitReview() {
@@ -171,22 +208,27 @@ export function RcCapaCritiquePage() {
       )}
       <div className="card-header">
         <p className="card-title">RC & CAPA Critique</p>
-        {waitingForSitReview ? (
-          <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
-            Waiting for SIT Review
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button type="button" className="btn-outline" onClick={handleOpenHistory}>
+            Recommendation History
           </button>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
-            disabled={!isComplete || pushBusy}
-            onClick={() => setShowConfirm(true)}
-          >
-            <img src={exportIcon} alt="" width={16} height={16} />
-            Accept and Push for SIT Review
-          </button>
-        )}
+          {waitingForSitReview ? (
+            <button type="button" className="btn-outline" disabled style={{ cursor: "default" }}>
+              Waiting for SIT Review
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
+              disabled={!isComplete || pushBusy}
+              onClick={() => setShowConfirm(true)}
+            >
+              <img src={exportIcon} alt="" width={16} height={16} />
+              Accept and Push for SIT Review
+            </button>
+          )}
+        </div>
       </div>
 
       {pushError && <p className="error-banner">{pushError}</p>}
@@ -216,104 +258,119 @@ export function RcCapaCritiquePage() {
             </p>
           </div>
 
-          {report?.total_score != null && (
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 12,
-                padding: 16,
-                borderRadius: 8,
-                background: "var(--color-success-bg)",
-                border: "1px solid var(--color-success-text)",
-              }}
-            >
+          {report?.total_score != null && (() => {
+            const grade = scoreGrade(report.total_score);
+            return (
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border: "1.5px solid var(--color-success-text)",
+                  width: "100%",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  flexShrink: 0,
+                  gap: 12,
+                  padding: 16,
+                  borderRadius: 8,
+                  background: grade.bg,
+                  border: `1px solid ${grade.border}`,
                 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2">
-                  <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    border: `1.5px solid ${grade.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
+                    <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
+                  </p>
+                  <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{report.total_score}%</p>
+                </div>
               </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
-                </p>
-                <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>{report.total_score}%</p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {report && (report.rc_score != null || report.capa_score != null) && (
-            <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
               ]
                 .filter((s) => s.value != null)
-                .map((s) => (
-                  <div
-                    key={s.label}
-                    style={{
-                      flex: 1,
-                      minWidth: 200,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 12,
-                      padding: 13,
-                      borderRadius: 8,
-                      background: "var(--color-surface)",
-                      border: "1px solid var(--color-card-border)",
-                    }}
-                  >
+                .map((s) => {
+                  const grade = scoreGrade(s.value!);
+                  return (
                     <div
+                      key={s.label}
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        border: "1.5px solid var(--color-success-text)",
+                        width: "100%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        flexShrink: 0,
+                        gap: 12,
+                        padding: 13,
+                        borderRadius: 8,
+                        background: grade.bg,
+                        border: `1px solid ${grade.border}`,
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2">
-                        <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          border: `1.5px solid ${grade.border}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
+                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                          {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
+                        </p>
+                        <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: grade.text }}>{s.value}%</p>
+                      </div>
                     </div>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
-                      </p>
-                      <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>{s.value}%</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
-              Record: {recordId}
-            </span>
+            {state.due_date && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                TCD: {state.due_date}
+              </span>
+            )}
             {report && (
               <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
                 Completed: {new Date(report.uploaded_at).toLocaleDateString()}
+              </span>
+            )}
+            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+              Record: {recordId}
+            </span>
+            {state.investigator && (
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+                Investigator: {state.investigator}
               </span>
             )}
           </div>
@@ -337,7 +394,15 @@ export function RcCapaCritiquePage() {
               handleUpload(file);
             }}
           />
-          {uploadError && <p className="error-banner">{uploadError}</p>}
+          {uploadError && (
+            <p
+              className="error-banner"
+              title={uploadError}
+              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {uploadError}
+            </p>
+          )}
         </div>
       )}
 
@@ -446,6 +511,12 @@ export function RcCapaCritiquePage() {
           onCancel={() => setShowConfirm(false)}
           onConfirm={handlePushToSitReview}
         />
+      )}
+
+      {scoring && <ScoringDialog reason={scoring} />}
+
+      {showHistory && (
+        <RcCapaHistoryPanel reports={historyReports} loading={historyLoading} onClose={() => setShowHistory(false)} />
       )}
     </div>
   );

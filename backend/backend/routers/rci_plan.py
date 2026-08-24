@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -8,9 +9,9 @@ from fastapi.responses import Response
 from backend.clients.ds_client import ds_post, get_client
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
-from backend.db.generated_content_queries import fetch_rci_sections, replace_rci_sections
+from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections, replace_rci_sections
 from backend.db.module_stage import stage_for
-from backend.db.queries import fetch_all_investigators, fetch_investigation_row
+from backend.db.queries import fetch_investigation_row, fetch_open_investigators
 from backend.db.rci_plan_export_queries import insert_rci_plan_export
 from backend.db.task_critique_queries import any_task_critique_started
 from backend.routers.auth import get_current_username
@@ -30,8 +31,31 @@ _NOT_FOUND_DETAIL = "No RCI plan found for this investigation yet"
 router = APIRouter(prefix="/rci-plan", tags=["RCI Plan"])
 
 
+def _add_working_days(start: datetime.date, days: int) -> datetime.date:
+    """Skips Saturdays/Sundays — no holiday calendar tracked anywhere else in
+    this app, so weekends are the only exclusion."""
+    current = start
+    added = 0
+    while added < days:
+        current += datetime.timedelta(days=1)
+        if current.weekday() < 5:  # Monday=0 .. Friday=4
+            added += 1
+    return current
+
+
 @router.post("/{record_id}/generate", response_model=RciPlanGenerateResponse)
 async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> RciPlanGenerateResponse:
+    # Use the LLM-generated Problem Statement as the plan's "description"
+    # context instead of the raw TrackWise column (2026-08-18, per the user)
+    # — falls back to whatever was already in trackwise_fields if no problem
+    # statement has been generated yet for this investigation.
+    try:
+        problem_statement = await fetch_problem_statement(int(record_id))
+    except ValueError:
+        problem_statement = None
+    if problem_statement:
+        request.trackwise_fields["description"] = problem_statement
+
     data = await ds_post("/rci/plan", json=request.model_dump())
     response = RciPlanGenerateResponse(**data)
 
@@ -39,13 +63,17 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
     # itself, especially before generated_content.sql has been run anywhere.
     try:
         deviation_id = int(record_id)
+        # TCD defaults to generation day + 5 working days (per the user,
+        # 2026-08-22) — still editable per-section afterward, this just saves
+        # the investigator from having to set every section's TCD by hand.
+        default_due_date = _add_working_days(datetime.datetime.now(datetime.timezone.utc).date(), 5).isoformat()
         await replace_rci_sections(
             deviation_id,
             [
                 {
                     "title": section.title,
                     "correlation": section.correlation,
-                    "due_date": None,
+                    "due_date": default_due_date,
                     "assignee": None,
                     "six_m_bucket": section.six_m_bucket,
                     "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
@@ -142,6 +170,13 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
     extended = event_type == "Deviation"
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
+    # Same substitution as generate_rci_plan — the exported docx's "A
+    # description of what has happened" paragraph should show the
+    # LLM-generated Problem Statement, not the raw TrackWise description
+    # column (2026-08-18, per the user).
+    problem_statement = await fetch_problem_statement(deviation_id)
+    if problem_statement:
+        trackwise_fields["description"] = problem_statement
     sections = [RciSectionItem(**section) for section in persisted]
 
     docx_bytes, truncated, owners_truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
@@ -181,14 +216,15 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
 
 @router.get("/investigators", response_model=list[str])
-async def get_all_investigators() -> list[str]:
-    """Every real investigator who has ever appeared on any investigation —
-    populates the Investigator dropdown per section on the RCI Plan Creation
-    page (2026-08-13, per the user), replacing free text. Registered before
-    /{record_id} below — otherwise that catch-all route would shadow this one
-    (FastAPI matches by registration order; same class of bug fixed in ds's
-    critique routes earlier this session)."""
-    return await fetch_all_investigators()
+async def get_open_investigators() -> list[str]:
+    """Investigators currently assigned to an OPEN investigation only
+    (2026-08-19, per the user, re-scoping the prior 2026-08-13 all-time
+    list) — populates the Investigator dropdown per section on the RCI Plan
+    Creation page, replacing free text. Registered before /{record_id}
+    below — otherwise that catch-all route would shadow this one (FastAPI
+    matches by registration order; same class of bug fixed in ds's critique
+    routes earlier this session)."""
+    return await fetch_open_investigators()
 
 
 @router.get("/{record_id}", response_model=RciPlanRecord)
@@ -209,10 +245,18 @@ async def get_rci_plan(record_id: str) -> RciPlanRecord:
     # Deviation gets the extended field set only for rci-plan.
     extended = event_type == "Deviation"
     persisted = await fetch_rci_sections(deviation_id)
+    trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
+    # Same substitution as generate_rci_plan/export_rci_plan — this is what
+    # the frontend reads back as prefill and re-sends verbatim on a
+    # regenerate, so it needs the Problem Statement text too, not the raw
+    # TrackWise description column (2026-08-18, per the user).
+    problem_statement = await fetch_problem_statement(deviation_id)
+    if problem_statement:
+        trackwise_fields["description"] = problem_statement
     return RciPlanRecord(
         record_id=record_id,
         event_type=event_type,
-        trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=extended),
+        trackwise_fields=trackwise_fields,
         sections=[RciSectionItem(**section) for section in persisted] if persisted else None,
         stage=stage_for(row["status"]),
         locked_for_editing=await any_task_critique_started(deviation_id),

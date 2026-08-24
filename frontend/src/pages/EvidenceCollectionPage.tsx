@@ -20,6 +20,7 @@ import checkIcon from "../assets/icons/evidence-checkbox.svg";
 import viewListIcon from "../assets/icons/evidence-view-list.svg";
 import viewGridIcon from "../assets/icons/evidence-view-grid.svg";
 import addPlusIcon from "../assets/icons/evidence-add-plus.svg";
+import copyIcon from "../assets/icons/copy-icon.svg";
 import "./RecordModulePage.css";
 
 export function EvidenceCollectionPage() {
@@ -39,6 +40,7 @@ export function EvidenceCollectionPage() {
   const [saved, setSaved] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. Evidence Collection
@@ -161,13 +163,32 @@ export function EvidenceCollectionPage() {
     persistItems(newItems);
   }
 
-  function handleAgreeAndCopy() {
+  function handleAgreeAndNext() {
     setShowConfirm(false);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
       navigate(`/records/${recordId}/interview-questionnaire`);
     }, 1500);
+  }
+
+  function showCopied(index: number) {
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
+  }
+
+  function handleCopyItem(index: number, description: string) {
+    navigator.clipboard.writeText(description).then(() => {
+      if (copiedIndex === index) {
+        // Already showing "Copied" — flash back to "Copy" for a split second
+        // first, so re-clicking while already copied is visibly acknowledged
+        // instead of looking like the click did nothing.
+        setCopiedIndex(null);
+        setTimeout(() => showCopied(index), 150);
+      } else {
+        showCopied(index);
+      }
+    });
   }
 
   return (
@@ -181,7 +202,7 @@ export function EvidenceCollectionPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card-header">
-          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidence List</p>
+          <p className="card-title" style={{ fontWeight: 700 }}>Recommended Evidences To Be Collected</p>
           <div style={{ display: "flex", gap: 4, background: "var(--color-open-bg)", padding: 4, borderRadius: 10 }}>
             <button
               type="button"
@@ -200,6 +221,7 @@ export function EvidenceCollectionPage() {
           </div>
         </div>
         <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any of the evidence is not required in this investigation.</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating recommended evidence…</p>}
         {error && <p className="error-banner">{error}</p>}
@@ -218,6 +240,17 @@ export function EvidenceCollectionPage() {
                   {item.checked && <img src={checkIcon} alt="" width={12} height={12} />}
                 </button>
                 <span className="checklist-text">{item.description}</span>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  style={{ flexShrink: 0, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6 }}
+                  onClick={() => handleCopyItem(index, item.description)}
+                  aria-label={copiedIndex === index ? "Copied" : "Copy"}
+                  title={copiedIndex === index ? "Copied" : "Copy"}
+                >
+                  <img src={copyIcon} alt="" width={14} height={14} />
+                  {copiedIndex === index && "Copied"}
+                </button>
               </div>
             ))}
           </div>
@@ -230,7 +263,7 @@ export function EvidenceCollectionPage() {
           Add Evidence
         </button>
         <button type="button" className="btn-primary" onClick={() => setShowConfirm(true)}>
-          {saved ? "Saved" : "Agree & Copy"}
+          {saved ? "Saved" : "Agree and Next"}
         </button>
       </div>
 
@@ -248,9 +281,8 @@ export function EvidenceCollectionPage() {
       {showConfirm && (
         <ConfirmDialog
           title="Accept Evidence Collection?"
-          message="Are you sure you want to accept the Evidence Collection and lock it for this investigation?"
           onCancel={() => setShowConfirm(false)}
-          onConfirm={handleAgreeAndCopy}
+          onConfirm={handleAgreeAndNext}
         />
       )}
     </div>

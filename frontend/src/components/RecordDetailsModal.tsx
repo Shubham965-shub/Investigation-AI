@@ -2,9 +2,9 @@ import { useState } from "react";
 import modalClose from "../assets/icons/modal-close.svg";
 import recordDocIcon from "../assets/icons/modal-record-doc.svg";
 import chevronRight from "../assets/icons/modal-chevron-right.svg";
-import copyIcon from "../assets/icons/copy-icon.svg";
 import { ApiError } from "../api/client";
 import { getSimilarInvestigations, type SimilarInvestigation } from "../api/dashboard";
+import { getEventExplorerHandoffUrl } from "../api/auth";
 
 const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; color: string }> = {
   Open: { bg: "var(--color-info-bg)", color: "var(--color-info-text)" },
@@ -20,6 +20,7 @@ const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; c
 export function RecordDetailsModal({
   recordId,
   problemStatement,
+  lockedForEditing = false,
   onClose,
   onSaveEdit,
   onSaveAndNext,
@@ -27,6 +28,10 @@ export function RecordDetailsModal({
 }: {
   recordId: string;
   problemStatement: string;
+  // True once Evidence Collection has any real data — hides the "Edit
+  // Problem Statement" option, since the generated PS can no longer be
+  // edited at that point (2026-08-21, per the user).
+  lockedForEditing?: boolean;
   onClose: () => void;
   onSaveEdit: (newText: string) => void;
   onSaveAndNext: () => void;
@@ -38,9 +43,24 @@ export function RecordDetailsModal({
   const [historicData, setHistoricData] = useState<SimilarInvestigation[] | null>(null);
   const [historicLoading, setHistoricLoading] = useState(false);
   const [historicError, setHistoricError] = useState<string | null>(null);
+  const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
 
-  function handleCopy() {
-    navigator.clipboard.writeText(problemStatement);
+  function handleExploreEvents() {
+    setExploreEventsError(null);
+    // Opened synchronously on the click itself, before the async handoff
+    // call — a tab opened only after an awaited fetch resolves is not
+    // considered a direct result of the user gesture by most browsers and
+    // gets popup-blocked. Redirect this already-open tab once the token
+    // arrives instead.
+    const newTab = window.open("", "_blank");
+    getEventExplorerHandoffUrl()
+      .then(({ url }) => {
+        if (newTab) newTab.location.href = url;
+      })
+      .catch((err) => {
+        newTab?.close();
+        setExploreEventsError(err instanceof ApiError ? String(err.detail) : "Could not open Event Explorer.");
+      });
   }
 
   function handleToggleHistoric() {
@@ -126,10 +146,6 @@ export function RecordDetailsModal({
           <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 28 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Problem Statement</p>
-              <button type="button" onClick={handleCopy} className="btn-outline">
-                <img src={copyIcon} alt="" width={18} height={18} />
-                Copy
-              </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {isEditing ? (
@@ -155,25 +171,34 @@ export function RecordDetailsModal({
                     </button>
                   </>
                 ) : (
-                  <button type="button" onClick={handleEditClick} className="btn-secondary" style={{ background: "none" }}>
-                    Edit Problem Statement
-                  </button>
+                  !lockedForEditing && (
+                    <button type="button" onClick={handleEditClick} className="btn-secondary" style={{ background: "none" }}>
+                      Edit Problem Statement
+                    </button>
+                  )
                 )}
               </div>
             </div>
           </div>
 
+          {false && (
           <div>
-            <button type="button" onClick={handleToggleHistoric} className="btn-outline">
-              View Historic Data
-              <img
-                src={chevronRight}
-                alt=""
-                width={20}
-                height={20}
-                style={{ transform: historicExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 150ms ease" }}
-              />
-            </button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button type="button" onClick={handleToggleHistoric} className="btn-outline">
+                View Historic Data
+                <img
+                  src={chevronRight}
+                  alt=""
+                  width={20}
+                  height={20}
+                  style={{ transform: historicExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 150ms ease" }}
+                />
+              </button>
+              <button type="button" onClick={handleExploreEvents} className="btn-outline">
+                Explore Events
+              </button>
+            </div>
+            {exploreEventsError && <p style={{ margin: "8px 0 0", color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
 
             {historicExpanded && (
               <div
@@ -189,7 +214,7 @@ export function RecordDetailsModal({
               >
                 {historicLoading && <p style={{ margin: 0, color: "var(--color-text-muted)" }}>Loading similar investigations…</p>}
                 {historicError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{historicError}</p>}
-                {!historicLoading && !historicError && historicData !== null && historicData.length === 0 && (
+                {!historicLoading && !historicError && historicData !== null && historicData!.length === 0 && (
                   <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No similar historic investigations found.</p>
                 )}
                 {!historicLoading &&
@@ -232,6 +257,7 @@ export function RecordDetailsModal({
               </div>
             )}
           </div>
+          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="button" onClick={onSaveAndNext} className="btn-primary">

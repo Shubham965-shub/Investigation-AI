@@ -36,6 +36,7 @@ SELECT
     e.impact_on_deviation_batches,
     e.impact_details,
     e.proposal_for_resolution,
+    e.correction_or_remedial_action,
     e.market,
     e.related_market,
     e.laboratory_details,
@@ -69,7 +70,8 @@ SELECT
     eq.instrument_equipment,
     eq.instrument_equipment_id,
     di.investigator,
-    r.rci_key AS rci_number
+    r.rci_key AS rci_number,
+    f.due_date
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
@@ -121,23 +123,28 @@ async def fetch_investigation_statuses(deviation_ids: List[int]) -> Dict[int, st
         return {r["deviation_id"]: r["status"] for r in status_rows}
 
 
-# Every investigator who has ever appeared on any investigation, open or
-# closed or cancelled — not scoped to "active" (2026-08-13, per the user,
-# revising the initial "active investigations only" scope). Joined through
-# fact_qms_event (not a bare SELECT DISTINCT investigator FROM dim_investigator)
-# so this only ever returns investigators actually referenced by a real
-# investigation, not any unused/orphaned dim_investigator row.
-_ALL_INVESTIGATORS_QUERY = """
+# Only investigators currently assigned to an OPEN investigation (2026-08-19,
+# per the user, re-scoping the prior 2026-08-13 "every investigator who has
+# ever appeared, open or closed or cancelled" decision back down) — used to
+# populate RCI Plan Creation's task-assignee dropdown, which shouldn't offer
+# someone no longer actively working anything. `f.closed_on IS NULL` is the
+# authoritative "open" filter (same one action_center_queries.py's
+# _OPEN_INVESTIGATIONS_QUERY uses) — dim_event.open_investigation_status is a
+# different, severity/bucket field, not this. Joined through fact_qms_event
+# (not a bare SELECT DISTINCT investigator FROM dim_investigator) so this
+# only ever returns investigators actually referenced by a real investigation,
+# not any unused/orphaned dim_investigator row.
+_OPEN_INVESTIGATORS_QUERY = """
 SELECT DISTINCT di.investigator
 FROM fact_qms_event f
 JOIN dim_investigator di ON di.investigator_key = f.investigator_key
-WHERE di.investigator IS NOT NULL
+WHERE di.investigator IS NOT NULL AND f.closed_on IS NULL
 ORDER BY di.investigator
 """
 
 
-async def fetch_all_investigators() -> List[str]:
+async def fetch_open_investigators() -> List[str]:
     pool = get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(_ALL_INVESTIGATORS_QUERY)
+        rows = await conn.fetch(_OPEN_INVESTIGATORS_QUERY)
         return [r["investigator"] for r in rows]

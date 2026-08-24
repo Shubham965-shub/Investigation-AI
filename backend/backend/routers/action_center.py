@@ -172,6 +172,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -207,6 +208,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -319,50 +321,43 @@ async def get_action_center_summary(
     # ── Event type breakdown ──────────────────────────────────────────
     # Fixed display order (Deviation, OOS, OOT, Market Complaint) matches
     # Figma exactly — not sorted by count, which would reshuffle the pills
-    # as the data changes.
+    # as the data changes. All 4 always show, even at count 0 (2026-08-21,
+    # per the user) — e.g. an investigator-scoped view with no OOT
+    # investigations still shows an "OOT" pill reading 0, rather than that
+    # pill disappearing entirely.
     type_counts: Dict[str, int] = {}
     for inv in enriched:
         label = QE_TYPE_TO_STAT_LABEL.get(inv["qe_type"], inv["qe_type"] or "Unknown")
         type_counts[label] = type_counts.get(label, 0) + 1
-    ordered_labels = [l for l in _EVENT_TYPE_ORDER if l in type_counts]
+    ordered_labels = list(_EVENT_TYPE_ORDER)
     ordered_labels += [l for l in type_counts if l not in _EVENT_TYPE_ORDER]
     event_type_counts = [
-        EventTypeCount(label=label, count=type_counts[label], percent=round(type_counts[label] / total * 100) if total else 0)
+        EventTypeCount(
+            label=label,
+            count=type_counts.get(label, 0),
+            percent=round(type_counts.get(label, 0) / total * 100) if total else 0,
+        )
         for label in ordered_labels
     ]
 
     # ── Status buckets (4-card view) ──────────────────────────────────
-    # Sub-row day bands and thresholds match Figma (node 1246:15617) exactly.
-    def _split(items: List[Dict[str, Any]], key: str, low_label: str, high_label: str, threshold: int) -> List[List[object]]:
-        low = sum(1 for i in items if (i[key] or 0) <= threshold)
-        high = len(items) - low
-        return [[low_label, low], [high_label, high]]
-
+    # No sub-row date bifurcation (2026-08-16, per the user) — each card is
+    # just a single count line now, previously split into near/far day bands
+    # per Figma node 1246:15617.
     def _build_status_cards(items: List[Dict[str, Any]]) -> List[StatusCard]:
         unassigned = [i for i in items if i["bucket"] == "unassigned"]
         on_track = [i for i in items if i["bucket"] == "on_track"]
         delay = [i for i in items if i["bucket"] == "delay"]
         overdue = [i for i in items if i["bucket"] == "overdue"]
 
-        # Overdue's days_until_due is negative (more negative = further
-        # overdue), so the near/far bands are built explicitly rather than
-        # via _split to keep the near-band first, matching the other 3
-        # cards' ascending order.
-        overdue_near = sum(1 for i in overdue if -30 <= (i["days_until_due"] or 0))
-        overdue_far = len(overdue) - overdue_near
-
         # Order: Overdue, Delay, Unassigned, On Track (per the user,
         # 2026-07-30) — most urgent first, not the original Unassigned/On
         # Track/Delay/Overdue grouping.
         return [
-            StatusCard(key="overdue", label="Overdue", count=len(overdue),
-                        rows=[["1-30 days overdue", overdue_near], [">30 days overdue", overdue_far]]),
-            StatusCard(key="delay", label="Delay", count=len(delay),
-                        rows=_split(delay, "days_until_due", "1-10 days", "11-15 days", 10)),
-            StatusCard(key="unassigned", label="Unassigned", count=len(unassigned),
-                        rows=_split(unassigned, "days_since_opened", "1-3 days", "4-7 days", 3)),
-            StatusCard(key="on-track", label="On Track", count=len(on_track),
-                        rows=_split(on_track, "days_until_due", "16-18 days", "19-20 days", 18)),
+            StatusCard(key="overdue", label="Overdue", count=len(overdue), rows=[]),
+            StatusCard(key="delay", label="At Risk of Delay", count=len(delay), rows=[]),
+            StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=[]),
+            StatusCard(key="on-track", label="On Track", count=len(on_track), rows=[]),
         ]
 
     status_cards = _build_status_cards(enriched)
@@ -494,6 +489,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=True,
+                escalation_level=i["escalation_level"],
             )
             for i in cancelled_enriched
         ]
@@ -514,6 +510,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=i["is_cancelled"],
+                escalation_level=i["escalation_level"],
             )
             for i in enriched
         ]

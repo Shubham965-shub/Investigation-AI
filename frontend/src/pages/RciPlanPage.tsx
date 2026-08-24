@@ -3,17 +3,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   exportRciPlanDocx,
   generateRciPlan,
-  getAllInvestigators,
+  getOpenInvestigators,
   getProblemStatementRecord,
   getRciPlanRecord,
   updateRciPlanSections,
   type RciSectionItem,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
-import { getAdditionalFieldsForModule, nativeInputType, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
+import { getEventExplorerHandoffUrl } from "../api/auth";
+import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import rowPlusIcon from "../assets/icons/rci-row-plus.svg";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
@@ -27,6 +27,15 @@ function tomorrowIso(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
+}
+
+// due_date is always a plain "yyyy-mm-dd" string (native <input type="date">'s
+// value format) — displayed as dd/mm/yyyy once locked/read-only (2026-08-18,
+// per the user). The editable native date input itself still renders
+// according to the browser's own locale — that's outside app-level control.
+function formatDdMmYyyy(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
 }
 
 export function RciPlanPage() {
@@ -62,6 +71,10 @@ export function RciPlanPage() {
   const [pushed, setPushed] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [investigators, setInvestigators] = useState<string[]>([]);
+  // "Explore Events" now lives only on this page's Problem Statement card,
+  // not the RecordDetailsModal popup it used to share with Problem Statement
+  // itself (2026-08-21, per the user).
+  const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. RCI Plan depends on the
   // Problem Statement record existing (fetched here directly rather than
@@ -79,7 +92,7 @@ export function RciPlanPage() {
         const [psRecord, rciRecord, investigatorNames] = await Promise.all([
           getProblemStatementRecord(recordId),
           getRciPlanRecord(recordId),
-          getAllInvestigators(),
+          getOpenInvestigators(),
         ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
@@ -202,9 +215,49 @@ export function RciPlanPage() {
     }, 600);
   }
 
+  function toggleSectionIncluded(index: number) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, is_checked: !(s.is_checked ?? true) } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  function addSection() {
+    if (!sections) return;
+    const newSection: RciSectionItem = { title: "", correlation: null, assignee: null, due_date: null, tasks: [] };
+    const newSections = [...sections, newSection];
+    setSections(newSections);
+    persistSections(newSections);
+    // Open it immediately so the new (blank) title/correlation inputs are
+    // visible to fill in right away, same as landing on any other section.
+    setOpenSections((prev) => ({ ...prev, [newSections.length - 1]: true }));
+  }
+
+  function setSectionTitle(index: number, title: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, title } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
+  function setSectionCorrelation(index: number, correlation: string) {
+    if (!sections) return;
+    const newSections = sections.map((s, i) => (i === index ? { ...s, correlation: correlation || null } : s));
+    setSections(newSections);
+    persistSections(newSections);
+  }
+
   function setSectionAssignee(index: number, assignee: string | null) {
     if (!sections) return;
-    const newSections = sections.map((s, i) => (i === index ? { ...s, assignee } : s));
+    // First-ever assignee pick on this plan (no section has one yet) also
+    // populates every other still-unassigned section with the same
+    // investigator, as a convenience default — still freely editable
+    // per-section afterward, and this bulk-fill never fires again once any
+    // section has a real assignee (2026-08-21, per the user).
+    const isFirstAssignee = !!assignee && sections.every((s) => !s.assignee);
+    const newSections = sections.map((s, i) =>
+      i === index ? { ...s, assignee } : isFirstAssignee ? { ...s, assignee } : s
+    );
     setSections(newSections);
     persistSections(newSections);
   }
@@ -250,6 +303,24 @@ export function RciPlanPage() {
     setNewTaskDrafts((prev) => ({ ...prev, [sectionIndex]: "" }));
   }
 
+  function handleExploreEvents() {
+    setExploreEventsError(null);
+    // Opened synchronously on the click itself, before the async handoff
+    // call — a tab opened only after an awaited fetch resolves is not
+    // considered a direct result of the user gesture by most browsers and
+    // gets popup-blocked. Redirect this already-open tab once the token
+    // arrives instead.
+    const newTab = window.open("", "_blank");
+    getEventExplorerHandoffUrl()
+      .then(({ url }) => {
+        if (newTab) newTab.location.href = url;
+      })
+      .catch((err) => {
+        newTab?.close();
+        setExploreEventsError(err instanceof ApiError ? String(err.detail) : "Could not open Event Explorer.");
+      });
+  }
+
   // Real .docx download — the backend fills the company's actual RCI Plan
   // Word template (assets/rci_plan_template.docx) with this investigation's
   // persisted sections and returns the file directly.
@@ -266,7 +337,16 @@ export function RciPlanPage() {
     URL.revokeObjectURL(url);
   }
 
+  // Every task needs both an investigator and a TCD before the plan can be
+  // pushed to Trackwise / proceed to Task Critique (2026-08-16, per the
+  // user) — checked across every section, not just the ones with real
+  // checklist items, since the assignee/TCD fields are always shown.
+  // Excluded sections don't need an assignee/TCD — they're being left out of
+  // the final plan entirely (2026-08-20, per the user).
+  const missingAssignments = (sections ?? []).some((s) => (s.is_checked ?? true) && (!s.assignee || !s.due_date));
+
   async function handleAcceptAndPush() {
+    if (missingAssignments) return;
     setShowConfirm(false);
     setExportError(null);
     try {
@@ -282,46 +362,17 @@ export function RciPlanPage() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="card">
-          <p className="card-title">Problem Statement</p>
+          <div className="card-header">
+            <p className="card-title">Problem Statement</p>
+            <button type="button" onClick={handleExploreEvents} className="btn-outline">
+              Explore Events
+            </button>
+          </div>
           <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
           </div>
+          {exploreEventsError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
         </div>
-
-        {additionalFields.length > 0 && (
-          <div className="card">
-            <p className="card-title">Additional Details for RCI Plan</p>
-            <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-              RCI Plan generation needs a few more details beyond the Problem Statement step.
-            </p>
-            <div className="field-grid" style={{ flexWrap: "wrap" }}>
-              {additionalFields.map((field) => (
-                <div key={field.key} style={{ minWidth: 240 }}>
-                  <p className="field-label">
-                    {field.label}
-                    {field.required && " *"}
-                  </p>
-                  {field.kind === "list" || field.kind === "textarea" ? (
-                    <textarea
-                      className="field-value"
-                      required={field.required}
-                      value={additionalValues[field.key] ?? ""}
-                      onChange={(e) => setAdditionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    />
-                  ) : (
-                    <input
-                      className="field-value"
-                      type={nativeInputType(field.kind, additionalValues[field.key] ?? "")}
-                      required={field.required}
-                      value={additionalValues[field.key] ?? ""}
-                      onChange={(e) => setAdditionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {error && <p className="error-banner">{error}</p>}
 
@@ -337,10 +388,16 @@ export function RciPlanPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="card">
-        <p className="card-title">Problem Statement</p>
+        <div className="card-header">
+          <p className="card-title">Problem Statement</p>
+          <button type="button" onClick={handleExploreEvents} className="btn-outline">
+            Explore Events
+          </button>
+        </div>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
           <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
         </div>
+        {exploreEventsError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
       </div>
 
       <div className="card-header">
@@ -367,27 +424,62 @@ export function RciPlanPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.map((section, index) => {
           const isOpen = !!openSections[index];
+          const included = section.is_checked ?? true;
           return (
-            <div key={index} className="card" style={{ gap: 12 }}>
+            <div key={index} className="card" style={{ gap: 12, opacity: included ? 1 : 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button type="button" onClick={() => toggleSection(index)} style={{ border: "1px solid var(--color-primary)", borderRadius: 4, width: 34, height: 34, background: "none", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Toggle section">
-                  <img src={rowPlusIcon} alt="" width={16} height={16} />
+                <button
+                  type="button"
+                  className={`checklist-checkbox ${included ? "" : "unchecked"}`}
+                  onClick={lockedForEditing ? undefined : () => toggleSectionIncluded(index)}
+                  aria-label={included ? "Exclude section from final plan" : "Include section in final plan"}
+                  title={included ? "Exclude from final plan" : "Include in final plan"}
+                  style={{ flexShrink: 0, cursor: lockedForEditing ? "default" : "pointer" }}
+                  disabled={lockedForEditing}
+                >
+                  {included && <img src={checkIcon} alt="" width={12} height={12} />}
                 </button>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
-                      {index + 1}. {section.title}
-                    </span>
-                    <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
-                  </div>
-                  {section.correlation && (
-                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {editMode && !lockedForEditing ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)", flexShrink: 0 }}>{index + 1}.</span>
+                        <input
+                          type="text"
+                          value={section.title}
+                          onChange={(e) => setSectionTitle(index, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontWeight: 600, fontSize: "var(--font-size-base)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", flex: 1, minWidth: 0, padding: "4px 8px" }}
+                        />
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)", flexShrink: 0 }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Correlation (optional)"
+                        value={section.correlation ?? ""}
+                        onChange={(e) => setSectionCorrelation(index, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-faint)", border: "1px solid var(--color-card-border)", borderRadius: "var(--radius-btn)", background: "var(--color-bg)", padding: "4px 8px" }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                          {index + 1}. {section.title}
+                        </span>
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
+                      </div>
+                      {section.correlation && (
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
+                      )}
+                    </>
                   )}
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
                   <span>TCD:</span>
                   {lockedForEditing ? (
-                    <span>{section.due_date || "—"}</span>
+                    <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
                   ) : (
                     <input
                       type="date"
@@ -433,7 +525,7 @@ export function RciPlanPage() {
               {isOpen && (
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                    <span style={{ width: "100%" }}>Task</span>
+                    <span style={{ width: "100%" }}>Details</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;
@@ -520,12 +612,35 @@ export function RciPlanPage() {
         })}
       </div>
 
+      {editMode && !lockedForEditing && (
+        <button type="button" className="btn-outline" onClick={addSection} style={{ alignSelf: "flex-start" }}>
+          Add Task
+        </button>
+      )}
+
       {exportError && <p className="error-banner">{exportError}</p>}
+      {missingAssignments && (
+        <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-warning-text)" }}>
+          Every task needs an Investigator and a TCD (due date) assigned before the RCI Plan can be pushed to Trackwise.
+        </p>
+      )}
 
       <div className="footer-actions">
-        <button type="button" className="btn-primary" style={{ display: "flex", alignItems: "center", gap: 10 }} onClick={() => setShowConfirm(true)}>
+        <button
+          type="button"
+          className="btn-primary"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            opacity: missingAssignments ? 0.4 : 1,
+            cursor: missingAssignments ? "default" : "pointer",
+          }}
+          disabled={missingAssignments}
+          onClick={() => setShowConfirm(true)}
+        >
           <img src={exportIcon} alt="" width={16} height={16} />
-          {pushed ? "Pushed — downloading…" : "Accept and Push to TW"}
+          {pushed ? "Pushed — downloading…" : "Accept and Push for SIT Review"}
         </button>
       </div>
 
