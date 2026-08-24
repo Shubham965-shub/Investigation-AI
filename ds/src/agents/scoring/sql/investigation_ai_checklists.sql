@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.investigation_ai_checklist_section (
 
 CREATE TABLE IF NOT EXISTS public.investigation_ai_checklist_checkpoint (
     section         text        NOT NULL REFERENCES public.investigation_ai_checklist_section(section) ON DELETE CASCADE,
-    checkpoint_id   text        NOT NULL,        -- e.g. '3.1a', '1'
+    checkpoint_id   text        NOT NULL,        -- e.g. '6.1a', '1'
     sub_criteria    text        NOT NULL,
     checkpoint_text text        NOT NULL,
     max_marks       numeric     NOT NULL,        -- marks awarded when satisfied
@@ -73,55 +73,55 @@ ON CONFLICT (section) DO UPDATE SET
 
 -- ── Checkpoints ─────────────────────────────────────────────────────────────
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '2.2a', '2.2 Title & Objective Quality', 'Title is clear and specific. It states what is being investigated.', 4.0, 'binary', false, NULL, 1)
+    ('task_report', '1', '2.2 Title & Objective Quality', 'Title is clear and specific. It states what is being investigated.', 4.0, 'binary', false, NULL, 1)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '2.2b', '2.2 Title & Objective Quality', 'Each task states a specific, answerable Objective linked to the problem / a hypothesis.', 4.0, 'binary', false, NULL, 2)
+    ('task_report', '2', '2.2 Title & Objective Quality', 'Each task states a specific, answerable Objective linked to the problem / a hypothesis.', 4.0, 'binary', false, NULL, 2)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '3.1a', '3.1 Evidence & Objectivity', 'Findings are supported by objective evidence and data (batch records, logbooks, trend data, interviews, reconstruction).', 6.0, 'binary', false, NULL, 3)
+    ('task_report', '3', '3.1 Evidence & Objectivity', 'Findings are supported by objective evidence and data (batch records, logbooks, trend data, interviews, reconstruction).', 6.0, 'binary', false, NULL, 3)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '3.1b', '3.1 Evidence & Objectivity', 'Evidence both for and against is recorded. No cherry-picking. Findings state facts and are quantified where relevant.', 4.0, 'binary', false, NULL, 4)
+    ('task_report', '4', '3.1 Evidence & Objectivity', 'Evidence both for and against is recorded. No cherry-picking. Findings state facts and are quantified where relevant.', 4.0, 'binary', false, NULL, 4)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '3.2a', '3.2 Completeness & Traceability', 'Every part of the task is completed. Any gap is declared, not left open.', 4.0, 'binary', false, NULL, 5)
+    ('task_report', '5', '3.2 Completeness & Traceability', 'Every part of the task is completed. Any gap is declared, not left open.', 4.0, 'binary', false, NULL, 5)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '3.2b', '3.2 Completeness & Traceability', 'All data in the Findings can be traced to a named, authenticated source record (ALCOA+).', 6.0, 'binary', false, NULL, 6)
+    ('task_report', '6', '3.2 Completeness & Traceability', 'All data in the Findings can be traced to a named, authenticated source record (ALCOA+).', 6.0, 'binary', false, NULL, 6)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '4.1a', '4.1 Logical Linkage & Analytical Depth', 'Inference follows logically from that task''s findings. No unsupported conclusions.', 4.0, 'binary', false, NULL, 7)
+    ('task_report', '7', '4.1 Logical Linkage & Analytical Depth', 'Inference follows logically from that task''s findings. No unsupported conclusions.', 4.0, 'binary', false, NULL, 7)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '4.1b', '4.1 Logical Linkage & Analytical Depth', 'Ruled-out causes are justified by the findings. Listed factors are examined (mark NA if not applicable).', 4.0, 'binary', true, NULL, 8)
+    ('task_report', '8', '4.1 Logical Linkage & Analytical Depth', 'Ruled-out causes are justified by the findings. Listed factors are examined (mark NA if not applicable).', 4.0, 'binary', true, NULL, 8)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('task_report', '4.1c', '4.1 Logical Linkage & Analytical Depth', 'All inferences together give a complete, gap-free basis for the root cause. This is explained clearly even if the inference is no root cause.', 4.0, 'binary', false, NULL, 9)
+    ('task_report', '9', '4.1 Logical Linkage & Analytical Depth', 'All inferences together give a complete, gap-free basis for the root cause. This is explained clearly even if the inference is no root cause.', 4.0, 'binary', false, NULL, 9)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,

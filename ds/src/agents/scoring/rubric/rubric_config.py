@@ -82,54 +82,54 @@ _TASK_REPORT = SectionSpec(
     native_max=40.0,
     checkpoints=[
         Checkpoint(
-            "2.2a", "2.2 Title & Objective Quality",
+            "1", "2.2 Title & Objective Quality",
             "Title is clear and specific. It states what is being investigated.",
             4.0,
         ),
         Checkpoint(
-            "2.2b", "2.2 Title & Objective Quality",
+            "2", "2.2 Title & Objective Quality",
             "Each task states a specific, answerable Objective linked to the problem / a "
             "hypothesis.",
             4.0,
         ),
         Checkpoint(
-            "3.1a", "3.1 Evidence & Objectivity",
+            "3", "3.1 Evidence & Objectivity",
             "Findings are supported by objective evidence and data (batch records, logbooks, "
             "trend data, interviews, reconstruction).",
             6.0,
         ),
         Checkpoint(
-            "3.1b", "3.1 Evidence & Objectivity",
+            "4", "3.1 Evidence & Objectivity",
             "Evidence both for and against is recorded. No cherry-picking. Findings state "
             "facts and are quantified where relevant.",
             4.0,
         ),
         Checkpoint(
-            "3.2a", "3.2 Completeness & Traceability",
+            "5", "3.2 Completeness & Traceability",
             "Every part of the task is completed. Any gap is declared, not left open.",
             4.0,
         ),
         Checkpoint(
-            "3.2b", "3.2 Completeness & Traceability",
+            "6", "3.2 Completeness & Traceability",
             "All data in the Findings can be traced to a named, authenticated source record "
             "(ALCOA+).",
             6.0,
         ),
         Checkpoint(
-            "4.1a", "4.1 Logical Linkage & Analytical Depth",
+            "7", "4.1 Logical Linkage & Analytical Depth",
             "Inference follows logically from that task's findings. No unsupported "
             "conclusions.",
             4.0,
         ),
         Checkpoint(
-            "4.1b", "4.1 Logical Linkage & Analytical Depth",
+            "8", "4.1 Logical Linkage & Analytical Depth",
             "Ruled-out causes are justified by the findings. Listed factors are examined "
             "(mark NA if not applicable).",
             4.0,
             allow_na=True,
         ),
         Checkpoint(
-            "4.1c", "4.1 Logical Linkage & Analytical Depth",
+            "9", "4.1 Logical Linkage & Analytical Depth",
             "All inferences together give a complete, gap-free basis for the root cause. "
             "This is explained clearly even if the inference is no root cause.",
             4.0,
