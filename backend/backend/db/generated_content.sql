@@ -54,10 +54,13 @@ CREATE TABLE IF NOT EXISTS investigation_rci_sections (
     -- need a migration once DS/frontend catch up — unused until then.
     due_date DATE,
     assignee TEXT,
-    -- 6M fishbone category (MATERIAL/METHOD/MACHINE/MEASUREMENT/MAN/ENVIRONMENT),
-    -- mirrors rci_plan_section.six_m_bucket in the DS service's template
-    -- library — populated from DS's RciPlanGenerateResponse when generating
-    -- from an archetype that has 6M data (2026-08-24).
+    -- 6M fishbone category (MATERIAL/METHOD/MACHINE/MEASUREMENT/MAN/ENVIRONMENT).
+    -- Column added 2026-08-24, then superseded the same day: the bucket is
+    -- now baked directly into `title` (e.g. "MATERIAL: Section Title") by
+    -- ds/src/agents/rci_plan/nodes.py, since RciSectionItem/the frontend
+    -- only ever render `title` — avoids a frontend change to surface it.
+    -- Left in place, unpopulated, rather than run another live migration to
+    -- drop it.
     six_m_bucket TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
