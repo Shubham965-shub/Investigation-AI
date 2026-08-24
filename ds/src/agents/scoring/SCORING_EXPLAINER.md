@@ -40,11 +40,11 @@ An AI assessor reads the report and returns, for every checkpoint: a **verdict**
 | | 2.2b — each task states a specific, answerable objective | 4 |
 | 3.1 Evidence & Objectivity | 3.1a — findings supported by objective evidence & data | 6 |
 | | 3.1b — both confirming & disconfirming evidence; quantified | 4 |
-| 3.2 Completeness & Traceability | 3.2a — each objective actually answered (closure) | 4 |
-| | 3.2b — data traceable to authenticated source records (ALCOA+) | 6 |
+| 3.2 Completeness & Traceability | 3.2a — every part of the task is completed; any gap is declared, not left open | 4 |
+| | 3.2b — data traceable to a named, authenticated source record (ALCOA+) | 6 |
 | 4.1 Logical Linkage & Depth | 4.1a — each inference follows from findings | 4 |
-| | 4.1b — ruled-out lines justified; reaches systemic level *(NA allowed)* | 4 |
-| | 4.1c — inferences give a coherent, gap-free basis for root cause | 4 |
+| | 4.1b — ruled-out causes justified; listed factors examined *(NA allowed)* | 4 |
+| | 4.1c — inferences give a gap-free basis for root cause, explained clearly even if no root cause | 4 |
 | **Total** | | **40** |
 
 ## Report 2 — IQ Score (/60)
