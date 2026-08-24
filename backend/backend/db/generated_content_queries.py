@@ -218,7 +218,6 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                     section.get("correlation"),
                     _parse_date(section.get("due_date")),
                     section.get("assignee"),
-                    section.get("six_m_bucket"),
                     i,
                     section.get("is_checked", True),
                 )
