@@ -172,6 +172,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -207,6 +208,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
@@ -319,15 +321,22 @@ async def get_action_center_summary(
     # ── Event type breakdown ──────────────────────────────────────────
     # Fixed display order (Deviation, OOS, OOT, Market Complaint) matches
     # Figma exactly — not sorted by count, which would reshuffle the pills
-    # as the data changes.
+    # as the data changes. All 4 always show, even at count 0 (2026-08-21,
+    # per the user) — e.g. an investigator-scoped view with no OOT
+    # investigations still shows an "OOT" pill reading 0, rather than that
+    # pill disappearing entirely.
     type_counts: Dict[str, int] = {}
     for inv in enriched:
         label = QE_TYPE_TO_STAT_LABEL.get(inv["qe_type"], inv["qe_type"] or "Unknown")
         type_counts[label] = type_counts.get(label, 0) + 1
-    ordered_labels = [l for l in _EVENT_TYPE_ORDER if l in type_counts]
+    ordered_labels = list(_EVENT_TYPE_ORDER)
     ordered_labels += [l for l in type_counts if l not in _EVENT_TYPE_ORDER]
     event_type_counts = [
-        EventTypeCount(label=label, count=type_counts[label], percent=round(type_counts[label] / total * 100) if total else 0)
+        EventTypeCount(
+            label=label,
+            count=type_counts.get(label, 0),
+            percent=round(type_counts.get(label, 0) / total * 100) if total else 0,
+        )
         for label in ordered_labels
     ]
 
@@ -480,6 +489,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=True,
+                escalation_level=i["escalation_level"],
             )
             for i in cancelled_enriched
         ]
@@ -500,6 +510,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=i["is_cancelled"],
+                escalation_level=i["escalation_level"],
             )
             for i in enriched
         ]

@@ -20,6 +20,7 @@ const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; c
 export function RecordDetailsModal({
   recordId,
   problemStatement,
+  lockedForEditing = false,
   onClose,
   onSaveEdit,
   onSaveAndNext,
@@ -27,6 +28,10 @@ export function RecordDetailsModal({
 }: {
   recordId: string;
   problemStatement: string;
+  // True once Evidence Collection has any real data — hides the "Edit
+  // Problem Statement" option, since the generated PS can no longer be
+  // edited at that point (2026-08-21, per the user).
+  lockedForEditing?: boolean;
   onClose: () => void;
   onSaveEdit: (newText: string) => void;
   onSaveAndNext: () => void;
@@ -166,14 +171,17 @@ export function RecordDetailsModal({
                     </button>
                   </>
                 ) : (
-                  <button type="button" onClick={handleEditClick} className="btn-secondary" style={{ background: "none" }}>
-                    Edit Problem Statement
-                  </button>
+                  !lockedForEditing && (
+                    <button type="button" onClick={handleEditClick} className="btn-secondary" style={{ background: "none" }}>
+                      Edit Problem Statement
+                    </button>
+                  )
                 )}
               </div>
             </div>
           </div>
 
+          {false && (
           <div>
             <div style={{ display: "flex", gap: 12 }}>
               <button type="button" onClick={handleToggleHistoric} className="btn-outline">
@@ -206,7 +214,7 @@ export function RecordDetailsModal({
               >
                 {historicLoading && <p style={{ margin: 0, color: "var(--color-text-muted)" }}>Loading similar investigations…</p>}
                 {historicError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{historicError}</p>}
-                {!historicLoading && !historicError && historicData !== null && historicData.length === 0 && (
+                {!historicLoading && !historicError && historicData !== null && historicData!.length === 0 && (
                   <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No similar historic investigations found.</p>
                 )}
                 {!historicLoading &&
@@ -249,6 +257,7 @@ export function RecordDetailsModal({
               </div>
             )}
           </div>
+          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="button" onClick={onSaveAndNext} className="btn-primary">

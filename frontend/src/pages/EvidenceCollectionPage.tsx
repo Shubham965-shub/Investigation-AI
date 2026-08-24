@@ -172,10 +172,22 @@ export function EvidenceCollectionPage() {
     }, 1500);
   }
 
+  function showCopied(index: number) {
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
+  }
+
   function handleCopyItem(index: number, description: string) {
     navigator.clipboard.writeText(description).then(() => {
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1200);
+      if (copiedIndex === index) {
+        // Already showing "Copied" — flash back to "Copy" for a split second
+        // first, so re-clicking while already copied is visibly acknowledged
+        // instead of looking like the click did nothing.
+        setCopiedIndex(null);
+        setTimeout(() => showCopied(index), 150);
+      } else {
+        showCopied(index);
+      }
     });
   }
 
@@ -209,6 +221,7 @@ export function EvidenceCollectionPage() {
           </div>
         </div>
         <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any of the evidence is not required in this investigation.</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
 
         {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating recommended evidence…</p>}
         {error && <p className="error-banner">{error}</p>}
@@ -230,12 +243,13 @@ export function EvidenceCollectionPage() {
                 <button
                   type="button"
                   className="btn-outline"
-                  style={{ flexShrink: 0, padding: 6 }}
+                  style={{ flexShrink: 0, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6 }}
                   onClick={() => handleCopyItem(index, item.description)}
-                  aria-label="Copy"
+                  aria-label={copiedIndex === index ? "Copied" : "Copy"}
                   title={copiedIndex === index ? "Copied" : "Copy"}
                 >
                   <img src={copyIcon} alt="" width={14} height={14} />
+                  {copiedIndex === index && "Copied"}
                 </button>
               </div>
             ))}
@@ -267,7 +281,6 @@ export function EvidenceCollectionPage() {
       {showConfirm && (
         <ConfirmDialog
           title="Accept Evidence Collection?"
-          message="Are you sure you want to accept the Evidence Collection and lock it for this investigation?"
           onCancel={() => setShowConfirm(false)}
           onConfirm={handleAgreeAndNext}
         />

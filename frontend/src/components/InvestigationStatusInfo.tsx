@@ -34,7 +34,7 @@ const CRITICALITY_CONFIG: CriticalityConfig[] = [
     ],
   },
   {
-    title: "Major/Minor",
+    title: "Major & Minor",
     badgeBg: "var(--color-info-bg)",
     badgeText: "var(--color-info-text)",
     thresholds: [

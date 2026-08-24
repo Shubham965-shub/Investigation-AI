@@ -10,6 +10,7 @@ import {
   type RciSectionItem,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
+import { getEventExplorerHandoffUrl } from "../api/auth";
 import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -70,6 +71,10 @@ export function RciPlanPage() {
   const [pushed, setPushed] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [investigators, setInvestigators] = useState<string[]>([]);
+  // "Explore Events" now lives only on this page's Problem Statement card,
+  // not the RecordDetailsModal popup it used to share with Problem Statement
+  // itself (2026-08-21, per the user).
+  const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
 
   // Everything comes from the DB — no localStorage. RCI Plan depends on the
   // Problem Statement record existing (fetched here directly rather than
@@ -244,7 +249,15 @@ export function RciPlanPage() {
 
   function setSectionAssignee(index: number, assignee: string | null) {
     if (!sections) return;
-    const newSections = sections.map((s, i) => (i === index ? { ...s, assignee } : s));
+    // First-ever assignee pick on this plan (no section has one yet) also
+    // populates every other still-unassigned section with the same
+    // investigator, as a convenience default — still freely editable
+    // per-section afterward, and this bulk-fill never fires again once any
+    // section has a real assignee (2026-08-21, per the user).
+    const isFirstAssignee = !!assignee && sections.every((s) => !s.assignee);
+    const newSections = sections.map((s, i) =>
+      i === index ? { ...s, assignee } : isFirstAssignee ? { ...s, assignee } : s
+    );
     setSections(newSections);
     persistSections(newSections);
   }
@@ -290,6 +303,24 @@ export function RciPlanPage() {
     setNewTaskDrafts((prev) => ({ ...prev, [sectionIndex]: "" }));
   }
 
+  function handleExploreEvents() {
+    setExploreEventsError(null);
+    // Opened synchronously on the click itself, before the async handoff
+    // call — a tab opened only after an awaited fetch resolves is not
+    // considered a direct result of the user gesture by most browsers and
+    // gets popup-blocked. Redirect this already-open tab once the token
+    // arrives instead.
+    const newTab = window.open("", "_blank");
+    getEventExplorerHandoffUrl()
+      .then(({ url }) => {
+        if (newTab) newTab.location.href = url;
+      })
+      .catch((err) => {
+        newTab?.close();
+        setExploreEventsError(err instanceof ApiError ? String(err.detail) : "Could not open Event Explorer.");
+      });
+  }
+
   // Real .docx download — the backend fills the company's actual RCI Plan
   // Word template (assets/rci_plan_template.docx) with this investigation's
   // persisted sections and returns the file directly.
@@ -331,10 +362,16 @@ export function RciPlanPage() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="card">
-          <p className="card-title">Problem Statement</p>
+          <div className="card-header">
+            <p className="card-title">Problem Statement</p>
+            <button type="button" onClick={handleExploreEvents} className="btn-outline">
+              Explore Events
+            </button>
+          </div>
           <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
           </div>
+          {exploreEventsError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
         </div>
 
         {error && <p className="error-banner">{error}</p>}
@@ -351,10 +388,16 @@ export function RciPlanPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="card">
-        <p className="card-title">Problem Statement</p>
+        <div className="card-header">
+          <p className="card-title">Problem Statement</p>
+          <button type="button" onClick={handleExploreEvents} className="btn-outline">
+            Explore Events
+          </button>
+        </div>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
           <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
         </div>
+        {exploreEventsError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
       </div>
 
       <div className="card-header">
@@ -482,7 +525,7 @@ export function RciPlanPage() {
               {isOpen && (
                 <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "8px 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                    <span style={{ width: "100%" }}>Task</span>
+                    <span style={{ width: "100%" }}>Details</span>
                   </div>
                   {section.tasks.map((task, taskIndex) => {
                     const checked = task.is_checked ?? true;

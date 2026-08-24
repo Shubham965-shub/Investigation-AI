@@ -119,12 +119,15 @@ class RCConclusionCritiqueRequest(BaseModel):
 
 
 class RCConclusionCritiqueResponse(BaseModel):
+    # Overwritten by critique_route.py after the critique LLM call returns — sourced from the
+    # report's own verbatim Section 7/8 text (extract_rci_report_sections, no LLM; not the
+    # model's echo), then condensed to 3-4 plain-language sentences by a separate LLM pass
+    # (condense_summary.txt) that's forbidden from adding any fact not already in that text.
     rc_conclusion_text: str
     # Declared before `recommendations` so structured-output generation reasons through each
     # previously accepted item, with cited evidence, before writing the final list.
     previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
-    strengths: str                  # 1-2 sentences on what was done well
 
 
 # ---------- CAPA Critique ----------
@@ -148,16 +151,12 @@ class CAPACritiqueResponse(BaseModel):
     # "missing": no CAPA section in the document at all (a document defect — the upload should be
     # rejected and the investigator asked to reupload with CAPA included, see critique_route.py).
     # "not_required": the report itself states/justifies that no CAPA is needed for this event.
-    # "evaluated": a real CAPA section was critiqued normally (recommendations/strengths below apply).
+    # "evaluated": a real CAPA section was critiqued normally (recommendations below apply).
     capa_status: Literal["missing", "not_required", "evaluated"] = "evaluated"
     previous_recommendation_checks: List[PreviousRecommendationCheck] = []
     recommendations: List[str]      # flat list of actionable recommendations, not tagged by rule
-    strengths: str                  # 1-2 sentences on what was done well
-
-
-# ---------- Combined RCI Report Critique ----------
-
-class RCIReportCritiqueResponse(BaseModel):
-    problem_statement: str
-    rc_conclusion: RCConclusionCritiqueResponse
-    capa: CAPACritiqueResponse
+    # Set by critique_route.py after the critique LLM call returns — sourced from the CAPA
+    # section text extracted from the report itself (extract_rci_report_sections, no LLM),
+    # then condensed to 3-4 plain-language sentences (see rc_conclusion_text above for the
+    # same pattern).
+    capa_text: str = ""

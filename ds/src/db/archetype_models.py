@@ -49,6 +49,7 @@ class RciPlanSection(Base):
     rci_plan_id = Column(Integer, ForeignKey("rci_plan.id"), nullable=False)
     title = Column(Text, nullable=False)
     correlation = Column(Text, nullable=True) # section correlation column
+    six_m_bucket = Column(Text, nullable=True) # 6M fishbone category: MATERIAL/METHOD/MACHINE/MEASUREMENT/MAN/ENVIRONMENT
     
     # Relationships
     rci_plan = relationship("RciPlan", back_populates="sections")
