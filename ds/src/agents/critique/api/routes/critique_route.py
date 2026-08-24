@@ -99,17 +99,24 @@ def _prioritize_and_cap(recommendations: List[str], limit: int = 5) -> List[str]
     return sorted(recommendations, key=lambda r: not r.startswith(UNADDRESSED_MARKER))[:limit]
 
 
+def _filter_recurrence_claims_without_citation(recommendations: List[str]) -> List[str]:
+    return _prioritize_and_cap([
+        rec for rec in recommendations
+        if rec.startswith(UNADDRESSED_MARKER)
+        or not (_RECURRENCE_CLAIM_RE.search(rec) and not _DEVIATION_REF_RE.search(rec))
+    ])
+
+
 def _suppress_recurrence_claims_without_citation(rc_result: RCConclusionCritiqueResponse) -> RCConclusionCritiqueResponse:
     """Drop any recommendation claiming a prior/recurring event was ignored unless it cites a
     concrete deviation/event reference. The prompt instructs the model not to raise this unless
     history genuinely revealed a prior event; this enforces that at the code layer for the mini
     model, which sometimes asserts recurrence language without a real citation. Carried-forward
-    unaddressed items are exempt — they were already vetted on a previous attempt."""
-    rc_result.recommendations = _prioritize_and_cap([
-        rec for rec in rc_result.recommendations
-        if rec.startswith(UNADDRESSED_MARKER)
-        or not (_RECURRENCE_CLAIM_RE.search(rec) and not _DEVIATION_REF_RE.search(rec))
-    ])
+    unaddressed items are exempt — they were already vetted on a previous attempt. Applied to
+    both lists since the recurrence check (check 3) feeds rc_recommendations, but the filter
+    itself is just text matching, so running it over impact_recommendations too is harmless."""
+    rc_result.rc_recommendations = _filter_recurrence_claims_without_citation(rc_result.rc_recommendations)
+    rc_result.impact_recommendations = _filter_recurrence_claims_without_citation(rc_result.impact_recommendations)
     return rc_result
 
 def _cap_recommendations(capa_result: CAPACritiqueResponse) -> CAPACritiqueResponse:
