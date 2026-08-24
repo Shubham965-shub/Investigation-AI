@@ -9,7 +9,7 @@ from backend.clients.ds_client import ds_post
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_rci_sections
 from backend.db.queries import fetch_investigation_row
-from backend.db.rc_capa_critique_queries import compute_rc_capa_state, fetch_rc_capa_reports
+from backend.db.rc_capa_critique_queries import fetch_rc_capa_reports
 from backend.db.rci_report_queries import (
     fetch_rci_report,
     save_rci_report,
@@ -23,11 +23,6 @@ from backend.services.rci_report_request import build_rci_report_request
 router = APIRouter(prefix="/rci-report", tags=["RCI Report"])
 
 _NOT_FOUND_DETAIL = "No investigation found for this record"
-
-
-async def _can_generate(deviation_id: int) -> bool:
-    reports = await fetch_rc_capa_reports(deviation_id)
-    return compute_rc_capa_state(reports)["status"] == "complete"
 
 
 @router.get("/{record_id}", response_model=RciReportRecord)
@@ -52,7 +47,6 @@ async def get_rci_report(record_id: str) -> RciReportRecord:
         trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=event_type == "Deviation", for_rci_report=True),
         report=stored["report"] if stored else None,
         generated_at=stored["generated_at"] if stored else None,
-        can_generate=await _can_generate(deviation_id),
         mc_confirmed=stored["mc_confirmed"] if stored else None,
         manual_entries=stored["manual_entries"] if stored else {},
     )
@@ -89,12 +83,6 @@ async def generate_rci_report(record_id: str) -> RciReportRecord:
     event_type = resolved_event_type(row["qe_type"])
     if event_type is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
-
-    if not await _can_generate(deviation_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="RC & CAPA Critique must be locked/complete before the RCI Report can be generated",
-        )
 
     stored = await fetch_rci_report(deviation_id)
     rci_sections = await fetch_rci_sections(deviation_id)

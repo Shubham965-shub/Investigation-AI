@@ -118,6 +118,7 @@ async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
 async def save_critiques(
     report_id: int,
     rc_recommendations: List[str],
+    impact_recommendations: List[str],
     rc_summary: str,
     capa_recommendations: List[str],
     capa_summary: str,
@@ -132,14 +133,20 @@ async def save_critiques(
     "strengths" verdict is generated or persisted anymore (2026-08-20, per the user — the
     rc_strengths/capa_strengths columns still exist on the table but are no longer written or
     read).
-    Recommendation ids are unique per report: rc's run 0..len(rc)-1, capa's
-    continue from there."""
+    Recommendation ids are unique per report: rc_recommendations run
+    0..len(rc)-1, impact_recommendations continue from there, then capa's.
+    Each rc_impact recommendation is tagged "rc" or "impact" (2026-08-24, per
+    the user) so the frontend can render the two as separate subsections;
+    capa's own recommendations carry no type (not split this way)."""
     rc_recs = [
-        {"id": i, "description": d, "decision": "pending", "reason": None, "decided_at": None}
+        {"id": i, "description": d, "type": "rc", "decision": "pending", "reason": None, "decided_at": None}
         for i, d in enumerate(rc_recommendations)
+    ] + [
+        {"id": len(rc_recommendations) + i, "description": d, "type": "impact", "decision": "pending", "reason": None, "decided_at": None}
+        for i, d in enumerate(impact_recommendations)
     ]
     capa_recs = [
-        {"id": len(rc_recs) + i, "description": d, "decision": "pending", "reason": None, "decided_at": None}
+        {"id": len(rc_recs) + i, "description": d, "type": None, "decision": "pending", "reason": None, "decided_at": None}
         for i, d in enumerate(capa_recommendations)
     ]
     pool = get_pool()
