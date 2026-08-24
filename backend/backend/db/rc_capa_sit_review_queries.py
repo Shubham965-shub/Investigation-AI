@@ -1,5 +1,5 @@
 """Queries against investigation_rc_capa_sit_reviews (schema.sql) — append-only
-snapshots of the report approved via "Accept and Push for SIT Review". See
+snapshots of the report approved via "Accept and Push for SIT Lead Review". See
 schema.sql's table comment for the full rationale (no real external SIT
 review integration yet)."""
 from __future__ import annotations

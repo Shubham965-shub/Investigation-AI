@@ -215,9 +215,15 @@ def build_rci_plan_docx(
         if name not in unique_owners:
             unique_owners.append(name)
 
-    _set_cell_text(sign_off_row.cells[1], rci_owner or "")
-    for i, name in enumerate(unique_owners[:MAX_SIGN_OFF_OWNERS]):
-        _set_cell_text(sign_off_row.cells[i + 2], name)
+    _set_cell_text(sign_off_row.cells[1], rci_owner or "N/A")
+    # Every one of the 4 fixed Task Owner slots gets written, not just the
+    # ones with a real name — otherwise a slot beyond len(unique_owners)
+    # (e.g. only 2 distinct owners across all sections) is never touched at
+    # all and stays truly blank, unlike every other cell here (per the user,
+    # blank cells in this table should read "N/A").
+    filled_owners = unique_owners[:MAX_SIGN_OFF_OWNERS]
+    for i in range(MAX_SIGN_OFF_OWNERS):
+        _set_cell_text(sign_off_row.cells[i + 2], filled_owners[i] if i < len(filled_owners) else "N/A")
 
     # The template's Sign-off row only has 4 fixed Task Owner slots, but an
     # investigation can have more distinct owners than that (2026-08-19, per
@@ -245,8 +251,11 @@ def build_rci_plan_docx(
                     _set_cell_text(new_header_row.cells[i + 1], f"Task Owner {next_owner_number + i}")
                     _set_cell_text(new_value_row.cells[i + 1], batch[i])
                 else:
+                    # Header stays blank — an unused column has no "Task
+                    # Owner N" to label. The value cell still gets N/A, same
+                    # as every other blank cell in this table.
                     _set_cell_text(new_header_row.cells[i + 1], "")
-                    _set_cell_text(new_value_row.cells[i + 1], "")
+                    _set_cell_text(new_value_row.cells[i + 1], "N/A")
             next_owner_number += len(batch)
 
     buffer = io.BytesIO()

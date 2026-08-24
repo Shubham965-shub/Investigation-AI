@@ -282,7 +282,7 @@ export function RcCapaCritiquePage() {
               onClick={() => setShowConfirm(true)}
             >
               <img src={exportIcon} alt="" width={16} height={16} />
-              Accept and Push for SIT Review
+              Accept and Push for SIT Lead Review
             </button>
           )}
         </div>
@@ -350,7 +350,12 @@ export function RcCapaCritiquePage() {
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                    RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
+                    RC & CAPA CRITIQUE SCORE{" "}
+                    <ScoreBreakdownTooltip
+                      tables={report.score_breakdown}
+                      description="This is the cumulative score from the RC Score and CAPA Score — not an independently scored section of its own."
+                      hideTables
+                    />
                   </p>
                   <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{report.total_score}%</p>
                 </div>

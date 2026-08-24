@@ -70,7 +70,7 @@ class RcCapaState(BaseModel):
     next_upload_is_final: bool = False
     can_upload: bool
     latest_report: Optional[RcCapaReport] = None
-    # None until "Accept and Push for SIT Review" has been used — no real
+    # None until "Accept and Push for SIT Lead Review" has been used — no real
     # external SIT review integration yet, so this only ever reaches
     # 'pending' for now (see db/schema.sql's investigation_rc_capa_sit_reviews).
     sit_review_status: Optional[Literal["pending"]] = None
