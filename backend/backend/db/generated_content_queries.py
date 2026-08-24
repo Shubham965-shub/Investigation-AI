@@ -88,7 +88,7 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
         try:
             section_rows = await conn.fetch(
                 """
-                SELECT id, title, correlation, due_date, assignee
+                SELECT id, title, correlation, due_date, assignee, six_m_bucket
                 FROM investigation_rci_sections
                 WHERE deviation_id = $1 ORDER BY sort_order, id
                 """,
@@ -120,6 +120,7 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
                 "correlation": s["correlation"],
                 "due_date": s["due_date"].isoformat() if s["due_date"] else None,
                 "assignee": s["assignee"],
+                "six_m_bucket": s["six_m_bucket"],
                 "tasks": tasks_by_section.get(s["id"], []),
             }
             for s in section_rows
@@ -208,8 +209,8 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                 section_id = await conn.fetchval(
                     """
                     INSERT INTO investigation_rci_sections
-                        (deviation_id, title, correlation, due_date, assignee, sort_order)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                        (deviation_id, title, correlation, due_date, assignee, six_m_bucket, sort_order)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     RETURNING id
                     """,
                     deviation_id,
@@ -217,6 +218,7 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                     section.get("correlation"),
                     _parse_date(section.get("due_date")),
                     section.get("assignee"),
+                    section.get("six_m_bucket"),
                     i,
                 )
                 tasks = section.get("tasks") or []

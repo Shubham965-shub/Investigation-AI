@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS investigation_rci_sections (
     -- need a migration once DS/frontend catch up — unused until then.
     due_date DATE,
     assignee TEXT,
+    -- 6M fishbone category (MATERIAL/METHOD/MACHINE/MEASUREMENT/MAN/ENVIRONMENT),
+    -- mirrors rci_plan_section.six_m_bucket in the DS service's template
+    -- library — populated from DS's RciPlanGenerateResponse when generating
+    -- from an archetype that has 6M data (2026-08-24).
+    six_m_bucket TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
