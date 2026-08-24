@@ -497,3 +497,14 @@ def missing_required_trackwise_fields(
         for name, field in schema.model_fields.items()
         if field.is_required() and not str(normalised_fields.get(name, "")).strip()
     )
+
+
+def required_trackwise_fields(event_type: str, event_functionality: Optional[str] = None) -> List[str]:
+    """Every required field name (by attribute name) for this event type's
+    schema, populated or not — the total universe missing_required_trackwise_fields
+    draws its "missing" subset from. Callers that need to distinguish "some
+    required fields are blank" from "every relevant required field is blank"
+    (rather than treating any single blank field as fatal) compare against this.
+    """
+    schema = _resolve_trackwise_schema(event_type, event_functionality)
+    return sorted(name for name, field in schema.model_fields.items() if field.is_required())
