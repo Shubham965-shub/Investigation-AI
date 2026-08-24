@@ -83,57 +83,55 @@ _TASK_REPORT = SectionSpec(
     checkpoints=[
         Checkpoint(
             "2.2a", "2.2 Title & Objective Quality",
-            "Each investigation task has a clear, specific Title that identifies what is "
-            "being investigated.",
+            "Title is clear and specific. It states what is being investigated.",
             4.0,
         ),
         Checkpoint(
             "2.2b", "2.2 Title & Objective Quality",
-            "Each task states a specific, answerable Objective linked to the problem or a "
+            "Each task states a specific, answerable Objective linked to the problem / a "
             "hypothesis.",
             4.0,
         ),
         Checkpoint(
             "3.1a", "3.1 Evidence & Objectivity",
-            "Findings are supported by objective evidence & data (records, logbooks, trend "
-            "data, interviews, reconstruction) rather than unsupported assertions.",
+            "Findings are supported by objective evidence and data (batch records, logbooks, "
+            "trend data, interviews, reconstruction).",
             6.0,
         ),
         Checkpoint(
             "3.1b", "3.1 Evidence & Objectivity",
-            "Both confirming and disconfirming evidence is captured (no cherry-picking); "
-            "findings state fact and are quantified where relevant.",
+            "Evidence both for and against is recorded. No cherry-picking. Findings state "
+            "facts and are quantified where relevant.",
             4.0,
         ),
         Checkpoint(
             "3.2a", "3.2 Completeness & Traceability",
-            "Each task's stated Objective is actually answered by its Findings — the task is "
-            "executed to closure, not left open.",
+            "Every part of the task is completed. Any gap is declared, not left open.",
             4.0,
         ),
         Checkpoint(
             "3.2b", "3.2 Completeness & Traceability",
-            "Data / evidence in the Findings is traceable to authenticated source records "
+            "All data in the Findings can be traced to a named, authenticated source record "
             "(ALCOA+).",
             6.0,
         ),
         Checkpoint(
             "4.1a", "4.1 Logical Linkage & Analytical Depth",
-            "Each Inference follows logically from that task's Findings (no leaps or "
-            "unsupported conclusions).",
+            "Inference follows logically from that task's findings. No unsupported "
+            "conclusions.",
             4.0,
         ),
         Checkpoint(
             "4.1b", "4.1 Logical Linkage & Analytical Depth",
-            "Ruled-out lines are justified by findings; the inference reaches a systemic "
-            "level; underlying systemic contributors are examined.",
+            "Ruled-out causes are justified by the findings. Listed factors are examined "
+            "(mark NA if not applicable).",
             4.0,
             allow_na=True,
         ),
         Checkpoint(
             "4.1c", "4.1 Logical Linkage & Analytical Depth",
-            "The inferences collectively provide a coherent, gap-free basis for the "
-            "root-cause determination.",
+            "All inferences together give a complete, gap-free basis for the root cause. "
+            "This is explained clearly even if the inference is no root cause.",
             4.0,
         ),
     ],

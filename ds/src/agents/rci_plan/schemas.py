@@ -29,7 +29,6 @@ class RciTaskItem(BaseModel):
 class RciSectionItem(BaseModel):
     title: str
     correlation: Optional[str] = None
-    six_m_bucket: Optional[str] = None
     tasks: List[RciTaskItem]
 
 

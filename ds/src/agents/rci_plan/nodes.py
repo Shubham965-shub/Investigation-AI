@@ -49,10 +49,15 @@ async def fetch_rci_plan(state: RciPlanState) -> RciPlanState:
                     "SELECT description FROM rci_plan_task WHERE rci_plan_section_id = $1 ORDER BY id",
                     sec["id"]
                 )
+                # 6M bucket is baked into the title string itself (e.g.
+                # "MATERIAL: Section Title") rather than sent as its own
+                # field — RciSectionItem/the frontend only ever render
+                # `title`, so this way the bucket shows up with no schema or
+                # UI changes needed downstream.
+                title = f"{sec['six_m_bucket']}: {sec['title']}" if sec["six_m_bucket"] else sec["title"]
                 sections.append({
-                    "title": sec["title"],
+                    "title": title,
                     "correlation": sec["correlation"],
-                    "six_m_bucket": sec["six_m_bucket"],
                     "tasks": [{"description": r["description"]} for r in task_rows]
                 })
 
@@ -83,8 +88,7 @@ async def rephrase_rci_plan(state: RciPlanState) -> RciPlanState:
     # Format the original plan to string
     rci_plan_list = []
     for sec in state.rci_plan_original:
-        heading = f"{sec['six_m_bucket']}: {sec['title']}" if sec.get("six_m_bucket") else sec["title"]
-        lines = [heading]
+        lines = [sec["title"]]
         if sec.get("correlation"):
             lines.append(sec["correlation"])
         lines.extend(f"{i}. {t['description']}" for i, t in enumerate(sec["tasks"], 1))
@@ -113,7 +117,6 @@ async def rephrase_rci_plan(state: RciPlanState) -> RciPlanState:
     for sec in rephrased:
         title = sec.get("title", "Section")
         correlation = sec.get("correlation")
-        six_m_bucket = sec.get("six_m_bucket")
         tasks = []
         for t in sec.get("tasks", []):
             if isinstance(t, dict):
@@ -125,7 +128,6 @@ async def rephrase_rci_plan(state: RciPlanState) -> RciPlanState:
         state.rci_plan_rephrased.append({
             "title": title,
             "correlation": correlation,
-            "six_m_bucket": six_m_bucket,
             "tasks": tasks
         })
 
@@ -211,7 +213,6 @@ async def infer_rci_plan_from_historical_data(state: RciPlanState) -> RciPlanSta
     for sec in sections:
         title = sec.get("title", "Section")
         correlation = sec.get("correlation")
-        six_m_bucket = sec.get("six_m_bucket")
         tasks = []
         for t in sec.get("tasks", []):
             if isinstance(t, dict):
@@ -223,7 +224,6 @@ async def infer_rci_plan_from_historical_data(state: RciPlanState) -> RciPlanSta
         state.rci_plan_rephrased.append({
             "title": title,
             "correlation": correlation,
-            "six_m_bucket": six_m_bucket,
             "tasks": tasks
         })
 

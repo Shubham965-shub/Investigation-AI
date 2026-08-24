@@ -28,13 +28,27 @@ versions:
 
       Draft an RCI plan as a set of investigation SECTIONS, each covering one distinct angle a QA
       investigator would pursue to find the root cause. Each section needs:
+        - A 6M category tag prefixed to the title (see CATEGORY TAG below).
         - A short title naming the investigation angle (e.g. "Equipment Integrity & Preventive Maintenance").
         - A one-sentence correlation explaining WHY this angle is relevant to this specific failure.
         - A list of concrete, actionable tasks an investigator would perform under that angle.
 
+      CATEGORY TAG
+        Classify each section's primary investigation angle into exactly one of these 6 fixed
+        categories (the standard fishbone/6M taxonomy), and prefix the title with it as
+        "CATEGORY: Title" (e.g. "MATERIAL: Raw Material & Incoming Component Review"):
+          - MATERIAL — raw materials, excipients, packaging components, incoming inputs
+          - METHOD — process parameters, procedures, batch record instructions
+          - MACHINE — equipment, instruments, hardware, software/systems
+          - MEASUREMENT — sampling, testing, analytical method, instrument calibration/reliability
+          - MAN — operator practice, training, human error, supervision
+          - ENVIRONMENT — facility conditions, storage, HVAC, utilities, external factors
+        A section that reviews trends/history/CAPA linkage across other incidents doesn't fit any
+        single 6M cause category — leave its title untagged (no prefix) rather than forcing a fit.
+
       GUIDELINES
-        - Cover the full plausible cause space: material/input, process/equipment, human/procedural,
-          environmental, and systemic/historical-trend angles — but only include a section if it's
+        - Cover the full plausible cause space across the 6M categories above, plus a
+          trend/historical-recurrence angle where relevant — but only include a section if it's
           genuinely relevant to this failure; do not force irrelevant sections to hit a count.
         - Tasks must be concrete and verifiable (e.g. "Verify calibration records for the metal
           detection system"), not vague ("investigate equipment").
@@ -44,11 +58,12 @@ versions:
         - Aim for 4-7 sections, each with 3-6 tasks, unless the failure is narrow enough that fewer
           genuinely apply.
 
-      Return a JSON array of sections. Each section must have the section title, correlation, and
-      the list of tasks. Example structure:
+      Return a JSON array of sections. Each section must have the section title (with its category
+      tag prefixed, or untagged if it's a trend/historical section), correlation, and the list of
+      tasks. Example structure:
       [
         {{
-          "title": "Section Title",
+          "title": "MATERIAL: Section Title",
           "correlation": "Why this angle is relevant to this failure",
           "tasks": [
             "Concrete investigation task 1",

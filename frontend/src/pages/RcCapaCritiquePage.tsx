@@ -8,6 +8,7 @@ import {
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
   type RcCapaCritique,
+  type RcCapaRecommendation,
   type RcCapaReport,
   type RcCapaState,
 } from "../api/dashboard";
@@ -25,7 +26,7 @@ import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
 const CATEGORY_LABEL: Record<RcCapaCritique["category"], string> = {
-  rc_impact: "RC Impact Assessment Critique",
+  rc_impact: "Root Cause & Impact Assessment Critique",
   capa: "CAPA Critique",
 };
 
@@ -190,6 +191,62 @@ export function RcCapaCritiquePage() {
     } finally {
       setPushBusy(false);
     }
+  }
+
+  function renderRecommendationCard(rec: RcCapaRecommendation) {
+    const isRejecting = rejectingId === rec.id;
+    return (
+      <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
+          {rec.decision === "pending" && !isRejecting && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="btn-outline" disabled={decisionBusy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+                Accept
+              </button>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={decisionBusy}
+                onClick={() => setRejectingId(rec.id)}
+                style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+              >
+                Reject
+              </button>
+            </div>
+          )}
+          {rec.decision === "accepted" && <span className="status-pill complete">Accepted</span>}
+          {rec.decision === "rejected" && <span className="status-pill" style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}>Rejected</span>}
+        </div>
+        {isRejecting && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                className="field-value"
+                placeholder="Rejection reason"
+                value={reasonDrafts[rec.id] ?? ""}
+                onChange={(e) => setReasonDrafts((prev) => ({ ...prev, [rec.id]: e.target.value }))}
+                style={{ flex: 1, height: "auto" }}
+              />
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={decisionBusy || !(reasonDrafts[rec.id] ?? "").trim()}
+                onClick={() => handleReject(rec.id)}
+                style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        )}
+        {rec.decision === "rejected" && rec.reason && (
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
+        )}
+      </div>
+    );
   }
 
   const report = state.latest_report;
@@ -430,64 +487,35 @@ export function RcCapaCritiquePage() {
                 )}
 
                 {!isComplete && critique.recommendations.length > 0 && (
-                  <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
-                    {critique.recommendations.map((rec) => {
-                      const isRejecting = rejectingId === rec.id;
-                      return (
-                        <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
-                            {rec.decision === "pending" && !isRejecting && (
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <button type="button" className="btn-outline" disabled={decisionBusy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
-                                  Accept
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-outline"
-                                  disabled={decisionBusy}
-                                  onClick={() => setRejectingId(rec.id)}
-                                  style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                                >
-                                  Reject
-                                </button>
+                  critique.category === "rc_impact" ? (
+                    <>
+                      {(() => {
+                        const rootCauseRecs = critique.recommendations.filter((r) => r.type !== "impact");
+                        const impactRecs = critique.recommendations.filter((r) => r.type === "impact");
+                        return (
+                          <>
+                            {rootCauseRecs.length > 0 && (
+                              <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
+                                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Root Cause</p>
+                                {rootCauseRecs.map(renderRecommendationCard)}
                               </div>
                             )}
-                            {rec.decision === "accepted" && <span className="status-pill complete">Accepted</span>}
-                            {rec.decision === "rejected" && <span className="status-pill" style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}>Rejected</span>}
-                          </div>
-                          {isRejecting && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <input
-                                  type="text"
-                                  className="field-value"
-                                  placeholder="Rejection reason"
-                                  value={reasonDrafts[rec.id] ?? ""}
-                                  onChange={(e) => setReasonDrafts((prev) => ({ ...prev, [rec.id]: e.target.value }))}
-                                  style={{ flex: 1, height: "auto" }}
-                                />
-                                <button
-                                  type="button"
-                                  className="btn-outline"
-                                  disabled={decisionBusy || !(reasonDrafts[rec.id] ?? "").trim()}
-                                  onClick={() => handleReject(rec.id)}
-                                  style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                                >
-                                  Confirm Reject
-                                </button>
+                            {impactRecs.length > 0 && (
+                              <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
+                                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Impact Assessment</p>
+                                {impactRecs.map(renderRecommendationCard)}
                               </div>
-                            </div>
-                          )}
-                          {rec.decision === "rejected" && rec.reason && (
-                            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
+                      {critique.recommendations.map(renderRecommendationCard)}
+                    </div>
+                  )
                 )}
               </div>
             </div>

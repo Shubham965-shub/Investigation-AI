@@ -17,6 +17,14 @@ from backend.schemas.scoring import ScoreBreakdownTable
 class RcCapaRecommendation(BaseModel):
     id: int
     description: str
+    # Only set for the rc_impact category — ds's RCConclusionCritiqueResponse
+    # splits its recommendations into rc_recommendations (evidence/
+    # traceability/history) and impact_recommendations (impact linkage),
+    # tagged here so the frontend can render them as two labeled subsections
+    # under the one RC Impact Assessment Critique panel (2026-08-24, per the
+    # user). None for capa recommendations, and for any rc_impact
+    # recommendation persisted before this field existed.
+    type: Optional[Literal["rc", "impact"]] = None
     decision: Literal["pending", "accepted", "rejected"] = "pending"
     reason: Optional[str] = None
 
