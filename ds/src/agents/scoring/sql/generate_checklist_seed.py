@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS {SECTION_TABLE} (
 
 CREATE TABLE IF NOT EXISTS {CHECKPOINT_TABLE} (
     section         text        NOT NULL REFERENCES {SECTION_TABLE}(section) ON DELETE CASCADE,
-    checkpoint_id   text        NOT NULL,        -- e.g. '3.1a', '1'
+    checkpoint_id   text        NOT NULL,        -- e.g. '6.1a', '1'
     sub_criteria    text        NOT NULL,
     checkpoint_text text        NOT NULL,
     max_marks       numeric     NOT NULL,        -- marks awarded when satisfied

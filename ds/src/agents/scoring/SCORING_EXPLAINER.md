@@ -36,15 +36,15 @@ An AI assessor reads the report and returns, for every checkpoint: a **verdict**
 
 | Sub-criteria | Checkpoint | Marks |
 |---|---|---|
-| 2.2 Title & Objective | 2.2a — each task has a clear, specific title | 4 |
-| | 2.2b — each task states a specific, answerable objective | 4 |
-| 3.1 Evidence & Objectivity | 3.1a — findings supported by objective evidence & data | 6 |
-| | 3.1b — both confirming & disconfirming evidence; quantified | 4 |
-| 3.2 Completeness & Traceability | 3.2a — every part of the task is completed; any gap is declared, not left open | 4 |
-| | 3.2b — data traceable to a named, authenticated source record (ALCOA+) | 6 |
-| 4.1 Logical Linkage & Depth | 4.1a — each inference follows from findings | 4 |
-| | 4.1b — ruled-out causes justified; listed factors examined *(NA allowed)* | 4 |
-| | 4.1c — inferences give a gap-free basis for root cause, explained clearly even if no root cause | 4 |
+| 2.2 Title & Objective | 1 — each task has a clear, specific title | 4 |
+| | 2 — each task states a specific, answerable objective | 4 |
+| 3.1 Evidence & Objectivity | 3 — findings supported by objective evidence & data | 6 |
+| | 4 — both confirming & disconfirming evidence; quantified | 4 |
+| 3.2 Completeness & Traceability | 5 — every part of the task is completed; any gap is declared, not left open | 4 |
+| | 6 — data traceable to a named, authenticated source record (ALCOA+) | 6 |
+| 4.1 Logical Linkage & Depth | 7 — each inference follows from findings | 4 |
+| | 8 — ruled-out causes justified; listed factors examined *(NA allowed)* | 4 |
+| | 9 — inferences give a gap-free basis for root cause, explained clearly even if no root cause | 4 |
 | **Total** | | **40** |
 
 ## Report 2 — IQ Score (/60)
