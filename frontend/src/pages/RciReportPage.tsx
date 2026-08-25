@@ -99,6 +99,24 @@ const READ_LABEL_STYLE: React.CSSProperties = {
   color: "var(--color-text-muted)",
 };
 
+// Shown in place of a section's fields when ds skipped it — either a
+// required TrackWise field was blank, or a section it depends on was itself
+// skipped (2026-08-24, per the user: this must not break the sections that
+// DID generate, and should point the investigator at what to go fill in).
+function MissingFieldsNotice({ message }: { message?: string }) {
+  return (
+    <div style={{ background: "var(--color-warning-bg)", border: "1px solid var(--color-warning-text)", borderRadius: "var(--radius-card)", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
+      <p style={{ margin: 0, fontWeight: 700, color: "var(--color-warning-text)", fontSize: "var(--font-size-base)" }}>
+        This section could not be generated
+      </p>
+      <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+        The related TrackWise field(s) aren't filled — please fill them and regenerate.
+      </p>
+      {message && <p style={{ margin: 0, fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>{message}</p>}
+    </div>
+  );
+}
+
 // ── Small shared field primitives ─────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -669,15 +687,21 @@ export function RciReportPage() {
     }
   }
 
+  // Gates "Accept & Push to TW" on every section having been marked read
+  // (2026-08-24, per the user) — the export/push itself still isn't wired
+  // up (see the button's title when disabled), so this only controls
+  // whether the button is clickable, not what happens when it's clicked.
+  const allSectionsRead = !!report && SECTIONS.every((s) => readSections[s.key]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="card-header" style={{ justifyContent: "flex-end" }}>
         <button
           type="button"
           className="btn-primary"
-          style={{ display: "flex", alignItems: "center", gap: 10, opacity: 0.4, cursor: "default" }}
-          disabled
-          title="Not available yet — .docx export isn't wired up"
+          style={{ display: "flex", alignItems: "center", gap: 10, opacity: allSectionsRead ? 1 : 0.4, cursor: allSectionsRead ? "pointer" : "default" }}
+          disabled={!allSectionsRead}
+          title={allSectionsRead ? undefined : "Mark every section as read to enable this"}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
           Accept & Push to TW
@@ -770,29 +794,35 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("executive-summary")}
               setRef={(el) => (sectionRefs.current["executive-summary"] = el)}
             >
-              {editSections["executive-summary"] ? (
-                <Field label="Summary">
-                  <TextArea value={report.executive_summary.summary} onChange={(v) => setSectionField("executive_summary", "summary", v)} />
-                </Field>
+              {!report.executive_summary ? (
+                <MissingFieldsNotice message={report.errors.executive_summary} />
               ) : (
-                <div style={{ background: "var(--color-rail-active-bg)", border: "1px solid var(--color-success-border)", borderRadius: "var(--radius-card)", padding: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <p style={{ margin: 0, fontWeight: 700, color: "var(--color-primary)", fontSize: "var(--font-size-base)" }}>Summary</p>
-                  <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "var(--font-size-base)" }}>{report.executive_summary.summary}</p>
-                </div>
+                <>
+                  {editSections["executive-summary"] ? (
+                    <Field label="Summary">
+                      <TextArea value={report.executive_summary.summary} onChange={(v) => setSectionField("executive_summary", "summary", v)} />
+                    </Field>
+                  ) : (
+                    <div style={{ background: "var(--color-rail-active-bg)", border: "1px solid var(--color-success-border)", borderRadius: "var(--radius-card)", padding: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <p style={{ margin: 0, fontWeight: 700, color: "var(--color-primary)", fontSize: "var(--font-size-base)" }}>Summary</p>
+                      <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "var(--font-size-base)" }}>{report.executive_summary.summary}</p>
+                    </div>
+                  )}
+                  {([
+                    ["problem_description", "Problem Description"],
+                    ["immediate_containment_action", "Immediate Containment Action"],
+                    ["determination_of_root_cause", "Determination of Root Cause"],
+                    ["root_cause_probable_cause_statement", "Root Cause / Probable Cause Statement"],
+                    ["impact_assessment", "Impact Assessment"],
+                    ["correction_conclusion_preventive_actions", "Correction, Conclusion & Preventive Actions"],
+                    ["conclusion_statement", "Conclusion Statement"],
+                  ] as const).map(([field, label]) => (
+                    <Field key={field} label={label}>
+                      <TextArea value={report.executive_summary![field]} onChange={(v) => setSectionField("executive_summary", field, v)} />
+                    </Field>
+                  ))}
+                </>
               )}
-              {([
-                ["problem_description", "Problem Description"],
-                ["immediate_containment_action", "Immediate Containment Action"],
-                ["determination_of_root_cause", "Determination of Root Cause"],
-                ["root_cause_probable_cause_statement", "Root Cause / Probable Cause Statement"],
-                ["impact_assessment", "Impact Assessment"],
-                ["correction_conclusion_preventive_actions", "Correction, Conclusion & Preventive Actions"],
-                ["conclusion_statement", "Conclusion Statement"],
-              ] as const).map(([field, label]) => (
-                <Field key={field} label={label}>
-                  <TextArea value={report.executive_summary[field]} onChange={(v) => setSectionField("executive_summary", field, v)} />
-                </Field>
-              ))}
             </SectionCard>
 
             {/* 2. Description of Event */}
@@ -806,28 +836,34 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("description-of-event")}
               setRef={(el) => (sectionRefs.current["description-of-event"] = el)}
             >
-              <Field label="What Happened">
-                <TextArea value={report.description_of_event.what_happened} onChange={(v) => setSectionField("description_of_event", "what_happened", v)} />
-              </Field>
-              <Field label="When It Happened">
-                <TextInput value={report.description_of_event.when_happened} onChange={(v) => setSectionField("description_of_event", "when_happened", v)} />
-              </Field>
-              <Field label="Who Identified">
-                <TextInput value={report.description_of_event.who_identified} onChange={(v) => setSectionField("description_of_event", "who_identified", v)} />
-              </Field>
-              <Field label="Where It Happened">
-                <TextInput value={report.description_of_event.where_it_happened} onChange={(v) => setSectionField("description_of_event", "where_it_happened", v)} />
-              </Field>
-              <SourcedTextEditor
-                label="Non-Conforming Reference"
-                value={report.description_of_event.nonconforming_reference}
-                onChange={(v) => setNestedField("description_of_event", "nonconforming_reference", v)}
-              />
-              <SourcedTextEditor
-                label="How Detected"
-                value={report.description_of_event.how_detected}
-                onChange={(v) => setNestedField("description_of_event", "how_detected", v)}
-              />
+              {!report.description_of_event ? (
+                <MissingFieldsNotice message={report.errors.description_of_event} />
+              ) : (
+                <>
+                  <Field label="What Happened">
+                    <TextArea value={report.description_of_event.what_happened} onChange={(v) => setSectionField("description_of_event", "what_happened", v)} />
+                  </Field>
+                  <Field label="When It Happened">
+                    <TextInput value={report.description_of_event.when_happened} onChange={(v) => setSectionField("description_of_event", "when_happened", v)} />
+                  </Field>
+                  <Field label="Who Identified">
+                    <TextInput value={report.description_of_event.who_identified} onChange={(v) => setSectionField("description_of_event", "who_identified", v)} />
+                  </Field>
+                  <Field label="Where It Happened">
+                    <TextInput value={report.description_of_event.where_it_happened} onChange={(v) => setSectionField("description_of_event", "where_it_happened", v)} />
+                  </Field>
+                  <SourcedTextEditor
+                    label="Non-Conforming Reference"
+                    value={report.description_of_event.nonconforming_reference}
+                    onChange={(v) => setNestedField("description_of_event", "nonconforming_reference", v)}
+                  />
+                  <SourcedTextEditor
+                    label="How Detected"
+                    value={report.description_of_event.how_detected}
+                    onChange={(v) => setNestedField("description_of_event", "how_detected", v)}
+                  />
+                </>
+              )}
             </SectionCard>
 
             {/* 3. Initial Impact Assessment */}
@@ -841,9 +877,13 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("initial-impact-assessment")}
               setRef={(el) => (sectionRefs.current["initial-impact-assessment"] = el)}
             >
+              {!report.initial_impact_assessment ? (
+                <MissingFieldsNotice message={report.errors.initial_impact_assessment} />
+              ) : (
+                <>
               <Field label="Material / Product Impacts">
                 {(() => {
-                  const list = report.initial_impact_assessment.material_product_impacts;
+                  const list = report.initial_impact_assessment!.material_product_impacts;
                   const h = listHelpers<MaterialProductImpactItem>("initial_impact_assessment", "material_product_impacts", list);
                   const editing = editSections["initial-impact-assessment"];
                   if (!editing) {
@@ -920,7 +960,7 @@ export function RciReportPage() {
 
               <Field label="Equipment Impacts">
                 {(() => {
-                  const list = report.initial_impact_assessment.equipment_impacts;
+                  const list = report.initial_impact_assessment!.equipment_impacts;
                   const h = listHelpers<EquipmentImpactItem>("initial_impact_assessment", "equipment_impacts", list);
                   const editing = editSections["initial-impact-assessment"];
                   const actionsText = (item: EquipmentImpactItem) => {
@@ -1018,6 +1058,8 @@ export function RciReportPage() {
                   onChange={(v) => setListField("initial_impact_assessment", "immediate_actions", v)}
                 />
               </Field>
+                </>
+              )}
             </SectionCard>
 
             {/* 4. History Review */}
@@ -1031,6 +1073,10 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("history-review")}
               setRef={(el) => (sectionRefs.current["history-review"] = el)}
             >
+              {!report.history_review ? (
+                <MissingFieldsNotice message={report.errors.history_review} />
+              ) : (
+                <>
               <Field label="Lookback Months">
                 <TextInput
                   type="number"
@@ -1044,7 +1090,7 @@ export function RciReportPage() {
                 onChange={(v) => setSectionField("history_review", "no_similar_events_found", v)}
               />
               {(() => {
-                const list = report.history_review.rows;
+                const list = report.history_review!.rows;
                 const h = listHelpers<HistoryReviewRow>("history_review", "rows", list);
                 const editing = editSections["history-review"];
                 if (!editing) {
@@ -1103,6 +1149,8 @@ export function RciReportPage() {
                   onChange={(v) => setSectionField("history_review", "batches_manufactured_note", v || null)}
                 />
               </Field>
+                </>
+              )}
             </SectionCard>
 
             {/* 5. Investigation Task */}
@@ -1116,6 +1164,10 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("investigation-task")}
               setRef={(el) => (sectionRefs.current["investigation-task"] = el)}
             >
+              {!report.investigation_task ? (
+                <MissingFieldsNotice message={report.errors.investigation_task} />
+              ) : (
+                <>
               <Field label="RCA Method Evidence">
                 <TextArea value={report.investigation_task.rca_method_evidence} onChange={(v) => setSectionField("investigation_task", "rca_method_evidence", v)} />
               </Field>
@@ -1128,7 +1180,7 @@ export function RciReportPage() {
               </Field>
 
               {(() => {
-                const groups = report.investigation_task.groups;
+                const groups = report.investigation_task!.groups;
                 const gh = listHelpers<InvestigationTaskGroup>("investigation_task", "groups", groups);
                 const editing = editSections["investigation-task"];
                 if (!editing) {
@@ -1253,6 +1305,8 @@ export function RciReportPage() {
                   </>
                 );
               })()}
+                </>
+              )}
             </SectionCard>
 
             {/* 6. Root Cause */}
@@ -1266,41 +1320,47 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("root-cause")}
               setRef={(el) => (sectionRefs.current["root-cause"] = el)}
             >
-              <Field label="Conclusion">
-                <TextArea value={report.root_cause_conclusion.conclusion} onChange={(v) => setSectionField("root_cause_conclusion", "conclusion", v)} />
-              </Field>
-              {editSections["root-cause"] ? (
-                <>
-                  <Field label="Taxonomy — Category (6M)">
-                    <SelectInput
-                      value={report.root_cause_conclusion.taxonomy.category}
-                      onChange={(v) => setNestedField("root_cause_conclusion", "taxonomy", { category: v })}
-                      options={SIX_M_FACTOR_OPTIONS}
-                    />
-                  </Field>
-                  <Field label="Taxonomy — Sub-Category">
-                    <TextInput
-                      value={report.root_cause_conclusion.taxonomy.sub_category}
-                      onChange={(v) => setNestedField("root_cause_conclusion", "taxonomy", { sub_category: v })}
-                    />
-                  </Field>
-                </>
+              {!report.root_cause_conclusion ? (
+                <MissingFieldsNotice message={report.errors.root_cause_conclusion} />
               ) : (
-                <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
-                  Root cause – category: {report.root_cause_conclusion.taxonomy.category} &nbsp;&nbsp; Root cause – sub-category: {report.root_cause_conclusion.taxonomy.sub_category}
-                </p>
+                <>
+                  <Field label="Conclusion">
+                    <TextArea value={report.root_cause_conclusion.conclusion} onChange={(v) => setSectionField("root_cause_conclusion", "conclusion", v)} />
+                  </Field>
+                  {editSections["root-cause"] ? (
+                    <>
+                      <Field label="Taxonomy — Category (6M)">
+                        <SelectInput
+                          value={report.root_cause_conclusion.taxonomy.category}
+                          onChange={(v) => setNestedField("root_cause_conclusion", "taxonomy", { category: v })}
+                          options={SIX_M_FACTOR_OPTIONS}
+                        />
+                      </Field>
+                      <Field label="Taxonomy — Sub-Category">
+                        <TextInput
+                          value={report.root_cause_conclusion.taxonomy.sub_category}
+                          onChange={(v) => setNestedField("root_cause_conclusion", "taxonomy", { sub_category: v })}
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
+                      Root cause – category: {report.root_cause_conclusion.taxonomy.category} &nbsp;&nbsp; Root cause – sub-category: {report.root_cause_conclusion.taxonomy.sub_category}
+                    </p>
+                  )}
+                  <Field label="Repeat-Occurrence Evidence">
+                    <TextArea
+                      value={report.root_cause_conclusion.repeat_occurrence_evidence}
+                      onChange={(v) => setSectionField("root_cause_conclusion", "repeat_occurrence_evidence", v)}
+                    />
+                  </Field>
+                  <CheckboxField
+                    label="Is Repeat Occurrence"
+                    checked={report.root_cause_conclusion.is_repeat_occurrence}
+                    onChange={(v) => setSectionField("root_cause_conclusion", "is_repeat_occurrence", v)}
+                  />
+                </>
               )}
-              <Field label="Repeat-Occurrence Evidence">
-                <TextArea
-                  value={report.root_cause_conclusion.repeat_occurrence_evidence}
-                  onChange={(v) => setSectionField("root_cause_conclusion", "repeat_occurrence_evidence", v)}
-                />
-              </Field>
-              <CheckboxField
-                label="Is Repeat Occurrence"
-                checked={report.root_cause_conclusion.is_repeat_occurrence}
-                onChange={(v) => setSectionField("root_cause_conclusion", "is_repeat_occurrence", v)}
-              />
             </SectionCard>
 
             {/* 7. Impact Assessment & Batch Disposition */}
@@ -1314,12 +1374,16 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("impact-assessment-batch-disposition")}
               setRef={(el) => (sectionRefs.current["impact-assessment-batch-disposition"] = el)}
             >
+              {!report.impact_assessment_batch_disposition ? (
+                <MissingFieldsNotice message={report.errors.impact_assessment_batch_disposition} />
+              ) : (
+                <>
               <ImpactSubsectionEditor
                 label="Impact on Affected Batches"
                 value={report.impact_assessment_batch_disposition.impact_on_affected_batches}
                 onChange={(v) => setNestedField("impact_assessment_batch_disposition", "impact_on_affected_batches", v)}
                 extra={(() => {
-                  const list = report.impact_assessment_batch_disposition.impact_on_affected_batches.batch_shipper_table;
+                  const list = report.impact_assessment_batch_disposition!.impact_on_affected_batches.batch_shipper_table;
                   const h = {
                     add: (item: BatchShipperImpact) =>
                       setNestedField("impact_assessment_batch_disposition", "impact_on_affected_batches", { batch_shipper_table: [...list, item] }),
@@ -1368,7 +1432,7 @@ export function RciReportPage() {
                 <ImpactSubsectionEditor
                   key={key}
                   label={label}
-                  value={report.impact_assessment_batch_disposition[key] as ImpactSubsectionItem}
+                  value={report.impact_assessment_batch_disposition![key] as ImpactSubsectionItem}
                   onChange={(v) => setNestedField("impact_assessment_batch_disposition", key as string, v)}
                 />
               ))}
@@ -1393,6 +1457,8 @@ export function RciReportPage() {
                   onChange={(v) => setSectionField("impact_assessment_batch_disposition", "impact_justification", v || null)}
                 />
               </Field>
+                </>
+              )}
             </SectionCard>
 
             {/* 8. Risk Assessment */}
@@ -1406,6 +1472,10 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("risk-assessment")}
               setRef={(el) => (sectionRefs.current["risk-assessment"] = el)}
             >
+              {!report.risk_assessment ? (
+                <MissingFieldsNotice message={report.errors.risk_assessment} />
+              ) : (
+                <>
               <Field label="Applicability Reason">
                 <TextArea value={report.risk_assessment.applicability_reason} onChange={(v) => setSectionField("risk_assessment", "applicability_reason", v)} />
               </Field>
@@ -1417,7 +1487,7 @@ export function RciReportPage() {
                 />
               </Field>
               {(() => {
-                const list = report.risk_assessment.candidates;
+                const list = report.risk_assessment!.candidates;
                 const h = listHelpers<RiskAssessmentCandidate>("risk_assessment", "candidates", list);
                 const editing = editSections["risk-assessment"];
                 if (!editing) {
@@ -1518,6 +1588,8 @@ export function RciReportPage() {
                   </>
                 );
               })()}
+                </>
+              )}
             </SectionCard>
 
             {/* 9. Correction & Remedial Action */}
@@ -1531,8 +1603,12 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("correction-remedial-action")}
               setRef={(el) => (sectionRefs.current["correction-remedial-action"] = el)}
             >
+              {!report.correction_remedial_action ? (
+                <MissingFieldsNotice message={report.errors.correction_remedial_action} />
+              ) : (
+                <>
               {(() => {
-                const list = report.correction_remedial_action.items;
+                const list = report.correction_remedial_action!.items;
                 const h = listHelpers<ObservationStatusItem>("correction_remedial_action", "items", list);
                 const editing = editSections["correction-remedial-action"];
                 if (!editing) {
@@ -1574,6 +1650,8 @@ export function RciReportPage() {
               <Field label="Additional Notes">
                 <StringListEditor items={report.correction_remedial_action.additional_notes} onChange={(v) => setListField("correction_remedial_action", "additional_notes", v)} />
               </Field>
+                </>
+              )}
             </SectionCard>
 
             {/* 10. CAPA */}
@@ -1587,12 +1665,16 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("capa")}
               setRef={(el) => (sectionRefs.current["capa"] = el)}
             >
+              {!report.capa ? (
+                <MissingFieldsNotice message={report.errors.capa} />
+              ) : (
+                <>
               <Field label="CAPA Not Applicable Justification (optional)">
                 <TextArea value={report.capa.capa_not_applicable_justification ?? ""} onChange={(v) => setSectionField("capa", "capa_not_applicable_justification", v || null)} />
               </Field>
               <Field label="CAPA Description / PR Number">
                 {(() => {
-                  const list = report.capa.capa_actions;
+                  const list = report.capa!.capa_actions;
                   const h = listHelpers<CAPAActionItem>("capa", "capa_actions", list);
                   const editing = editSections["capa"];
                   if (!editing) {
@@ -1635,7 +1717,7 @@ export function RciReportPage() {
               </Field>
               <Field label="Interim Control Plan">
                 {(() => {
-                  const list = report.capa.interim_controls;
+                  const list = report.capa!.interim_controls;
                   const h = listHelpers<InterimControlItem>("capa", "interim_controls", list);
                   const editing = editSections["capa"];
                   if (!editing) {
@@ -1702,6 +1784,8 @@ export function RciReportPage() {
                   <TextInput value={report.capa.extrapolation.due_date} onChange={(v) => setNestedField("capa", "extrapolation", { due_date: v })} />
                 </Field>
               </div>
+                </>
+              )}
             </SectionCard>
 
             {/* 11. CAPA Effectiveness Check Plan */}
@@ -1715,6 +1799,10 @@ export function RciReportPage() {
               onToggleRead={() => toggleReadSection("capa-effectiveness-check-plan")}
               setRef={(el) => (sectionRefs.current["capa-effectiveness-check-plan"] = el)}
             >
+              {!report.capa_effectiveness_check_plan ? (
+                <MissingFieldsNotice message={report.errors.capa_effectiveness_check_plan} />
+              ) : (
+                <>
               <Field label="CAPA Not Applicable Justification (optional)">
                 <TextArea
                   value={report.capa_effectiveness_check_plan.capa_not_applicable_justification ?? ""}
@@ -1722,7 +1810,7 @@ export function RciReportPage() {
                 />
               </Field>
               {(() => {
-                const list = report.capa_effectiveness_check_plan.generated_plans;
+                const list = report.capa_effectiveness_check_plan!.generated_plans;
                 const h = listHelpers<CAPAEffectivenessPlanItem>("capa_effectiveness_check_plan", "generated_plans", list);
                 const editing = editSections["capa-effectiveness-check-plan"];
                 const bullets = (items: string[]) => (
@@ -1814,6 +1902,8 @@ export function RciReportPage() {
                   </>
                 );
               })()}
+                </>
+              )}
             </SectionCard>
           </div>
         </>
