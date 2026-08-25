@@ -111,8 +111,7 @@ _TASK_REPORT = SectionSpec(
         ),
         Checkpoint(
             "6", "3.2 Completeness & Traceability",
-            "All data in the Findings can be traced to a named, authenticated source record "
-            "(ALCOA+).",
+            "All data in the Findings can be traced to a source.",
             6.0,
         ),
         Checkpoint(
