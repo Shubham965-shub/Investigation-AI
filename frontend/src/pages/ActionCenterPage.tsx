@@ -294,6 +294,21 @@ export function ActionCenterPage() {
     return <DbErrorModal message={dbError ?? "No data returned."} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
 
+  // Selecting a status pill (Unassigned/On Track/Delay/Overdue) narrows the
+  // event-type pill counts/percentages the same way selecting an event type
+  // already narrows the status cards via status_cards_by_event_type
+  // (2026-08-25, per the user) — computed client-side from the same
+  // already-fetched summary.investigations list the table itself filters,
+  // rather than a new backend field, since every investigation's
+  // event_type/bucket is already right there.
+  const statusFilteredInvestigations = summary.investigations.filter(
+    (inv) => !statusFilter || inv.bucket === CARD_KEY_TO_BUCKET[statusFilter]
+  );
+  const eventTypeCounts = summary.event_type_counts.map((s) => {
+    const count = statusFilteredInvestigations.filter((inv) => inv.event_type === s.label).length;
+    return { ...s, count, percent: statusFilteredInvestigations.length > 0 ? Math.round((count / statusFilteredInvestigations.length) * 100) : 0 };
+  });
+
   const visibleInvestigations = summary.investigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
     .filter((inv) => !statusFilter || inv.bucket === CARD_KEY_TO_BUCKET[statusFilter])
@@ -375,7 +390,7 @@ export function ActionCenterPage() {
           <span className="ac-total-count">{summary.total_investigations}</span>
         </div>
         <div className="ac-stat-pills">
-          {summary.event_type_counts.map((s) => (
+          {eventTypeCounts.map((s) => (
             <div
               className={`ac-stat-pill ${activeFilter === s.label ? "active" : ""}`}
               key={s.label}
@@ -486,7 +501,7 @@ export function ActionCenterPage() {
                   Major & Minor
                 </button>
               </div>
-              <CriticalityGuidelines />
+              <CriticalityGuidelines eventType={activeFilter} />
             </div>
             <p>{summary.total_investigations} investigations total</p>
           </div>

@@ -95,14 +95,18 @@ MISSING_NOTE_FALLBACK = "This section could not be generated — the related Tra
 # from every answer sitting right next to it, despite both resolving to the
 # same font family. Forced explicitly on every run this file touches so
 # every generated font/size/heading/in-table text matches the template's
-# own convention exactly (2026-08-25, per the user).
+# own convention exactly (2026-08-25, per the user). Table content is
+# additionally locked to 10pt, one step down from body content's 11pt
+# (2026-08-25, per the user), matching how a real Word table's contents
+# commonly run a point smaller than the surrounding body text.
 FONT_NAME = "Times New Roman"
 FONT_SIZE = Pt(11)
+TABLE_FONT_SIZE = Pt(10)
 
 
-def _apply_font(run) -> None:
+def _apply_font(run, size=None) -> None:
     run.font.name = FONT_NAME
-    run.font.size = FONT_SIZE
+    run.font.size = size or FONT_SIZE
 
 
 def _missing_note(errors: dict, key: str) -> str:
@@ -110,10 +114,12 @@ def _missing_note(errors: dict, key: str) -> str:
 
 
 def _set_cell_text(cell, text: str) -> None:
+    """Always inside a table — locked to TABLE_FONT_SIZE (10pt), one step
+    down from body content's 11pt."""
     cell.text = text or ""
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
-            _apply_font(run)
+            _apply_font(run, TABLE_FONT_SIZE)
 
 
 def _body_paragraph(doc, index: int) -> Paragraph:
@@ -359,7 +365,7 @@ def _fill_root_cause_conclusion(doc, section, errors: dict) -> None:
         f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}"
     )
     for run in repeat_para.runs:
-        _apply_font(run)
+        _apply_font(run, TABLE_FONT_SIZE)
     _set_cell_text(table.rows[2].cells[0], f"Category: {section.taxonomy.category}   Subcategory: {section.taxonomy.sub_category}")
 
 
@@ -516,6 +522,26 @@ def _fill_capa_effectiveness_check_plan(doc, section, errors: dict) -> None:
         _set_cell_text(row.cells[4], item.responsibility)
 
 
+# Body-paragraph indices of every major heading in the real template — a
+# page break is forced immediately before each one so every section starts
+# on its own page (2026-08-25, per the user), matching how a real printed/
+# reviewed investigation report is organized. In heading order: Executive
+# Summary, Description of Event, Initial Impact Assessment, Summary of
+# Historical Review, Investigation Task, Root Cause conclusion, Impact
+# Assessment & Conclusion, Correction and/or Remedial Action, Corrective &
+# Preventive Action (CAPA), CAPA Effectiveness Check Plan, List of
+# Annexures, Report Approval. Risk Assessment has no heading of its own
+# (see module docstring) so it isn't included. Indices are fixed at the
+# TEMPLATE's own layout, not affected by _strip_guidance_runs (which only
+# ever removes pure-guidance paragraphs, never a heading).
+_SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 177, 186, 193, 196]
+
+
+def _add_page_breaks(doc) -> None:
+    for index in _SECTION_HEADING_INDICES:
+        _body_paragraph(doc, index).paragraph_format.page_break_before = True
+
+
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
 
 def _fill_annexures(doc, section) -> None:
@@ -576,6 +602,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
 
+    _add_page_breaks(doc)
     _fill_header_table(doc, record_id, trackwise_fields)
     _fill_executive_summary(doc, report.executive_summary, errors)
     _fill_description_of_event(doc, report.description_of_event, errors)
