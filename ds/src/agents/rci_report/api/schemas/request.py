@@ -54,11 +54,13 @@ class RciReportGenerationRequest(BaseModel):
     # Gates Risk Assessment; None -> module defaults to "applicable" (the safer
     # default for a compliance report — see GAPS.md).
     mc_confirmed: Optional[bool] = None
-    # Changed to 12 (2026-08-06, explicit request) — was 24 (UI's stated value;
-    # emails only ever said "last 2 years" for a different, unrelated feature).
-    # A request parameter, not a hardcoded constant, so it's changeable without
-    # further code changes. See GAPS.md.
-    history_lookback_months: int = 12
+    # Reverted to 24 (2026-08-25) — the 12-month value (set 2026-08-06 for an
+    # unrelated feature's stated requirement) caused Historical Review to miss
+    # genuinely similar events older than 12 months, producing a false "no
+    # similar events found" on records the real report's "last 2 years"
+    # lookback did find. A request parameter, not a hardcoded constant, so
+    # it's changeable without further code changes. See GAPS.md.
+    history_lookback_months: int = 24
     # Investigator-provided text for fields with no TrackWise backing for this
     # event type (e.g. MC's primary_defect/nature_of_complaint, OOS/OOT's
     # immediate_actions). Keys documented in rci_report_trackwise_fields.md.

@@ -160,14 +160,21 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
     # CAPA is a compile-what-was-already-decided task (see capa_system.txt),
     # not a generative one — it has nothing to compile when the accepted CAPA
     # proposal is genuinely empty (RC & CAPA Critique hasn't produced CAPA
-    # items, an overall summary, or even a not-applicable justification yet).
-    # Attempting generation anyway previously caused a hard Pydantic
-    # validation failure (CAPASection requires either capa_actions or
-    # capa_not_applicable_justification) rather than a clean skip.
+    # items or even a not-applicable justification yet). capa_overall_text is
+    # deliberately EXCLUDED from this check (2026-08-25): capa_system.txt
+    # gives the model no instruction for what to do with it (it's passed as
+    # supplementary context only, never referenced by name in the prompt), so
+    # a populated capa_overall_text is not evidence a real CAPA action or a
+    # not-applicable decision exists — e.g. it may just be the CAPA Critique
+    # step's own gap-commentary summary, present even when capa_items is
+    # empty. Gating on it caused generation to be attempted with nothing to
+    # compile, which correctly produced empty capa_actions with no
+    # justification and crashed CAPASection's own validation instead of
+    # skipping cleanly (confirmed live against record 505542).
     if section_key == "capa":
         accepted = ctx.accepted_capa
-        if not accepted.capa_items and _blank(accepted.capa_overall_text) and _blank(accepted.capa_not_applicable_justification):
-            missing.append("API field 'accepted_capa' (no CAPA items, overall text, or not-applicable justification)")
+        if not accepted.capa_items and _blank(accepted.capa_not_applicable_justification):
+            missing.append("API field 'accepted_capa' (no CAPA items or not-applicable justification)")
 
     return missing
 
