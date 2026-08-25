@@ -25,6 +25,7 @@ import io
 from typing import List
 
 import docx
+from docx.oxml.ns import qn
 
 REQUIRED_MARKERS = [
     "problem statement",
@@ -37,17 +38,24 @@ REQUIRED_MARKERS = [
 
 def missing_task_report_markers(file_bytes: bytes) -> List[str]:
     """Returns the subset of REQUIRED_MARKERS not found anywhere in the
-    document body (case-insensitive) — empty list means the format checks out."""
+    document body (case-insensitive) — empty list means the format checks out.
+
+    Walks every <w:t> text node under the body via the raw XML tree rather
+    than doc.paragraphs/doc.tables (2026-08-25, found live: a genuinely
+    correct .docx was intermittently rejected as "wrong format"). Those two
+    python-docx properties only see paragraphs/tables that are DIRECT
+    children of the body — text inside a nested table-within-a-table, or
+    inside a content control (a <w:sdt> block, which Word can wrap a
+    section in depending on how the template was filled/edited), sits one
+    or more levels deeper in the XML and is invisible to them even though
+    the text is genuinely there and Word renders it normally. Iterating
+    every <w:t> under the body finds it regardless of nesting depth."""
     try:
         doc = docx.Document(io.BytesIO(file_bytes))
     except Exception:
         return list(REQUIRED_MARKERS)
 
-    body_text = "\n".join(p.text for p in doc.paragraphs)
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                body_text += "\n" + cell.text
+    body_text = "".join(node.text or "" for node in doc.element.body.iter(qn("w:t")))
     body_text_lower = body_text.lower()
 
     return [marker for marker in REQUIRED_MARKERS if marker not in body_text_lower]

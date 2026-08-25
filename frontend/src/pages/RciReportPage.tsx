@@ -1223,10 +1223,16 @@ export function RciReportPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                       {groups.map((group, gi) => (
                         <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                          {group.section_title && <p style={{ margin: 0, fontWeight: 700 }}>{group.section_title}</p>}
+                          {group.section_title && (
+                            <p style={{ margin: 0, fontWeight: 700 }}>
+                              {gi + 1}. {group.section_title}
+                            </p>
+                          )}
                           {group.subsections.map((sub, si) => (
                             <div key={si} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              <p style={READ_LABEL_STYLE}>{sub.title}</p>
+                              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                                {gi + 1}.{si + 1} {sub.title}
+                              </p>
                               {sub.six_m_factors.length > 0 && (
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                   {sub.six_m_factors.map((f) => (
