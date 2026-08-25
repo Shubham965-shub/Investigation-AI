@@ -309,19 +309,33 @@ class CAPAEffectivenessCheckPlanSection(BaseModel):
 
 class RciReportSections(BaseModel):
     event_type: str
-    executive_summary: ExecutiveSummarySection
-    description_of_event: DescriptionOfEventSection
-    initial_impact_assessment: InitialImpactAssessmentSection
-    history_review: HistoryReviewSection
-    investigation_task: InvestigationTaskSection
-    root_cause_conclusion: RootCauseConclusionSection
-    impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection
-    risk_assessment: RiskAssessmentSection
-    correction_remedial_action: CorrectionRemedialActionSection
-    capa: CAPASection
-    capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection
+    # Every section is Optional on ds's own RciReportResponse — ds skips a
+    # section (leaving it None) rather than failing the whole request when a
+    # required TrackWise field is blank, or when a section it depends on was
+    # itself skipped (2026-08-24, found live: a Market Complaint missing
+    # 'complaint_reported_by'/'impact_details'/'correction_or_remedial_action'
+    # nulled out 6 of the 11 sections). Mirrored here the same way, since
+    # treating them as required made `RciReportSections(**data)` raise on any
+    # real ds response with a skipped section — an unrelated data gap must
+    # never break the sections that DID generate.
+    executive_summary: Optional[ExecutiveSummarySection] = None
+    description_of_event: Optional[DescriptionOfEventSection] = None
+    initial_impact_assessment: Optional[InitialImpactAssessmentSection] = None
+    history_review: Optional[HistoryReviewSection] = None
+    investigation_task: Optional[InvestigationTaskSection] = None
+    root_cause_conclusion: Optional[RootCauseConclusionSection] = None
+    impact_assessment_batch_disposition: Optional[ImpactAssessmentBatchDispositionSection] = None
+    risk_assessment: Optional[RiskAssessmentSection] = None
+    correction_remedial_action: Optional[CorrectionRemedialActionSection] = None
+    capa: Optional[CAPASection] = None
+    capa_effectiveness_check_plan: Optional[CAPAEffectivenessCheckPlanSection] = None
     annexures: AnnexuresSection = Field(default_factory=AnnexuresSection)
     approval: ApprovalSection = Field(default_factory=ApprovalSection)
+    # Keyed by section field name — ds's explanation for why that section is
+    # None (a blank required TrackWise field, or a skipped dependency).
+    # Surfaced on the frontend so the investigator knows to go fill the
+    # field rather than assuming generation itself is broken.
+    errors: Dict[str, str] = Field(default_factory=dict)
 
 
 class RciReportRecord(BaseModel):

@@ -923,19 +923,23 @@ export interface ApprovalSection {
 
 export interface RciReportSections {
   event_type: string;
-  executive_summary: ExecutiveSummarySection;
-  description_of_event: DescriptionOfEventSection;
-  initial_impact_assessment: InitialImpactAssessmentSection;
-  history_review: HistoryReviewSection;
-  investigation_task: InvestigationTaskSection;
-  root_cause_conclusion: RootCauseConclusionSection;
-  impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection;
-  risk_assessment: RiskAssessmentSection;
-  correction_remedial_action: CorrectionRemedialActionSection;
-  capa: CAPASection;
-  capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection;
+  // Every section is nullable — ds skips one rather than failing the whole
+  // request when a required TrackWise field is blank, or when a section it
+  // depends on was itself skipped. `errors` explains why, keyed by field name.
+  executive_summary: ExecutiveSummarySection | null;
+  description_of_event: DescriptionOfEventSection | null;
+  initial_impact_assessment: InitialImpactAssessmentSection | null;
+  history_review: HistoryReviewSection | null;
+  investigation_task: InvestigationTaskSection | null;
+  root_cause_conclusion: RootCauseConclusionSection | null;
+  impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection | null;
+  risk_assessment: RiskAssessmentSection | null;
+  correction_remedial_action: CorrectionRemedialActionSection | null;
+  capa: CAPASection | null;
+  capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection | null;
   annexures: AnnexuresSection;
   approval: ApprovalSection;
+  errors: Record<string, string>;
 }
 
 export interface RciReportRecordResponse {
