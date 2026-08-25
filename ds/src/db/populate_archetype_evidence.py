@@ -1,17 +1,21 @@
 import os
+import sys
+from pathlib import Path
+
 import openpyxl
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from archetype_models import Base, ArchetypeType, Archetype, Evidence
 
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/app"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from config.settings import settings
+from archetype_models import Base, ArchetypeType, Archetype, Evidence
 
 EXCEL_PATH = os.path.join(
     os.path.dirname(__file__),
-    "Evidence_Library__4__corrected.xlsx",
+    "Evidence_Library__4__corrected_aug22_grammarchecked.xlsx",
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(settings.DATABASE_URL, connect_args={"sslmode": "require"})
 Session = sessionmaker(bind=engine)
 session = Session()
 
