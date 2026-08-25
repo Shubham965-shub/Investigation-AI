@@ -315,7 +315,7 @@ export function RcCapaCritiquePage() {
             </svg>
           </div>
           <div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>RC Impact Assessment & CAPA Critique Complete!</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Root Cause, Impact Assessment & CAPA Critique Complete!</p>
             <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
               All observations have been resolved and the RC & CAPA Critique is fully completed.
               {waitingForSitReview ? " Waiting for SIT Review." : ""}
@@ -360,7 +360,7 @@ export function RcCapaCritiquePage() {
                     RC & CAPA CRITIQUE SCORE{" "}
                     <ScoreBreakdownTooltip
                       tables={report.score_breakdown}
-                      description="This is the cumulative score from the RC Score and CAPA Score — not an independently scored section of its own."
+                      description="This is the cumulative score from the RC, Impact, and CAPA scores — not an independently scored section of its own."
                       hideTables
                     />
                   </p>
@@ -370,10 +370,11 @@ export function RcCapaCritiquePage() {
             );
           })()}
 
-          {report && (report.rc_score != null || report.capa_score != null) && (
+          {report && (report.rc_score != null || report.impact_score != null || report.capa_score != null) && (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
+                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc"] },
+                { label: "IMPACT CRITIQUE SCORE", value: report.impact_score, sections: ["impact"] },
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
               ]
                 .filter((s) => s.value != null)

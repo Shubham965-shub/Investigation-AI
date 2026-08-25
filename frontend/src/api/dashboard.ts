@@ -386,6 +386,7 @@ export interface RcCapaReport {
   file_name: string;
   is_gospel: boolean;
   rc_score: number | null;
+  impact_score: number | null;
   capa_score: number | null;
   total_score: number | null;
   score_breakdown: ScoreBreakdownTable[];
