@@ -36,14 +36,18 @@ def _accepted_capa(rc_capa_report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     capa_critique = next((c for c in rc_capa_report["critiques"] if c["category"] == "capa"), None)
     recs = capa_critique["recommendations"] if capa_critique else []
     any_rejected = any(r["decision"] == "rejected" for r in recs)
-    # capa_items needs {description, responsibility, due_date} per ds's
-    # CAPAItemDetail — investigation_rc_capa_reports' capa_recommendations
-    # only ever stored {id, description, decision, reason}, so
-    # responsibility/due_date have no source yet and stay None (both
-    # Optional on ds's side).
-    capa_items = [{"description": r["description"], "responsibility": None, "due_date": None} for r in recs]
+    # capa_items must hold real ACCEPTED CAPA actions ({description,
+    # responsibility, due_date} per ds's CAPAItemDetail) — but
+    # investigation_rc_capa_reports' capa_recommendations are CAPA Critique's
+    # gap-commentary about the source report's CAPA table (e.g. "This action
+    # doesn't name a responsible person"), not accepted actions themselves.
+    # There is no real accepted-CAPA-action source yet, so capa_items stays
+    # empty here (same honest-gap pattern as _accepted_rc_conclusion above)
+    # and ds's own "skip CAPA cleanly" gate (commit 872fb70) presents this
+    # correctly as CAPA not yet accepted, instead of rendering the gap
+    # commentary as if it were real CAPA content.
     return {
-        "capa_items": capa_items,
+        "capa_items": [],
         "capa_overall_text": (capa_critique["summary"] if capa_critique else "") or "",
         # interim_controls/extrapolation/capa_not_applicable_justification:
         # no real source yet — left at ds's own Optional/empty-list defaults.
@@ -120,7 +124,10 @@ def build_rci_report_request(
         "accepted_rc_conclusion": _accepted_rc_conclusion(rc_capa_report),
         "accepted_capa": _accepted_capa(rc_capa_report),
         "mc_confirmed": mc_confirmed,
-        "history_lookback_months": 12,
+        # 24 months ("last 2 years") — matches real reports' stated lookback;
+        # 12 months caused genuinely similar older records to be missed. See
+        # ds's RciReportGenerationRequest.history_lookback_months.
+        "history_lookback_months": 24,
         "manual_entries": manual_entries,
         # approval_workflow/attachments: pure pass-through, no LLM — omitted
         # (ds defaults both to empty if absent). Populating annexures from
