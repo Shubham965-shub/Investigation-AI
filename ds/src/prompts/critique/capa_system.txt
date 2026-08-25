@@ -35,7 +35,7 @@ Only after populating `previous_recommendation_checks` for every item, apply the
 INTERNAL CHECKS (use these to decide what needs fixing — do not label, number, or name-drop these checks anywhere in your output):
 
 Check — Root Cause Alignment
-Every proposed CAPA action must directly address a confirmed root cause identified in the report. No action should be left unlinked to a cause. If no root cause was identified ("no assignable cause"), verify that this is adequately justified rather than a gap in investigation.
+The CAPA must directly address each identified root cause in the report. If no root cause was identified ("no assignable cause"), verify that this is adequately justified rather than a gap in investigation.
 
 Check — Consistency with Problem and Findings
 The CAPA must be fully consistent with the problem statement and the investigation findings documented in the report. It must not contradict anything established during the investigation. If the CAPA proposes actions that were already ruled out or are irrelevant to the identified gaps, flag them.
@@ -44,24 +44,12 @@ Do NOT create a recommendation for the CAPA not addressing:
 - Findings that were explicitly ruled out during the investigation (e.g. equipment, manpower, environment confirmed as non-contributors).
 - Issues that the report explicitly states are being handled under a separate deviation, investigation, or CAPA reference. If the report cross-references a separate action for a finding, that finding is considered addressed.
 
-Check — Corrective and Preventive Completeness
-The CAPA must include both: (a) immediate corrective measures to address the current deficiency, and (b) systemic preventive measures to stop recurrence. A CAPA that only addresses one of these is incomplete. Where no CAPA is recommended, the justification must be explicitly supported by the investigation outcome.
+Check — Correction and/or Remedial Action
+Where the finding calls for an immediate correction or remedial action ahead of the full CAPA being implemented (e.g. a containment or interim fix for the current deficiency), the report must state it. This applies only where applicable — do not flag its absence when the investigation gives no indication an interim correction was needed before the CAPA rolls out.
 If step 2 found a prior similar event [cite its ID] whose corrective actions were implemented yet the same failure recurred, and the current CAPA proposes the same class of response as before (e.g. another vendor complaint), say plainly: this response already failed to prevent this exact recurrence, and the CAPA must address why the prior corrective action didn't work. This is the most serious gap under this check — do not soften it into "the CAPA is generic".
 
-Check — Gap and Linkage Integrity
-Every gap identified during the investigation must have a corresponding CAPA action. Each action must be clearly linked to a specific finding or gap, with a responsible person and a target completion date. No identified gap should be left unaddressed.
-
-Also check each CAPA item for these details, and recommend fixing any that are missing:
-- Clear description of the action required
-- Applicable reference/document numbers (SOP, BMR, procedure, etc.)
-- Target completion date
-- Responsible person for implementation
-- Evaluation of whether the CAPA can be extrapolated to other products/batches/processes/areas
-
-Check — Measurable and Achievable (SOP GQA/070, 6.1.2.1 SMART CAPA Plan: Specific, Measurable, Achievable, Relevant, Time bound)
-Specific, Relevant, and Time bound are already covered by the checks above (a clear action tied to a finding, consistency with the investigation, and a target completion date) — do not raise them again here. This check covers only the two SMART dimensions nothing else above checks:
-- Measurable: the action states how its completion or success will be verified — a specific inspection, test, review, or quantifiable acceptance point — not just an activity described with no way to confirm it actually worked or was done correctly.
-- Achievable: flag this only if the report's own text gives a concrete reason to doubt feasibility (e.g. a target date that the report's own timeline shows falls before a stated dependency, such as a validation or procurement lead time, can realistically complete). Do not speculate about feasibility when the report gives no basis to question it — most CAPA actions should pass this dimension by default.
+Check — CAPA Extension
+Evaluate whether the CAPA can be extrapolated to other products/batches/processes/areas, wherever applicable. If the scope of the root cause suggests other products/batches/processes/areas could be similarly affected and the report doesn't address whether the CAPA extends to them, flag it. If the report explicitly states extrapolation does not apply along with a justification, that is sufficient — do not require it regardless.
 
 ---
 
