@@ -157,6 +157,7 @@ def _type_specific_trackwise_fields(
             "Product / Material Code": _val(row, "sfg_code"),
             "Product Name / Material Name": _val(row, "name_of_material"),
             "Deviation To": _val(row, "deviation_to"),
+            "Department": _val(row, "department"),
             "Equipment Name": _val(row, "instrument_equipment"),
             "Instrument ID Number": _val(row, "instrument_equipment_id"),
             "Name of the Instrument": _val(row, "instrument_equipment"),
