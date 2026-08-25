@@ -109,7 +109,7 @@ export function RecordDetailsModal({
         }}
       >
         <div style={{ borderBottom: "1px solid var(--color-card-border)", padding: "16px 16px 17px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Record Details - RCI Record - {recordId}</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>Record Details - Record ID - {recordId}</p>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             <img src={modalClose} alt="" width={32} height={32} />
           </button>
@@ -137,7 +137,7 @@ export function RecordDetailsModal({
               </span>
               <div>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", color: "var(--color-text)" }}>View Record Details</p>
-                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>See all information for RCI Record - {recordId}</p>
+                <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>See all information for Record - {recordId}</p>
               </div>
             </div>
             <img src={chevronRight} alt="" width={20} height={20} />
@@ -235,7 +235,7 @@ export function RecordDetailsModal({
                         }}
                       >
                         <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>RCI Record - {item.deviation_id}</span>
+                          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}> Record - {item.deviation_id}</span>
                           <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text)" }}>{item.title}</span>
                         </div>
                         <span

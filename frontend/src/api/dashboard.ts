@@ -971,3 +971,10 @@ export function generateRciReport(recordId: string): Promise<RciReportRecordResp
 export function updateRciReportSections(recordId: string, report: RciReportSections): Promise<RciReportRecordResponse> {
   return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}`, report);
 }
+
+/** The real .docx download for "Download and View" — filled from the
+ * company's RCI Report Word template with this investigation's persisted
+ * report (2026-08-25, per the user). */
+export function exportRciReportDocx(recordId: string): Promise<Blob> {
+  return apiGetBlob(`/rci-report/${recordId}/export`);
+}
