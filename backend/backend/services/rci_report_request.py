@@ -78,17 +78,31 @@ def _task_critique_payload(
 ) -> List[Dict[str, Any]]:
     """One TaskAssignmentItem per RCI Plan subtask (not per section) —
     `tick` mirrors the RCI Plan export's own "<task>.<subtask>" numbering
-    convention. `critique` is the owning section's decided Task Critique
-    recommendations, joined — Task Critique's task_index is the 0-based
-    RCI Plan section index (see task_critique_queries.py's own module
-    docstring), not a per-subtask index."""
+    convention. Task Critique's task_index is the 0-based RCI Plan section
+    index (see task_critique_queries.py's own module docstring), not a
+    per-subtask index.
+
+    `critique` is the owning section's Task Critique `summary` — the
+    substantive analysis of what the uploaded, completed investigation
+    document actually demonstrated (e.g. "compares the same TAC/RMG/347
+    equipment across validation, campaign, and deviation batches..."), which
+    is what ds's investigation_task_system.txt prompt is actually written to
+    synthesize from ("the Task Critique step's output... per-task critique
+    comments"). Previously this joined recommendations[].reason instead —
+    that field is meta-commentary about why an individual review
+    recommendation was accepted/rejected (frequently blank, or literal
+    placeholder text like "testing" in test data), never the investigation's
+    actual findings, so the report ended up echoing the RCI Plan's own
+    planned-task wording back with almost no real evidence behind it. Same
+    class of bug as the CAPA gap-commentary conflation fixed earlier
+    (recs are commentary about the review, not the review's substance).
+    """
     items: List[Dict[str, Any]] = []
     for i, section in enumerate(rci_sections):
         if not section.get("is_checked", True):
             continue
         report = task_critique_reports.get(i)
-        recs = report["recommendations"] if report else []
-        critique_text = "; ".join(r["reason"] for r in recs if r.get("reason")) or None
+        critique_text = (report.get("summary") or None) if report else None
         checked_tasks = [t for t in section["tasks"] if t.get("is_checked", True)]
         for j, task in enumerate(checked_tasks):
             items.append(
