@@ -483,6 +483,7 @@ export interface InvestigationRowResponse {
   product: string | null;
   is_cancelled: boolean;
   escalation_level: string | null;
+  oos_oot_phase: "Phase 1" | "Phase 2" | null;
 }
 
 export interface FilterOptions {
@@ -526,6 +527,11 @@ export interface ActionCenterFilters {
   // Page-wide filter (2026-08-14, per the user) — unlike `status` above, this
   // narrows stat cards/chart/pending actions AND the investigations table.
   criticality?: "critical" | "non_critical";
+  // OOS/OOT-only equivalent of `criticality` above (2026-08-25, per the
+  // user) — those two event types show Phase 1/Phase 2 instead of Major &
+  // Minor in the same toggle, so this is a separate param rather than
+  // overloading criticality's values. Same page-wide scope as criticality.
+  oosOotPhase?: "phase1" | "phase2";
 }
 
 export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<ActionCenterSummaryResponse> {
@@ -538,6 +544,7 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.startDateTo) params.set("start_date_to", filters.startDateTo);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.criticality) params.set("criticality", filters.criticality);
+  if (filters?.oosOotPhase) params.set("oos_oot_phase", filters.oosOotPhase);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
 }

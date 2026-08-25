@@ -642,7 +642,7 @@ export function RciPlanPage() {
           onClick={() => setShowConfirm(true)}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
-          {pushed ? "Pushed — downloading…" : "Accept and Push for SIT Lead Review"}
+          {pushed ? "Pushed — downloading…" : "Accept and Next"}
         </button>
       </div>
 

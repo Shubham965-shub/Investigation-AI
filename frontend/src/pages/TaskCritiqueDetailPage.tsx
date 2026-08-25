@@ -256,9 +256,6 @@ export function TaskCritiqueDetailPage() {
                             <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
                             {rec.decision === "pending" && !isRejecting && (
                               <div style={{ display: "flex", gap: 8 }}>
-                                <button type="button" className="btn-outline" disabled={busy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
-                                  Accept
-                                </button>
                                 <button
                                   type="button"
                                   className="btn-outline"
@@ -267,6 +264,9 @@ export function TaskCritiqueDetailPage() {
                                   style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
                                 >
                                   Reject
+                                </button>
+                                <button type="button" className="btn-outline" disabled={busy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+                                  Accept
                                 </button>
                               </div>
                             )}

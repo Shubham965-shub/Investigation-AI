@@ -36,6 +36,7 @@ star_schema):
 """
 from __future__ import annotations
 
+import datetime
 from typing import Dict, List
 
 import asyncpg
@@ -59,13 +60,21 @@ QE_TYPE_TO_STAT_LABEL: Dict[str, str] = {
     "Complaint": "Market Complaint",
 }
 
+# Open investigations opened before this date are excluded from Action
+# Center entirely — not shown in the table/grid and not counted toward
+# Total Investigations/stat pills/status cards/chart (2026-08-25, per the
+# user). Scoped to _OPEN_INVESTIGATIONS_QUERY only; the separate cancelled-
+# investigations query is untouched.
+OPEN_INVESTIGATIONS_SINCE = datetime.date(2026, 1, 1)
+
 _OPEN_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.oos_oot_phase,
         e.escalation_level,
         e.module,
         e.module_risk_status,
@@ -86,6 +95,7 @@ FROM (
     LEFT JOIN dim_department dept ON dept.department_key = f.department_key
     LEFT JOIN dim_product p ON p.product_key = f.product_key
     WHERE f.closed_on IS NULL
+    AND f.date_opened >= $1
     -- Some deviation_ids have multiple open fact_qms_event rows (2 confirmed
     -- live, one with 5) — a known, legitimate source-pipeline pattern, not a
     -- bug (see project memory: star_schema). Without deduping here, the same
@@ -102,7 +112,7 @@ ORDER BY due_date ASC
 async def fetch_open_investigations() -> List[asyncpg.Record]:
     pool = get_pool()
     async with pool.acquire() as conn:
-        return await conn.fetch(_OPEN_INVESTIGATIONS_QUERY)
+        return await conn.fetch(_OPEN_INVESTIGATIONS_QUERY, OPEN_INVESTIGATIONS_SINCE)
 
 
 # Cancelled investigations (dim_event.module = 'Cancelled') always have
@@ -114,12 +124,13 @@ async def fetch_open_investigations() -> List[asyncpg.Record]:
 # open-investigations-only. See action_center.py for how the two lists are
 # combined.
 _CANCELLED_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.oos_oot_phase,
         e.escalation_level,
         e.module,
         e.module_risk_status,

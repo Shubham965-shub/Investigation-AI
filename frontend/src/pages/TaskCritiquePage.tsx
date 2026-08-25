@@ -245,7 +245,7 @@ export function TaskCritiquePage() {
 
                 <div style={{ flexShrink: 0, minWidth: 180 }} onClick={(e) => e.stopPropagation()}>
                   {section.can_upload && (
-                    <FileDropzone compact disabled={busy} loading={busy} label="Upload Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
+                    <FileDropzone compact disabled={busy} loading={busy} label="Upload Task Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
                   )}
                   {hasScore && (() => {
                     const grade = scoreGrade(section.latest_report!.task_score!);
