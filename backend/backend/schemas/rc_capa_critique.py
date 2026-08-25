@@ -46,9 +46,12 @@ class RcCapaReport(BaseModel):
     file_name: str
     is_gospel: bool
     # ds-generated (/score/report), as percentages — set once this report
-    # becomes final (gospel or 3rd attempt); None until then. rc_score
-    # combines the Root Cause + Impact sections; capa_score is CAPA alone.
+    # becomes final (gospel or 3rd attempt); None until then. rc_score and
+    # impact_score are ds's own separately-scored Root Cause and Impact
+    # rubric sections (shown as two distinct figures, 2026-08-25, per the
+    # user — previously combined into one rc_score); capa_score is CAPA alone.
     rc_score: Optional[int] = None
+    impact_score: Optional[int] = None
     capa_score: Optional[int] = None
     # Consolidated figure: rc_score's and capa_score's underlying raw marks
     # added together, divided by their combined max — not a naive average of

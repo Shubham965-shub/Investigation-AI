@@ -13,8 +13,9 @@ Scoring model (per the product decision): binary full-marks-or-zero per
 checkpoint, except RC which is a single mutually-exclusive classification.
 
   • binary checkpoint  → verdict ∈ {"Yes", "No", "NA"}
-        Yes → max_marks | No → 0 | NA → excluded from numerator AND denominator
-        (NA only allowed where allow_na=True)
+        Yes → max_marks | No → 0 | NA (justified) → max_marks, counted as applicable
+        (NA only allowed where allow_na=True; an unjustified/unpermitted NA claim
+        is scored as No)
   • RC classification  → verdict ∈ {"assignable", "probable", "none"}
         assignable → 30 | probable → 10 | none → -5   (always applicable)
 """
@@ -111,8 +112,7 @@ _TASK_REPORT = SectionSpec(
         ),
         Checkpoint(
             "6", "3.2 Completeness & Traceability",
-            "All data in the Findings can be traced to a named, authenticated source record "
-            "(ALCOA+).",
+            "All data in the Findings can be traced to a source.",
             6.0,
         ),
         Checkpoint(
@@ -342,7 +342,7 @@ def resolve_checkpoint(cp: Checkpoint, verdict: str, rationale: str = "") -> tup
         return YES, cp.max_marks, True
     if low in ("na", "n/a", "not applicable"):
         if cp.allow_na and _is_justified_na(rationale):
-            return NA, 0.0, False
+            return NA, cp.max_marks, True
         # NA not permitted here, or claimed without a real justification → treat as unmet
         return NO, 0.0, True
     return NO, 0.0, True

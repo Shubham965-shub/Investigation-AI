@@ -190,17 +190,20 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     capa_recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- ds's rubric-based /score/report, as percentages — set once this report
     -- becomes final (gospel or 3rd attempt), same trigger/pattern as Task
-    -- Critique's task_score (2026-08-07, per the user). rc_score is the
-    -- combined Root Cause + Impact sections' percentage (matches this
-    -- module's own "RC Impact Assessment Critique" category, which already
-    -- bundles the two together everywhere else); capa_score is the CAPA
-    -- section's percentage alone. Column names/split match a table already
-    -- created directly against the live DB before this code existed.
+    -- Critique's task_score (2026-08-07, per the user). rc_score and
+    -- impact_score were originally combined into one rc_score figure
+    -- (matching this module's own "RC Impact Assessment Critique" category,
+    -- which bundles the two together everywhere else) but ds genuinely
+    -- scores them as two separate rubric sections, so they're shown as two
+    -- separate figures now (2026-08-25, per the user) even though they still
+    -- sit under that one shared category elsewhere in the module. capa_score
+    -- is the CAPA section's percentage alone.
     rc_score INTEGER,
+    impact_score INTEGER,
     capa_score INTEGER,
-    -- Consolidated figure (2026-08-07, per the user): rc_score's and
-    -- capa_score's underlying raw marks added together, divided by their
-    -- combined max — not a naive average of the two percentages.
+    -- Consolidated figure (2026-08-07, per the user): rc_score's, impact_score's,
+    -- and capa_score's underlying raw marks added together, divided by their
+    -- combined max — not a naive average of the three percentages.
     total_score INTEGER,
     -- Same as investigation_task_critique_reports.score_breakdown — ds's full
     -- /score/report `info` breakdown table(s) (rc + impact + capa sections

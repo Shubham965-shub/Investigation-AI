@@ -70,6 +70,21 @@ CREATE TABLE IF NOT EXISTS investigation_rci_plan_exports (
 CREATE INDEX IF NOT EXISTS idx_investigation_rci_plan_exports_deviation_id ON investigation_rci_plan_exports(deviation_id);
 CREATE INDEX IF NOT EXISTS idx_investigation_rci_plan_exports_push_status ON investigation_rci_plan_exports(push_status);
 
+-- Added 2026-08-25, per the user: same append-only snapshot convention as
+-- investigation_rci_plan_exports above, for the RCI Report module's own
+-- "Accept and Push to TW" (routers/rci_report.py's export_rci_report).
+CREATE TABLE IF NOT EXISTS investigation_rci_report_exports (
+    id BIGSERIAL PRIMARY KEY,
+    deviation_id INTEGER NOT NULL,
+    docx BYTEA NOT NULL,
+    approved_by INTEGER REFERENCES athena_users(id),
+    push_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_rci_report_exports_deviation_id ON investigation_rci_report_exports(deviation_id);
+CREATE INDEX IF NOT EXISTS idx_investigation_rci_report_exports_push_status ON investigation_rci_report_exports(push_status);
+
 -- Added 2026-08-06, per the user: RC & CAPA Critique's "Accept and Push for
 -- SIT Review" action currently just persists the locked report's file bytes
 -- here as a frozen approval snapshot — same append-only convention as

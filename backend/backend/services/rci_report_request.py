@@ -36,14 +36,18 @@ def _accepted_capa(rc_capa_report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     capa_critique = next((c for c in rc_capa_report["critiques"] if c["category"] == "capa"), None)
     recs = capa_critique["recommendations"] if capa_critique else []
     any_rejected = any(r["decision"] == "rejected" for r in recs)
-    # capa_items needs {description, responsibility, due_date} per ds's
-    # CAPAItemDetail — investigation_rc_capa_reports' capa_recommendations
-    # only ever stored {id, description, decision, reason}, so
-    # responsibility/due_date have no source yet and stay None (both
-    # Optional on ds's side).
-    capa_items = [{"description": r["description"], "responsibility": None, "due_date": None} for r in recs]
+    # capa_items must hold real ACCEPTED CAPA actions ({description,
+    # responsibility, due_date} per ds's CAPAItemDetail) — but
+    # investigation_rc_capa_reports' capa_recommendations are CAPA Critique's
+    # gap-commentary about the source report's CAPA table (e.g. "This action
+    # doesn't name a responsible person"), not accepted actions themselves.
+    # There is no real accepted-CAPA-action source yet, so capa_items stays
+    # empty here (same honest-gap pattern as _accepted_rc_conclusion above)
+    # and ds's own "skip CAPA cleanly" gate (commit 872fb70) presents this
+    # correctly as CAPA not yet accepted, instead of rendering the gap
+    # commentary as if it were real CAPA content.
     return {
-        "capa_items": capa_items,
+        "capa_items": [],
         "capa_overall_text": (capa_critique["summary"] if capa_critique else "") or "",
         # interim_controls/extrapolation/capa_not_applicable_justification:
         # no real source yet — left at ds's own Optional/empty-list defaults.
@@ -74,17 +78,31 @@ def _task_critique_payload(
 ) -> List[Dict[str, Any]]:
     """One TaskAssignmentItem per RCI Plan subtask (not per section) —
     `tick` mirrors the RCI Plan export's own "<task>.<subtask>" numbering
-    convention. `critique` is the owning section's decided Task Critique
-    recommendations, joined — Task Critique's task_index is the 0-based
-    RCI Plan section index (see task_critique_queries.py's own module
-    docstring), not a per-subtask index."""
+    convention. Task Critique's task_index is the 0-based RCI Plan section
+    index (see task_critique_queries.py's own module docstring), not a
+    per-subtask index.
+
+    `critique` is the owning section's Task Critique `summary` — the
+    substantive analysis of what the uploaded, completed investigation
+    document actually demonstrated (e.g. "compares the same TAC/RMG/347
+    equipment across validation, campaign, and deviation batches..."), which
+    is what ds's investigation_task_system.txt prompt is actually written to
+    synthesize from ("the Task Critique step's output... per-task critique
+    comments"). Previously this joined recommendations[].reason instead —
+    that field is meta-commentary about why an individual review
+    recommendation was accepted/rejected (frequently blank, or literal
+    placeholder text like "testing" in test data), never the investigation's
+    actual findings, so the report ended up echoing the RCI Plan's own
+    planned-task wording back with almost no real evidence behind it. Same
+    class of bug as the CAPA gap-commentary conflation fixed earlier
+    (recs are commentary about the review, not the review's substance).
+    """
     items: List[Dict[str, Any]] = []
     for i, section in enumerate(rci_sections):
         if not section.get("is_checked", True):
             continue
         report = task_critique_reports.get(i)
-        recs = report["recommendations"] if report else []
-        critique_text = "; ".join(r["reason"] for r in recs if r.get("reason")) or None
+        critique_text = (report.get("summary") or None) if report else None
         checked_tasks = [t for t in section["tasks"] if t.get("is_checked", True)]
         for j, task in enumerate(checked_tasks):
             items.append(
@@ -120,7 +138,10 @@ def build_rci_report_request(
         "accepted_rc_conclusion": _accepted_rc_conclusion(rc_capa_report),
         "accepted_capa": _accepted_capa(rc_capa_report),
         "mc_confirmed": mc_confirmed,
-        "history_lookback_months": 12,
+        # 24 months ("last 2 years") — matches real reports' stated lookback;
+        # 12 months caused genuinely similar older records to be missed. See
+        # ds's RciReportGenerationRequest.history_lookback_months.
+        "history_lookback_months": 24,
         "manual_entries": manual_entries,
         # approval_workflow/attachments: pure pass-through, no LLM — omitted
         # (ds defaults both to empty if absent). Populating annexures from

@@ -5,6 +5,7 @@ import {
   getRciReportRecord,
   generateRciReport,
   updateRciReportSections,
+  exportRciReportDocx,
   RCA_METHOD_OPTIONS,
   SIX_M_FACTOR_OPTIONS,
   DURATION_TIER_OPTIONS,
@@ -554,6 +555,8 @@ export function RciReportPage() {
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [editSections, setEditSections] = useState<Record<string, boolean>>({});
   const [readSections, setReadSections] = useState<Record<string, boolean>>({});
 
@@ -687,10 +690,39 @@ export function RciReportPage() {
     }
   }
 
-  // Gates "Accept & Push to TW" on every section having been marked read
-  // (2026-08-24, per the user) — the export/push itself still isn't wired
-  // up (see the button's title when disabled), so this only controls
-  // whether the button is clickable, not what happens when it's clicked.
+  // Real .docx download for "Download and View" (2026-08-25, per the user)
+  // — the backend fills the company's actual RCI Report Word template with
+  // this investigation's persisted report and returns the file directly,
+  // same convention as RCI Plan's own export. Also opens it in a new tab
+  // (best-effort "view" — most browsers still just re-download a .docx,
+  // since none render it natively, but this hands it off to whatever the
+  // OS/browser has registered for the file type instead of only saving it).
+  async function handleDownloadAndView() {
+    if (!recordId) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const blob = await exportRciReportDocx(recordId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `RCI_Report_${recordId}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.open(url, "_blank");
+      // Revoking immediately can race the new tab's own load of the same
+      // blob URL — give it a moment first.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      setDownloadError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI report document");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  // Gates "Download and View" on every section having been marked read
+  // (2026-08-24, per the user).
   const allSectionsRead = !!report && SECTIONS.every((s) => readSections[s.key]);
 
   return (
@@ -699,14 +731,16 @@ export function RciReportPage() {
         <button
           type="button"
           className="btn-primary"
-          style={{ display: "flex", alignItems: "center", gap: 10, opacity: allSectionsRead ? 1 : 0.4, cursor: allSectionsRead ? "pointer" : "default" }}
-          disabled={!allSectionsRead}
+          style={{ display: "flex", alignItems: "center", gap: 10, opacity: allSectionsRead ? 1 : 0.4, cursor: allSectionsRead && !downloading ? "pointer" : "default" }}
+          disabled={!allSectionsRead || downloading}
           title={allSectionsRead ? undefined : "Mark every section as read to enable this"}
+          onClick={handleDownloadAndView}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
-          Accept & Push to TW
+          {downloading ? "Downloading…" : "Download and View"}
         </button>
       </div>
+      {downloadError && <p className="error-banner">{downloadError}</p>}
 
       <div className="card" style={{ gap: 8 }}>
         <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Problem Statement</p>
@@ -1189,10 +1223,16 @@ export function RciReportPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                       {groups.map((group, gi) => (
                         <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                          {group.section_title && <p style={{ margin: 0, fontWeight: 700 }}>{group.section_title}</p>}
+                          {group.section_title && (
+                            <p style={{ margin: 0, fontWeight: 700 }}>
+                              {gi + 1}. {group.section_title}
+                            </p>
+                          )}
                           {group.subsections.map((sub, si) => (
                             <div key={si} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              <p style={READ_LABEL_STYLE}>{sub.title}</p>
+                              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>
+                                {gi + 1}.{si + 1} {sub.title}
+                              </p>
                               {sub.six_m_factors.length > 0 && (
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                   {sub.six_m_factors.map((f) => (

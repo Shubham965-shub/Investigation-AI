@@ -49,7 +49,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 SELECT id, attempt_number, file_name, is_gospel,
                        rc_summary, rc_recommendations,
                        capa_summary, capa_recommendations,
-                       rc_score, capa_score, total_score, score_breakdown, uploaded_at
+                       rc_score, impact_score, capa_score, total_score, score_breakdown, uploaded_at
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
                 """,
@@ -65,6 +65,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 "file_name": r["file_name"],
                 "is_gospel": r["is_gospel"],
                 "rc_score": r["rc_score"],
+                "impact_score": r["impact_score"],
                 "capa_score": r["capa_score"],
                 "total_score": r["total_score"],
                 "score_breakdown": _parse_score_breakdown(r["score_breakdown"]),
@@ -169,6 +170,7 @@ async def save_critiques(
 async def set_rc_capa_scores(
     report_id: int,
     rc_score: Optional[int],
+    impact_score: Optional[int],
     capa_score: Optional[int],
     total_score: Optional[int],
     score_breakdown: Optional[List[Dict[str, Any]]] = None,
@@ -176,9 +178,10 @@ async def set_rc_capa_scores(
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_rc_capa_reports SET rc_score = $2, capa_score = $3, total_score = $4, score_breakdown = $5::jsonb WHERE id = $1",
+            "UPDATE investigation_rc_capa_reports SET rc_score = $2, impact_score = $3, capa_score = $4, total_score = $5, score_breakdown = $6::jsonb WHERE id = $1",
             report_id,
             rc_score,
+            impact_score,
             capa_score,
             total_score,
             json.dumps(score_breakdown) if score_breakdown is not None else None,
