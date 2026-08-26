@@ -50,7 +50,7 @@ const CARD_KEY_TO_BUCKET: Record<string, string> = {
 };
 
 // The Unassigned bucket itself splits into two status-card pills
-// (2026-08-25, per the user): "Concluded in Phase 1" for Phase 1 OOS/OOT
+// (2026-08-25, per the user): "Phase 1 OOS/OOT" for Phase 1 OOS/OOT
 // investigations only, and "Unassigned" for everything else (Deviations,
 // Market Complaints, and Phase 2 — or not-yet-phased — OOS/OOT). Bucket
 // alone can't tell those apart, so this checks oos_oot_phase too instead of
@@ -516,16 +516,6 @@ export function ActionCenterPage() {
                 </button>
                 {activeFilter === "OOS" || activeFilter === "OOT" ? (
                   <>
-                    <button
-                      type="button"
-                      className={criticalityFilter === "phase1" ? "active" : ""}
-                      onClick={() => {
-                        setCriticalityFilter("phase1");
-                        setPage(1);
-                      }}
-                    >
-                      Phase 1
-                    </button>
                     <button
                       type="button"
                       className={criticalityFilter === "phase2" ? "active" : ""}

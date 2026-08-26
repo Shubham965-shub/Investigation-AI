@@ -20,6 +20,12 @@ class HistoryReviewRow(BaseModel):
 
 class HistoryReviewSection(BaseModel):
     lookback_months: int
+    # Deterministic disclosure of the search itself (query seed, fields, scope) — the
+    # template explicitly asks for this ("Keywords used for running the query, the
+    # date range, the scope used, etc.") but only the date range (lookback_months)
+    # used to be surfaced; this fills the rest. Built in history_review_service.py
+    # from the actual search call's own parameters, not LLM-authored.
+    search_scope_note: str
     rows: List[HistoryReviewRow]
     no_similar_events_found: bool
     closing_narrative: str  # e.g. "Global CAPA was verified and found no action for similar failure."

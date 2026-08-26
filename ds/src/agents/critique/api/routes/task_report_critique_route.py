@@ -29,10 +29,10 @@ router = APIRouter(prefix="/critique", tags=["critique"])
     ),
 )
 async def analyse_task_report(
-    problem_statement: str,
+    problem_statement: str = Form(...),
     file: UploadFile = File(..., description="Investigation task report (.docx)"),
-    event_type: str = "",
-    task_description: str = "",
+    event_type: str = Form(""),
+    task_description: str = Form(""),
     deviation_id: Optional[int] = Form(
         None,
         description=(

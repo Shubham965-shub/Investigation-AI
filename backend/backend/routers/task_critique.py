@@ -266,9 +266,11 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # deviation_id + task_index (2026-08-14, per the user) let DS look up this
     # task's previous attempt and check whether its accepted-but-still-pending
     # recommendations are actually addressed by this upload, regenerating any
-    # that aren't (see ds/src/agents/critique/GAPS.md). Sent as form fields, not
-    # query params like the three above — DS declares them via Form(...), not as
-    # plain scalars, since they arrive alongside the multipart file upload.
+    # that aren't (see ds/src/agents/critique/GAPS.md).
+    # All five fields go via `data=` (multipart form), not `params=` (query
+    # string) — task_description in particular can be several KB and previously
+    # went out as a URL query param, risking "URL too long" against proxies with
+    # tighter URL-length limits (fixed 2026-08-26).
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
 
@@ -286,12 +288,10 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     try:
         response = await client.post(
             "/critique/analyse-task-report",
-            params={
+            data={
                 "problem_statement": problem_statement,
                 "event_type": event_type,
                 "task_description": task_description,
-            },
-            data={
                 "deviation_id": str(deviation_id),
                 "task_index": str(task_index),
             },

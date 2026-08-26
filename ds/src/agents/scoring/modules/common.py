@@ -3,9 +3,13 @@ Shared internals for the two scoring modules (task_report, iq).
 
 Both modules judge each rubric checkpoint with an LLM and then map verdicts to
 marks deterministically. To make the score reliable and reproducible, each
-section is scored `_SAMPLES` times and the majority verdict per checkpoint is
+section is scored multiple times and the majority verdict per checkpoint is
 taken (self-consistency) — LLM judging is not fully deterministic even at
 temperature 0.
+
+Sampling is adaptive: a cheap `_MIN_SAMPLES` pass runs first, and only when it
+disagrees with itself (or a call fails) do we pay for the full `_MAX_SAMPLES`
+— unanimous cheap passes are extremely unlikely to flip with more votes.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ from src.llm.client import LLMClient
 logger = logging.getLogger(__name__)
 
 # Self-consistency: samples per section. Tunable — higher = steadier, costlier.
-_SAMPLES = 5
+_MIN_SAMPLES = 3  # cheap first pass
+_MAX_SAMPLES = 5  # only paid when the cheap pass is borderline
 
 
 def render_checkpoints_block(section_keys: List[str]) -> str:
@@ -43,8 +48,8 @@ def render_checkpoints_block(section_keys: List[str]) -> str:
     return "\n".join(lines)
 
 
-async def sample_section(llm: LLMClient, prompt: str) -> List[SectionScoringLLMOutput]:
-    """Call the scorer _SAMPLES times concurrently at temperature 0; drop failures."""
+async def _sample(llm: LLMClient, prompt: str, n: int) -> List[SectionScoringLLMOutput]:
+    """Call the scorer `n` times concurrently at temperature 0; drop failures."""
     calls = [
         llm.get_structured_response(
             user_prompt=prompt,
@@ -52,7 +57,7 @@ async def sample_section(llm: LLMClient, prompt: str) -> List[SectionScoringLLMO
             system_prompt=SCORING_SYSTEM_PREAMBLE,
             temperature=0,
         )
-        for _ in range(_SAMPLES)
+        for _ in range(n)
     ]
     results = await asyncio.gather(*calls, return_exceptions=True)
     good = [r for r in results if not isinstance(r, BaseException)]
@@ -61,11 +66,33 @@ async def sample_section(llm: LLMClient, prompt: str) -> List[SectionScoringLLMO
     return good
 
 
+def _is_unanimous(section: str, samples: List[SectionScoringLLMOutput]) -> bool:
+    """True if every checkpoint got the same verdict (after rubric normalisation)
+    across all samples — the signal that more votes would just confirm it."""
+    cps = {cp.id: cp for cp in get_section(section).checkpoints}
+    per_id: dict[str, set[str]] = defaultdict(set)
+    for sample in samples:
+        for v in sample.checkpoints:
+            if v.id in cps:
+                per_id[v.id].add(resolve_checkpoint(cps[v.id], v.verdict, v.rationale)[0])
+    return all(len(votes) <= 1 for votes in per_id.values())
+
+
+async def sample_section(llm: LLMClient, prompt: str, section: str) -> List[SectionScoringLLMOutput]:
+    """Self-consistency sampling. Runs `_MIN_SAMPLES` first; escalates to the full
+    `_MAX_SAMPLES` only if a call failed or the cheap pass disagreed with itself
+    on some checkpoint (borderline)."""
+    samples = await _sample(llm, prompt, _MIN_SAMPLES)
+    if len(samples) == _MIN_SAMPLES and _is_unanimous(section, samples):
+        return samples
+    extra = await _sample(llm, prompt, _MAX_SAMPLES - _MIN_SAMPLES)
+    return samples + extra
+
+
 def consensus(section: str, samples: List[SectionScoringLLMOutput]) -> List[CheckpointVerdict]:
     """Majority verdict per checkpoint across samples; ties break to the lowest
     marks (conservative). Verdicts are compared after rubric normalisation so
-    'Assignable (proven)'/'assignable' and 'CAPA Level 3'/'level_3' each count as
-    one vote."""
+    'Assignable (proven)'/'assignable' each count as one vote."""
     cps = {cp.id: cp for cp in get_section(section).checkpoints}
     per_id: dict[str, list[CheckpointVerdict]] = defaultdict(list)
     for sample in samples:

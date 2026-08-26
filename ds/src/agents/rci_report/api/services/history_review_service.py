@@ -6,15 +6,17 @@ from pydantic import BaseModel
 
 from src.agents.capa_depth_effectiveness.api.services.capa_depth_effectiveness_service import call_with_retry
 from src.agents.rci_report.api.schemas.measure_analyze import HistoryReviewRow, HistoryReviewSection
+from src.agents.search_agent.api.services.filters import resolve_qe_type_filter
 from src.agents.search_agent.graph.builder import build_search_graph
 from src.config.settings import settings
 from src.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
-# Same top-15 truncation as src.agents.shared.nodes.fetch_historical_data — the
-# search graph itself returns everything above its relevance threshold.
-_TOP_K = 15
+# The search graph itself returns everything above its relevance threshold —
+# truncated here to keep the report's History Review table a reasonable
+# length (2026-08-26, per the user: capped from 15 down to 5).
+_TOP_K = 5
 
 
 class HistoryReviewNarrative(BaseModel):
@@ -99,12 +101,21 @@ async def generate_history_review(
     """
     search_graph = build_search_graph(pool=pool, llm=llm)
     date_from = (datetime.utcnow() - timedelta(days=30 * lookback_months)).isoformat()
+    search_fields = ["description", "root_cause_summary"]
+    search_scope_note = (
+        f"Semantic search seeded from this event's own description text, run over the "
+        f"{'/'.join(search_fields)} fields, scoped to {event_type} events."
+    )
 
     initial_state = {
         "query": search_query,
-        "search_fields": ["description", "root_cause_summary"],
+        "search_fields": search_fields,
         "search_type": "Semantic",
-        "filters": {"qe_type": event_type, "date_from": date_from, "exclude_id": exclude_id},
+        "filters": {
+            "qe_type": resolve_qe_type_filter(event_type),
+            "date_from": date_from,
+            "exclude_id": exclude_id,
+        },
         "determined_search_type": "",
         "keyword_results": [],
         "semantic_results": [],
@@ -153,6 +164,7 @@ async def generate_history_review(
 
     return HistoryReviewSection(
         lookback_months=lookback_months,
+        search_scope_note=search_scope_note,
         rows=rows,
         no_similar_events_found=not rows,
         closing_narrative=narrative.closing_narrative,

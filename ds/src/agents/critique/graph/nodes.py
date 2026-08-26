@@ -17,6 +17,12 @@ from markitdown import MarkItDown
 from PIL import Image
 
 from src.agents.critique.api.services.relevance_validation import validate_document_relevance
+from src.agents.critique.graph.deterministic_extraction import (
+    _is_effectively_bold,
+    count_true_inference_markers,
+    extract_task_deterministic,
+    extract_task_deterministic_legacy,
+)
 from src.agents.critique.graph.schemas import (
     AllTaskCritiquesResult,
     ExtractedTask,
@@ -42,7 +48,16 @@ UNADDRESSED_MARKER = "Still unaddressed from the previous review."
 
 # ── Markitdown + inference-count extraction helpers ───────────────────────────
 
-_INF_RE = re.compile(r'\*{0,2}\s*Inference\s*:?\*{0,2}', re.I)
+# Anchored to the start of a markdown line — a genuine "Inference" marker is always its own
+# paragraph/line (possibly bold-wrapped), never embedded mid-sentence. Un-anchored `re.search`
+# also matched the word inside citation strings like "[Source: ..., Section 6 – Method /
+# Milling / Inference, p.18]", which reuses "Inference" as a page-locator, not a task boundary.
+# Confirmed live (2026-08-26) against 37 real uploaded task-report documents: every one has
+# exactly 1 true Inference marker, but the un-anchored regex overcounted (2-8) on 29 of them —
+# n_total/n_inf then told the extraction prompt to "extract exactly N tasks", causing the LLM to
+# fabricate extra tasks by splitting one real task's findings at an internal sub-heading, with
+# the same inference text duplicated verbatim across the fabricated tasks (confirmed on 505542_2).
+_INF_RE = re.compile(r'^\s*\*{0,2}\s*Inference\s*:?\*{0,2}', re.I | re.MULTILINE)
 # Match end-of-tasks section headings only — anchored to line start, not table rows.
 # "Causal Factor" requires a trailing colon to avoid matching body text like
 # "causal factors can be ruled out."
@@ -144,19 +159,6 @@ def _segment_sections(body: str) -> list[tuple[str, str]]:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _is_effectively_bold(run, paragraph) -> bool:
-    """run.bold is None whenever boldness comes from the paragraph's style (e.g. Word's built-in
-    'Heading N' styles) rather than being set on the run itself — treating None as falsy would
-    miss every style-based heading, so fall back to the paragraph's style chain."""
-    if run.bold is not None:
-        return run.bold
-    style = paragraph.style
-    while style is not None:
-        if style.font.bold is not None:
-            return style.font.bold
-        style = style.base_style
-    return False
 
 
 # OpenAI's "high" image detail mode downscales any input to fit within 2048x2048 before
@@ -385,10 +387,28 @@ async def _extract_via_markitdown(
 
 async def extract_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     """
-    1. markitdown → segment sections + count inferences (always runs; quick/local).
-    2. Try file upload → Responses API (LLM reads native DOCX; best quality).
-    3. On upload failure (network block etc.) fall back to per-section markitdown extraction.
+    1. Try deterministic extraction, current template (no LLM call) — only succeeds when the
+       document has exactly one Title/Objective/Inference marker set, which live testing found
+       true of every real upload (2026-08-26). Returns None otherwise; never guesses.
+    2. Try deterministic extraction, older template (no LLM call) — a legacy format with no
+       "Title of the task:" marker and inconsistently-bold labels. Same never-guess contract.
+    3. markitdown → segment sections + count inferences (always runs; quick/local).
+    4. Try file upload → Responses API (LLM reads native DOCX; best quality).
+    5. On upload failure (network block etc.) fall back to per-section markitdown extraction.
     """
+    deterministic = await asyncio.to_thread(extract_task_deterministic, state.file_path)
+    if deterministic is None:
+        deterministic = await asyncio.to_thread(extract_task_deterministic_legacy, state.file_path)
+    if deterministic is not None:
+        logger.info("extract_tasks: deterministic path succeeded (1 task, no LLM extraction call)")
+        return {
+            "report_metadata": {
+                "problem_statement": deterministic.problem_statement,
+                "objective": deterministic.objective,
+            },
+            "extracted_tasks": [t.model_dump() for t in deterministic.tasks],
+        }
+
     llm: LLMClient = await get_llm_client()
 
     markdown = await asyncio.to_thread(
@@ -396,7 +416,11 @@ async def extract_tasks(state: TaskReportCritiqueState) -> Dict[str, Any]:
     )
     body = _task_body(markdown)
     segments = _segment_sections(body)
-    n_total = sum(len(_INF_RE.findall(c)) for _, c in segments)
+    # Structural (bold-aware) count for the primary file-upload path's prompt hint — the
+    # markdown-text count (still used below for the rarer markitdown-fallback path's per-section
+    # qualification) over-counts on documents using non-bold "Inference: <sentence>" as an
+    # inline sub-conclusion label within findings prose. See count_true_inference_markers.
+    n_total = await asyncio.to_thread(count_true_inference_markers, state.file_path)
 
     try:
         result = await _extract_via_file_upload(state, llm, n_total)

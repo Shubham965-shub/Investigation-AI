@@ -41,7 +41,6 @@ class RciReportContext:
     manual_entries: Dict[str, str]
     # Pre-cleaned once here so no downstream prompt-builder re-derives this.
     root_cause_conclusion_text_clean: str
-    correction_remedial_text_clean: str
     impact_details_text_clean: str
     # The uploaded RC & CAPA document's own verbatim text (extract_rci_report_sections, no
     # LLM) — not a raw TrackWise audit-log field, so no strip_audit_log_prefix needed. Empty
@@ -112,9 +111,6 @@ def build_report_context(request: RciReportGenerationRequest) -> RciReportContex
         manual_entries=request.manual_entries,
         root_cause_conclusion_text_clean=strip_audit_log_prefix(
             request.trackwise_fields.get("root_cause_conclusion") or ""
-        ),
-        correction_remedial_text_clean=strip_audit_log_prefix(
-            request.trackwise_fields.get("correction_or_remedial_action") or ""
         ),
         impact_details_text_clean=strip_audit_log_prefix(
             request.trackwise_fields.get("impact_details") or ""

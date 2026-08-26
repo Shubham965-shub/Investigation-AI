@@ -14,7 +14,7 @@ export const RECORD_STEPS: StepDef[] = [
   { key: "interview-questionnaire", label: "Interview Questionnaire", path: "interview-questionnaire" },
   { key: "rci-plan", label: "RCI Plan Creation", path: "rci-plan" },
   { key: "task-critique", label: "Task Critique", path: "task-critique" },
-  { key: "rc-capa-critique", label: "RC & CAPA Critique", path: "rc-capa-critique" },
+  { key: "rc-capa-critique", label: "RC, Impact & CAPA Critique", path: "rc-capa-critique" },
   { key: "rci-report", label: "RCI Report", path: "rci-report" },
 ];
 
@@ -58,9 +58,9 @@ export function Stepper({
         const isLast = index === RECORD_STEPS.length - 1;
         const clickable = step.path !== null;
         const isSkippable = step.key === "interview-questionnaire" && eventType === "Market Complaint";
-        // Small connector box between RCI Plan Creation (4) & Task Critique
-        // (5), and between Task Critique (5) & RC & CAPA Critique (6)
-        // (2026-08-26, per the user) — purely a visual marker on the
+        // Small human-symbol marker between RCI Plan Creation (4) & Task
+        // Critique (5), and between Task Critique (5) & RC & CAPA Critique
+        // (6) (2026-08-26, per the user) — purely a visual marker on the
         // connecting line, framed by dotted segments on both sides instead
         // of the usual solid line.
         const hasConnectorBox = index === 3 || index === 4;
@@ -107,7 +107,20 @@ export function Stepper({
             {!isLast && (hasConnectorBox ? (
               <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "0 8px 24px" }}>
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
-                <div style={{ width: 14, height: 14, flexShrink: 0, margin: "0 6px", borderRadius: 3, border: `2px solid ${lineColor}`, background: "var(--color-surface)" }} />
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={lineColor}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ flexShrink: 0, margin: "0 6px" }}
+                >
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+                </svg>
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
               </div>
             ) : (
