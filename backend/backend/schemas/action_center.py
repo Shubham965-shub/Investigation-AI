@@ -56,6 +56,10 @@ class InvestigationRow(BaseModel):
     # dim_event.escalation_level — real values live as "L1".."L5" or "Not
     # Applicable" (6,627/6,686 rows, since most investigations never escalate).
     escalation_level: Optional[str] = None
+    # dim_event.oos_oot_phase — "Phase 1"/"Phase 2" for OOS/OOT events, null
+    # otherwise (including for OOS/OOT not yet phased). Drives the Unassigned
+    # vs Unassigned – Phase 1 status-card split (see action_center.py).
+    oos_oot_phase: Optional[str] = None
 
 
 class ChartBar(BaseModel):

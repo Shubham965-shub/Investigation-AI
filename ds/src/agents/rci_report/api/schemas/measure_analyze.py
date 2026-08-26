@@ -39,72 +39,126 @@ class HistoryReviewSection(BaseModel):
         return self
 
 
-RCAMethod = Literal[
+SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
+
+RCADemonstrableMethod = Literal[
     "Why-Why Analysis",
     "Fishbone / Ishikawa",
     "Fault Tree Analysis",
     "Flowchart / Process Mapping",
-    "GEMBA Walk",
-    "Failure Mode Effective Analysis (FMEA)",
-    "Not explicitly stated",
 ]
-SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
 
 
-class InvestigationTaskFinding(BaseModel):
-    sop_reference: Optional[str] = None  # e.g. "GMS/001" — cite when grounded in a specific SOP
-    finding: str
+class TaskSummaryItem(BaseModel):
+    tick: str  # matches TaskAssignmentItem.tick, e.g. "1.2"
+    title: str  # short synthesized title/objective for this task, e.g. "VERIFICATION OF DISPENSING AREA SOP"
+    six_m_factor: SixMFactor  # primary 6M factor this task's objective addresses
+    outcome: str  # 1-2 sentence synthesized outcome/finding from this task's critique/report content
 
 
-class InvestigationTaskSubsection(BaseModel):
-    title: str  # e.g. "RECEIPT OF DAMAGED CONTAINERS"
-    # Was a single SixMFactor -- changed 2026-08-09 to a non-empty list, since a
-    # cross-cutting synthesis subsection (e.g. a real Market Complaint report's
-    # "Brainstorming" round-up, which evaluates causes spanning Method/Machine/
-    # Measurement together) can't be forced into one bucket. min_length=1 enforces
-    # this deterministically, not just via the prompt's own instruction. See GAPS.md.
-    six_m_factors: List[SixMFactor] = Field(..., min_length=1)
-    findings: List[InvestigationTaskFinding]
+class InvestigationTaskSummarySection(BaseModel):
+    """Part 1: brief overall narrative + one row per task actually carried out,
+    synthesized from the RCI Plan's own task list and the Task Critique step's
+    per-task critique text (which already carries the uploaded task report's
+    stored summary — see investigation_task_critique_reports.summary)."""
+    overview: str  # 2-4 sentences summarizing overall investigation activity across all tasks
+    tasks: List[TaskSummaryItem] = Field(..., min_length=1)
 
 
-class InvestigationTaskGroup(BaseModel):
-    """Added 2026-08-09: real reports render a two-level hierarchy this section
-    used to flatten away. Two confirmed real shapes this must cover: (1) a
-    Deviation-style umbrella heading per RCI-Plan section ("Raw Material Receipt
-    and Storage") containing several granular task subsections; (2) a Market
-    Complaint/Fishbone-style report organized around 6M-factor headings ("Man",
-    "Material"...) as the group itself, each with one or more subsections. See
-    GAPS.md.
-    """
-    section_title: str  # RCI Plan section title, OR a 6M-factor/theme name for Fishbone-style reports
-    subsections: List[InvestigationTaskSubsection]
+class RootCauseTaskLink(BaseModel):
+    tick: str
+    title: str
+    six_m_factor: SixMFactor
+    explanation: str  # why this specific task's evidence supports the accepted root/probable cause
+
+
+class RootCauseIdentificationSection(BaseModel):
+    """Part 2: explanation limited to ONLY the task(s) whose findings actually
+    identified the root/probable cause -- not every task carried out."""
+    grounding_evidence: str  # reasoning first, tying the accepted RC conclusion to specific task(s) below
+    applicable_tasks: List[RootCauseTaskLink] = Field(..., min_length=1)
+
+
+class WhyWhyStep(BaseModel):
+    question: str
+    answer: str
+
+
+class FishboneBranch(BaseModel):
+    six_m_factor: SixMFactor
+    causes: List[str] = Field(..., min_length=1)
+
+
+class FaultTreeNode(BaseModel):
+    event: str
+    contributing_causes: List[str] = Field(..., min_length=1)
+
+
+class FlowchartStep(BaseModel):
+    step_number: int
+    description: str
+    decision_point: Optional[str] = None
+
+
+class RCAToolDemonstration(BaseModel):
+    """Part 3: a structured demonstration of the actual path to the root cause
+    for one genuinely-used RCA method -- not just naming the method. Exactly
+    the structured field matching `method` may be populated; the rest stay
+    empty, enforced below rather than left to prompt wording alone."""
+    method: RCADemonstrableMethod
+    method_rationale: str  # reasoning first: why the evidence supports this method being genuinely used
+    why_why_chain: List[WhyWhyStep] = Field(default_factory=list)
+    fishbone_branches: List[FishboneBranch] = Field(default_factory=list)
+    fault_tree: List[FaultTreeNode] = Field(default_factory=list)
+    flowchart_steps: List[FlowchartStep] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _method_matches_populated_structure(self):
+        populated = {
+            "Why-Why Analysis": bool(self.why_why_chain),
+            "Fishbone / Ishikawa": bool(self.fishbone_branches),
+            "Fault Tree Analysis": bool(self.fault_tree),
+            "Flowchart / Process Mapping": bool(self.flowchart_steps),
+        }
+        if not populated[self.method]:
+            raise ValueError(f"method={self.method!r} but its matching structured field is empty")
+        stray = [name for name, is_set in populated.items() if is_set and name != self.method]
+        if stray:
+            raise ValueError(f"method={self.method!r} but unrelated structured field(s) also populated: {stray}")
+        return self
 
 
 class InvestigationTaskSection(BaseModel):
-    rca_method_evidence: str  # reasoning first
-    # A real investigation commonly names several methods used together (e.g. Process
-    # Mapping + GEMBA Walk + FMEA) -- a single value would force dropping the others.
-    rca_methods_used: List[RCAMethod]
-    groups: List[InvestigationTaskGroup]  # was a flat `subsections` list -- see InvestigationTaskGroup
+    task_summary: InvestigationTaskSummarySection
+    root_cause_identification: RootCauseIdentificationSection
+    rca_tool_demonstrations: List[RCAToolDemonstration] = Field(..., min_length=1)
 
     @model_validator(mode="after")
     def _no_stray_non_latin_characters(self):
-        # Found live (2026-08-06): rca_method_evidence came back with a garbled CJK
-        # character mixed into otherwise-English prose ("a现场/GEMBA-style shop-floor
-        # walk"). This is a pharma QA report written in English -- non-Latin script
-        # is never legitimate here; catch it deterministically and retry rather than
-        # rely on prompt wording alone.
-        if _NON_LATIN_SCRIPT_RE.search(self.rca_method_evidence):
-            raise ValueError(f"rca_method_evidence contains stray non-Latin characters: {self.rca_method_evidence!r}")
-        for group in self.groups:
-            if _NON_LATIN_SCRIPT_RE.search(group.section_title):
-                raise ValueError(f"group section_title contains stray non-Latin characters: {group.section_title!r}")
-            for sub in group.subsections:
-                if _NON_LATIN_SCRIPT_RE.search(sub.title):
-                    raise ValueError(f"subsection title contains stray non-Latin characters: {sub.title!r}")
-                for f in sub.findings:
-                    if _NON_LATIN_SCRIPT_RE.search(f.finding):
-                        raise ValueError(f"finding contains stray non-Latin characters: {f.finding!r}")
+        # This is a pharma QA report written in English -- non-Latin script is
+        # never legitimate here; catch it deterministically and retry rather
+        # than rely on prompt wording alone (see the pre-2026-08-25 shape of
+        # this validator in GAPS.md for the original live-found bug).
+        texts = [self.task_summary.overview, self.root_cause_identification.grounding_evidence]
+        for t in self.task_summary.tasks:
+            texts += [t.title, t.outcome]
+        for link in self.root_cause_identification.applicable_tasks:
+            texts += [link.title, link.explanation]
+        for demo in self.rca_tool_demonstrations:
+            texts.append(demo.method_rationale)
+            texts += [s.question for s in demo.why_why_chain] + [s.answer for s in demo.why_why_chain]
+            for b in demo.fishbone_branches:
+                texts += b.causes
+            for n in demo.fault_tree:
+                texts.append(n.event)
+                texts += n.contributing_causes
+            for s in demo.flowchart_steps:
+                texts.append(s.description)
+                if s.decision_point:
+                    texts.append(s.decision_point)
+        for text in texts:
+            if _NON_LATIN_SCRIPT_RE.search(text):
+                raise ValueError(f"contains stray non-Latin characters: {text!r}")
         return self
 
 

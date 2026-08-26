@@ -483,6 +483,7 @@ export interface InvestigationRowResponse {
   product: string | null;
   is_cancelled: boolean;
   escalation_level: string | null;
+  oos_oot_phase: "Phase 1" | "Phase 2" | null;
 }
 
 export interface FilterOptions {
@@ -526,6 +527,11 @@ export interface ActionCenterFilters {
   // Page-wide filter (2026-08-14, per the user) — unlike `status` above, this
   // narrows stat cards/chart/pending actions AND the investigations table.
   criticality?: "critical" | "non_critical";
+  // OOS/OOT-only equivalent of `criticality` above (2026-08-25, per the
+  // user) — those two event types show Phase 1/Phase 2 instead of Major &
+  // Minor in the same toggle, so this is a separate param rather than
+  // overloading criticality's values. Same page-wide scope as criticality.
+  oosOotPhase?: "phase1" | "phase2";
 }
 
 export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<ActionCenterSummaryResponse> {
@@ -538,6 +544,7 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.startDateTo) params.set("start_date_to", filters.startDateTo);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.criticality) params.set("criticality", filters.criticality);
+  if (filters?.oosOotPhase) params.set("oos_oot_phase", filters.oosOotPhase);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
 }
@@ -701,47 +708,80 @@ export interface HistoryReviewSection {
   batches_manufactured_note?: string | null;
 }
 
-export type RCAMethod =
-  | "Why-Why Analysis"
-  | "Fishbone / Ishikawa"
-  | "Fault Tree Analysis"
-  | "Flowchart / Process Mapping"
-  | "GEMBA Walk"
-  | "Failure Mode Effective Analysis (FMEA)"
-  | "Not explicitly stated";
+// Methods ds can actually demonstrate step-by-step (RCAToolDemonstration.method)
+// — a narrower set than the RCA methods an investigation might merely name;
+// GEMBA Walk/FMEA/"Not explicitly stated" have no structured demonstration
+// shape below, so they're not offered here (matches backend's
+// RCADemonstrableMethod literal exactly, schemas/rci_report.py).
+export type RCADemonstrableMethod = "Why-Why Analysis" | "Fishbone / Ishikawa" | "Fault Tree Analysis" | "Flowchart / Process Mapping";
 export type SixMFactor = "Man" | "Machine" | "Material" | "Method" | "Measurement" | "Mother Nature";
 
-export const RCA_METHOD_OPTIONS: RCAMethod[] = [
+export const RCA_DEMONSTRABLE_METHOD_OPTIONS: RCADemonstrableMethod[] = [
   "Why-Why Analysis",
   "Fishbone / Ishikawa",
   "Fault Tree Analysis",
   "Flowchart / Process Mapping",
-  "GEMBA Walk",
-  "Failure Mode Effective Analysis (FMEA)",
-  "Not explicitly stated",
 ];
 export const SIX_M_FACTOR_OPTIONS: SixMFactor[] = ["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"];
 
-export interface InvestigationTaskFinding {
-  sop_reference?: string | null;
-  finding: string;
-}
-
-export interface InvestigationTaskSubsection {
+export interface TaskSummaryItem {
+  tick: string;
   title: string;
-  six_m_factors: SixMFactor[];
-  findings: InvestigationTaskFinding[];
+  six_m_factor: SixMFactor;
+  outcome: string;
 }
 
-export interface InvestigationTaskGroup {
-  section_title: string;
-  subsections: InvestigationTaskSubsection[];
+export interface InvestigationTaskSummarySection {
+  overview: string;
+  tasks: TaskSummaryItem[];
+}
+
+export interface RootCauseTaskLink {
+  tick: string;
+  title: string;
+  six_m_factor: SixMFactor;
+  explanation: string;
+}
+
+export interface RootCauseIdentificationSection {
+  grounding_evidence: string;
+  applicable_tasks: RootCauseTaskLink[];
+}
+
+export interface WhyWhyStep {
+  question: string;
+  answer: string;
+}
+
+export interface FishboneBranch {
+  six_m_factor: SixMFactor;
+  causes: string[];
+}
+
+export interface FaultTreeNode {
+  event: string;
+  contributing_causes: string[];
+}
+
+export interface FlowchartStep {
+  step_number: number;
+  description: string;
+  decision_point?: string | null;
+}
+
+export interface RCAToolDemonstration {
+  method: RCADemonstrableMethod;
+  method_rationale: string;
+  why_why_chain: WhyWhyStep[];
+  fishbone_branches: FishboneBranch[];
+  fault_tree: FaultTreeNode[];
+  flowchart_steps: FlowchartStep[];
 }
 
 export interface InvestigationTaskSection {
-  rca_method_evidence: string;
-  rca_methods_used: RCAMethod[];
-  groups: InvestigationTaskGroup[];
+  task_summary: InvestigationTaskSummarySection;
+  root_cause_identification: RootCauseIdentificationSection;
+  rca_tool_demonstrations: RCAToolDemonstration[];
 }
 
 export interface RootCauseTaxonomy {

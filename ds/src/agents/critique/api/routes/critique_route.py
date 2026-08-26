@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from src.agents.critique.api.schemas import (
     CritiqueInputSchema, CritiqueOutSchema, TaskSchema, CritiqueRCIRequest,
-    RCConclusionCritiqueResponse, CAPACritiqueResponse,
+    RCConclusionCritiqueResponse, CAPACritiqueResponse, CAPAItemDetail,
 )
 from src.agents.critique.api.services.rci_report_extraction import (
     extract_full_document_text, extract_rci_report_sections,
@@ -165,24 +165,39 @@ async def _condense_section_text(label: str, text: str) -> str:
         return text
 
 
-async def _report_section_summaries(temp_path: Path) -> tuple[str, str]:
-    """(rc_conclusion_text, capa_text) pulled directly from the report's own sections via
-    plain docx parsing (extract_rci_report_sections, no LLM), then condensed to a short
-    plain-language summary via _condense_section_text. Best-effort: a report whose sections
-    don't match the expected heading/table layout degrades to empty strings rather than
-    failing the critique."""
+_EMPTY_SECTIONS: dict = {
+    "problem_statement": "",
+    "rc_conclusion_text": "",
+    "is_repeat_occurrence": None,
+    "investigation_summary": "",
+    "impact_assessment_text": "",
+    "correction_remedial_text": "",
+    "capa_overall_text": "",
+    "capa_items": [],
+}
+
+
+async def _report_section_summaries(temp_path: Path) -> dict:
+    """Returns the full extraction dict from extract_rci_report_sections (no LLM), plus
+    two condensed plain-language summaries appended under "rc_summary"/"capa_summary"
+    (via _condense_section_text) for the existing UI display. The raw "rc_conclusion_text"/
+    "capa_overall_text"/"capa_items"/"is_repeat_occurrence"/"impact_assessment_text"/
+    "correction_remedial_text" keys carry the report's own verbatim/structured content —
+    callers use these for RCI Report generation, and "rc_summary"/"capa_summary" for the
+    existing condensed display, never confusing the two. Best-effort: a report whose
+    sections don't match the expected heading/table layout degrades to empty values rather
+    than failing the critique."""
     try:
         sections = await asyncio.to_thread(extract_rci_report_sections, temp_path)
     except Exception:
         logger.warning("Non-LLM section extraction failed for %s", temp_path, exc_info=True)
-        return "", ""
-    rc_text = sections["rc_conclusion_text"]
-    capa_text = _format_capa_text(sections["capa_overall_text"], sections["capa_items"])
+        sections = dict(_EMPTY_SECTIONS)
+    capa_text_for_condensing = _format_capa_text(sections["capa_overall_text"], sections["capa_items"])
     rc_summary, capa_summary = await asyncio.gather(
-        _condense_section_text("rc_conclusion", rc_text),
-        _condense_section_text("capa", capa_text),
+        _condense_section_text("rc_conclusion", sections["rc_conclusion_text"]),
+        _condense_section_text("capa", capa_text_for_condensing),
     )
-    return rc_summary, capa_summary
+    return {**sections, "rc_summary": rc_summary, "capa_summary": capa_summary}
 
 
 async def _save_and_extract(file: UploadFile) -> tuple[Path, str]:
@@ -354,7 +369,11 @@ async def critique_rc_conclusion(
             structure=RCConclusionCritiqueResponse,
             temperature=0,
         )
-        result.rc_conclusion_text, _ = await _report_section_summaries(temp_path)
+        sections = await _report_section_summaries(temp_path)
+        result.rc_conclusion_text = sections["rc_summary"]
+        result.rc_conclusion_text_raw = sections["rc_conclusion_text"]
+        result.is_repeat_occurrence = sections["is_repeat_occurrence"]
+        result.impact_assessment_text = sections["impact_assessment_text"]
         return _suppress_recurrence_claims_without_citation(result)
     except HTTPException:
         raise
@@ -408,7 +427,11 @@ async def critique_capa(
                     "report. Please reupload a report that includes a CAPA section."
                 ),
             )
-        _, result.capa_text = await _report_section_summaries(temp_path)
+        sections = await _report_section_summaries(temp_path)
+        result.capa_text = sections["capa_summary"]
+        result.capa_text_raw = sections["capa_overall_text"]
+        result.capa_items = [CAPAItemDetail(**item) for item in sections["capa_items"]]
+        result.correction_remedial_text = sections["correction_remedial_text"]
         return _cap_recommendations(result)
     except HTTPException:
         raise

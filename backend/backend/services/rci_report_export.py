@@ -95,14 +95,18 @@ MISSING_NOTE_FALLBACK = "This section could not be generated — the related Tra
 # from every answer sitting right next to it, despite both resolving to the
 # same font family. Forced explicitly on every run this file touches so
 # every generated font/size/heading/in-table text matches the template's
-# own convention exactly (2026-08-25, per the user).
+# own convention exactly (2026-08-25, per the user). Table content is
+# additionally locked to 10pt, one step down from body content's 11pt
+# (2026-08-25, per the user), matching how a real Word table's contents
+# commonly run a point smaller than the surrounding body text.
 FONT_NAME = "Times New Roman"
 FONT_SIZE = Pt(11)
+TABLE_FONT_SIZE = Pt(10)
 
 
-def _apply_font(run) -> None:
+def _apply_font(run, size=None) -> None:
     run.font.name = FONT_NAME
-    run.font.size = FONT_SIZE
+    run.font.size = size or FONT_SIZE
 
 
 def _missing_note(errors: dict, key: str) -> str:
@@ -110,10 +114,12 @@ def _missing_note(errors: dict, key: str) -> str:
 
 
 def _set_cell_text(cell, text: str) -> None:
+    """Always inside a table — locked to TABLE_FONT_SIZE (10pt), one step
+    down from body content's 11pt."""
     cell.text = text or ""
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
-            _apply_font(run)
+            _apply_font(run, TABLE_FONT_SIZE)
 
 
 def _body_paragraph(doc, index: int) -> Paragraph:
@@ -329,21 +335,49 @@ def _fill_history_review(doc, section, errors: dict) -> None:
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
 def _fill_investigation_task(doc, section, errors: dict) -> None:
+    """Matches InvestigationTaskSection (schemas/rci_report.py, copied
+    verbatim from ds's measure_analyze.py) — task_summary/
+    root_cause_identification/rca_tool_demonstrations, not the older
+    rca_method_evidence/rca_methods_used/groups shape this previously
+    (incorrectly) assumed.
+
+    Paragraph 132's own style in the template is "Heading 1" — inherited
+    from the "Investigation tasks:" heading and its italic guidance
+    paragraphs right above it (confirmed via python-docx), unlike every
+    other section's blank (e.g. Executive Summary's, "Normal"/"List
+    Paragraph"). Left as-is, real content here renders as an oversized bold
+    heading instead of body text — reset explicitly so this reads like the
+    rest of the document.
+    """
+    _body_paragraph(doc, 132).style = "Normal"
+
     if section is None:
         _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
         return
 
-    lines = [f"RCA method evidence: {section.rca_method_evidence}"]
-    if section.rca_methods_used:
-        lines.append(f"RCA method(s) used: {', '.join(section.rca_methods_used)}")
-    for group in section.groups:
-        lines.append(group.section_title)
-        for sub in group.subsections:
-            factors = f" ({', '.join(sub.six_m_factors)})" if sub.six_m_factors else ""
-            lines.append(f"  {sub.title}{factors}")
-            for finding in sub.findings:
-                prefix = f"{finding.sop_reference}: " if finding.sop_reference else ""
-                lines.append(f"    - {prefix}{finding.finding}")
+    lines = [f"Overview: {section.task_summary.overview}"]
+    for task in section.task_summary.tasks:
+        lines.append(f"  {task.tick} {task.title} ({task.six_m_factor}): {task.outcome}")
+
+    lines.append(f"Root Cause Identification — Grounding Evidence: {section.root_cause_identification.grounding_evidence}")
+    for link in section.root_cause_identification.applicable_tasks:
+        lines.append(f"  {link.tick} {link.title} ({link.six_m_factor}): {link.explanation}")
+
+    for demo in section.rca_tool_demonstrations:
+        lines.append(f"RCA Tool — {demo.method}: {demo.method_rationale}")
+        for step in demo.why_why_chain:
+            lines.append(f"  Q: {step.question}")
+            lines.append(f"  A: {step.answer}")
+        for branch in demo.fishbone_branches:
+            causes = ", ".join(branch.causes) if branch.causes else "—"
+            lines.append(f"  {branch.six_m_factor}: {causes}")
+        for node in demo.fault_tree:
+            causes = ", ".join(node.contributing_causes) if node.contributing_causes else "—"
+            lines.append(f"  Event: {node.event} — Contributing causes: {causes}")
+        for step in demo.flowchart_steps:
+            decision = f" [Decision: {step.decision_point}]" if step.decision_point else ""
+            lines.append(f"  Step {step.step_number}: {step.description}{decision}")
+
     _set_paragraph_lines(doc, 132, lines)
 
 
@@ -359,7 +393,7 @@ def _fill_root_cause_conclusion(doc, section, errors: dict) -> None:
         f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}"
     )
     for run in repeat_para.runs:
-        _apply_font(run)
+        _apply_font(run, TABLE_FONT_SIZE)
     _set_cell_text(table.rows[2].cells[0], f"Category: {section.taxonomy.category}   Subcategory: {section.taxonomy.sub_category}")
 
 
@@ -516,6 +550,26 @@ def _fill_capa_effectiveness_check_plan(doc, section, errors: dict) -> None:
         _set_cell_text(row.cells[4], item.responsibility)
 
 
+# Body-paragraph indices of every major heading in the real template — a
+# page break is forced immediately before each one so every section starts
+# on its own page (2026-08-25, per the user), matching how a real printed/
+# reviewed investigation report is organized. In heading order: Executive
+# Summary, Description of Event, Initial Impact Assessment, Summary of
+# Historical Review, Investigation Task, Root Cause conclusion, Impact
+# Assessment & Conclusion, Correction and/or Remedial Action, Corrective &
+# Preventive Action (CAPA), CAPA Effectiveness Check Plan, List of
+# Annexures, Report Approval. Risk Assessment has no heading of its own
+# (see module docstring) so it isn't included. Indices are fixed at the
+# TEMPLATE's own layout, not affected by _strip_guidance_runs (which only
+# ever removes pure-guidance paragraphs, never a heading).
+_SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 177, 186, 193, 196]
+
+
+def _add_page_breaks(doc) -> None:
+    for index in _SECTION_HEADING_INDICES:
+        _body_paragraph(doc, index).paragraph_format.page_break_before = True
+
+
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
 
 def _fill_annexures(doc, section) -> None:
@@ -576,6 +630,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
 
+    _add_page_breaks(doc)
     _fill_header_table(doc, record_id, trackwise_fields)
     _fill_executive_summary(doc, report.executive_summary, errors)
     _fill_description_of_event(doc, report.description_of_event, errors)
