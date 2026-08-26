@@ -133,19 +133,19 @@ ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('impact', '6.1a', '6.1 Final Impact Assessment on Current Batches', 'Impact on the current/affected batch(es) is accurately identified (patient safety, product quality, area compliance status or other status such as documentation) based on the nature of the non-conformance.', 2.0, 'binary', false, NULL, 1)
+    ('impact', '6.1a', '6.1 Final Impact Assessment on Current Batches', 'Impact on the current/affected batch(es) is accurately identified (patient safety, product quality, area compliance status or other status such as documentation) based on the nature of the non-conformance.', 2.0, 'binary', true, NULL, 1)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('impact', '6.1c', '6.1 Final Impact Assessment on Current Batches', 'Where product quality / patient safety is impacted, the requirement of regulatory submission / market notification has been evaluated — or it is appropriately reasoned that none is required.', 1.0, 'binary', false, NULL, 2)
+    ('impact', '6.1c', '6.1 Final Impact Assessment on Current Batches', 'Where product quality / patient safety is impacted, the requirement of regulatory submission / market notification has been evaluated — or it is appropriately reasoned that none is required.', 1.0, 'binary', true, NULL, 2)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,
     tiers = EXCLUDED.tiers, display_order = EXCLUDED.display_order;
 INSERT INTO public.investigation_ai_checklist_checkpoint (section, checkpoint_id, sub_criteria, checkpoint_text, max_marks, kind, allow_na, tiers, display_order) VALUES
-    ('impact', '6.1d', '6.1 Final Impact Assessment on Current Batches', 'Where product quality or regulatory compliance is impacted, continuation of production in similar areas/sites has been evaluated — or it is appropriately reasoned as not applicable.', 1.0, 'binary', false, NULL, 3)
+    ('impact', '6.1d', '6.1 Final Impact Assessment on Current Batches', 'Where product quality or regulatory compliance is impacted, continuation of production in similar areas/sites has been evaluated — or it is appropriately reasoned as not applicable.', 1.0, 'binary', true, NULL, 3)
 ON CONFLICT (section, checkpoint_id) DO UPDATE SET
     sub_criteria = EXCLUDED.sub_criteria, checkpoint_text = EXCLUDED.checkpoint_text,
     max_marks = EXCLUDED.max_marks, kind = EXCLUDED.kind, allow_na = EXCLUDED.allow_na,

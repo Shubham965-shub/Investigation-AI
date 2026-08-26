@@ -158,6 +158,7 @@ _IMPACT = SectionSpec(
             "safety, product quality, area compliance status or other status such as "
             "documentation) based on the nature of the non-conformance.",
             2.0,
+            allow_na=True,
         ),
         Checkpoint(
             "6.1c", "6.1 Final Impact Assessment on Current Batches",
@@ -165,6 +166,7 @@ _IMPACT = SectionSpec(
             "regulatory submission / market notification has been evaluated — or it is "
             "appropriately reasoned that none is required.",
             1.0,
+            allow_na=True,
         ),
         Checkpoint(
             "6.1d", "6.1 Final Impact Assessment on Current Batches",
@@ -172,6 +174,7 @@ _IMPACT = SectionSpec(
             "production in similar areas/sites has been evaluated — or it is appropriately "
             "reasoned as not applicable.",
             1.0,
+            allow_na=True,
         ),
         # 6.2 — Extended Impact Assessment (max 4 = 2 rows × 2)
         Checkpoint(
