@@ -43,7 +43,7 @@ async def _score_one(
         checkpoints=render_checkpoints_block([section]),
         section_text=text,
     )
-    samples = await sample_section(llm, prompt)
+    samples = await sample_section(llm, prompt, section)
     return section, build_section_score(section, consensus(section, samples))
 
 

@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import copy
 import io
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -219,6 +220,25 @@ def _ensure_row_count(table, first_data_row: int, count: int, template_row: Opti
     return list(table.rows)[first_data_row : first_data_row + target]
 
 
+# Splits sentence-per-idea narrative text into bullet lines for the two Executive
+# Summary fields (immediate_containment_action, determination_of_root_cause) whose own
+# prompt already asks for "each its own sentence" / "every distinct action" — the
+# underlying data is one string (shared with ds/frontend, not changed here), so the
+# list rendering happens only at export time. Splits on sentence-ending punctuation
+# followed by whitespace and a capital letter/open-paren, to avoid breaking on
+# mid-sentence abbreviations like "No." or "kW." in the common case — best-effort, not
+# used anywhere content is parsed back out, so an occasional over-split just reads as a
+# shorter bullet rather than a wrong one.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
+
+
+def _bullet_lines(text: str) -> List[str]:
+    if not text:
+        return []
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s.strip()]
+    return [f"•\t{s}" for s in sentences]
+
+
 def _sourced(item) -> str:
     return item.value if item else ""
 
@@ -235,8 +255,8 @@ def _fill_executive_summary(doc, section, errors: dict) -> None:
         return
     _set_paragraph_text(doc, 55, section.summary)
     _set_paragraph_text(doc, 59, section.problem_description)
-    _set_paragraph_text(doc, 64, section.immediate_containment_action)
-    _set_paragraph_text(doc, 71, section.determination_of_root_cause)
+    _set_paragraph_lines(doc, 64, _bullet_lines(section.immediate_containment_action))
+    _set_paragraph_lines(doc, 71, _bullet_lines(section.determination_of_root_cause))
     _set_paragraph_text(doc, 74, section.root_cause_probable_cause_statement, clear_italic=True)
     _set_paragraph_text(doc, 80, section.impact_assessment)
     _set_paragraph_text(doc, 86, section.correction_conclusion_preventive_actions)
@@ -277,8 +297,16 @@ def _fill_initial_impact_assessment(doc, section, errors: dict) -> None:
     for i, (row, item) in enumerate(zip(rows, impacts)):
         _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], item.material_product_batch)
-        _set_cell_text(row.cells[2], item.stage)
-        action = f"{item.type_of_impact} — Qty involved: {item.quantity_involved}; Qty on hold: {_sourced(item.quantity_on_hold)}"
+        # cells[2]'s template header is "Batch Number" — the batch number itself is
+        # already folded into material_product_batch above (per confirmed UI), so
+        # there's no separate figure to put here; `stage` is labeled explicitly
+        # rather than dropped silently into a column its own header doesn't name.
+        _set_cell_text(row.cells[2], f"Stage: {item.stage}" if item.stage else "")
+        # cells[3]'s template header is "Action taken (Hold/Quarantined etc.)" — lead
+        # with the actual hold/quarantine status rather than burying it after the
+        # impact classification, which isn't a "Hold/Quarantined etc." action at all.
+        hold_status = f"On hold: {_sourced(item.quantity_on_hold)}" if _sourced(item.quantity_on_hold) else "No hold/quarantine action recorded"
+        action = f"{hold_status} (Qty involved: {item.quantity_involved}; Impact: {item.type_of_impact})"
         _set_cell_text(row.cells[3], action)
 
     equip = section.equipment_impacts
@@ -324,6 +352,7 @@ def _fill_history_review(doc, section, errors: dict) -> None:
         _set_cell_text(row.cells[4], item.capa_implementation_date)
 
     lines = [
+        section.search_scope_note,
         f"Lookback period: {section.lookback_months} months.",
         "No similar events found in the lookback window." if section.no_similar_events_found else "",
         section.closing_narrative,
@@ -335,11 +364,12 @@ def _fill_history_review(doc, section, errors: dict) -> None:
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
 def _fill_investigation_task(doc, section, errors: dict) -> None:
-    """Matches InvestigationTaskSection (schemas/rci_report.py, copied
-    verbatim from ds's measure_analyze.py) — task_summary/
-    root_cause_identification/rca_tool_demonstrations, not the older
-    rca_method_evidence/rca_methods_used/groups shape this previously
-    (incorrectly) assumed.
+    """Section 5 (Investigation Task) — rebuilt 2026-08-25 into 3 explicit parts
+    (task_summary / root_cause_identification / rca_tool_demonstrations, see
+    ds/src/agents/rci_report/api/schemas/measure_analyze.py). Rendered flat with
+    indentation, matching this file's existing line-based convention for every
+    other multi-item section (no real Word list-numbering anywhere in this
+    template — see _set_paragraph_lines).
 
     Paragraph 132's own style in the template is "Heading 1" — inherited
     from the "Investigation tasks:" heading and its italic guidance
@@ -355,28 +385,33 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
         _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
         return
 
-    lines = [f"Overview: {section.task_summary.overview}"]
+    lines = [section.task_summary.overview]
     for task in section.task_summary.tasks:
-        lines.append(f"  {task.tick} {task.title} ({task.six_m_factor}): {task.outcome}")
+        lines.append(f"{task.tick}\t{task.title} ({task.six_m_factor}): {task.outcome}")
 
-    lines.append(f"Root Cause Identification — Grounding Evidence: {section.root_cause_identification.grounding_evidence}")
+    lines.append("")
+    lines.append("Root cause identification:")
+    lines.append(section.root_cause_identification.grounding_evidence)
     for link in section.root_cause_identification.applicable_tasks:
-        lines.append(f"  {link.tick} {link.title} ({link.six_m_factor}): {link.explanation}")
+        lines.append(f"  {link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
 
     for demo in section.rca_tool_demonstrations:
-        lines.append(f"RCA Tool — {demo.method}: {demo.method_rationale}")
+        lines.append("")
+        lines.append(f"{demo.method}: {demo.method_rationale}")
         for step in demo.why_why_chain:
             lines.append(f"  Q: {step.question}")
             lines.append(f"  A: {step.answer}")
         for branch in demo.fishbone_branches:
-            causes = ", ".join(branch.causes) if branch.causes else "—"
-            lines.append(f"  {branch.six_m_factor}: {causes}")
+            lines.append(f"  {branch.six_m_factor}:")
+            for cause in branch.causes:
+                lines.append(f"    - {cause}")
         for node in demo.fault_tree:
-            causes = ", ".join(node.contributing_causes) if node.contributing_causes else "—"
-            lines.append(f"  Event: {node.event} — Contributing causes: {causes}")
-        for step in demo.flowchart_steps:
-            decision = f" [Decision: {step.decision_point}]" if step.decision_point else ""
-            lines.append(f"  Step {step.step_number}: {step.description}{decision}")
+            lines.append(f"  Event: {node.event}")
+            for cause in node.contributing_causes:
+                lines.append(f"    - {cause}")
+        for flow_step in demo.flowchart_steps:
+            decision = f" [Decision: {flow_step.decision_point}]" if flow_step.decision_point else ""
+            lines.append(f"  Step {flow_step.step_number}: {flow_step.description}{decision}")
 
     _set_paragraph_lines(doc, 132, lines)
 

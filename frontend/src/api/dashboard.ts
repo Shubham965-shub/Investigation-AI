@@ -702,6 +702,7 @@ export interface HistoryReviewRow {
 
 export interface HistoryReviewSection {
   lookback_months: number;
+  search_scope_note: string;
   rows: HistoryReviewRow[];
   no_similar_events_found: boolean;
   closing_narrative: string;
