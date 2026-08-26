@@ -44,10 +44,10 @@ export function TaskCritiqueDetailPage() {
   // Blanket accept/reject for the whole batch of recommendations at once
   // (2026-08-26, per the user), replacing per-recommendation Accept/Reject —
   // still one decision call per recommendation under the hood, since the
-  // backend has no bulk-decision endpoint, but driven by a single Yes/No at
-  // the top of the section instead of a button pair per row.
-  const [bulkRejecting, setBulkRejecting] = useState(false);
-  const [bulkReason, setBulkReason] = useState("");
+  // backend has no bulk-decision endpoint, but driven by a single Yes at the
+  // top of the section instead of a button pair per row. Rejecting is done
+  // by unchecking recommendations before hitting "Yes" (below), which
+  // prompts for a shared reason — there's no separate "No" path anymore.
   // Per-recommendation checkbox, defaulting to checked (2026-08-26, per the
   // user) — lets the investigator deselect specific recommendations before
   // hitting "Yes" instead of only ever accepting or rejecting the whole
@@ -176,37 +176,6 @@ export function TaskCritiqueDetailPage() {
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendations");
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleRejectAll() {
-    const reason = bulkReason.trim();
-    if (!reason) return;
-    const pendingIds = report!.recommendations.filter((r) => r.decision === "pending").map((r) => r.id);
-    if (pendingIds.length === 0) return;
-    setBusy(true);
-    setActionError("");
-    // Rejecting every still-pending recommendation, where none of the rest
-    // are already accepted, immediately locks and scores this report (see
-    // db/critique_state.py's all-rejected branch) — predicted client-side
-    // from the state as of this click, not assumed from the response, so the
-    // dialog can appear the instant the requests go out.
-    if (!report!.recommendations.some((r) => r.decision === "accepted")) {
-      setScoring("all_decided");
-    }
-    try {
-      let updated = section!;
-      for (const id of pendingIds) {
-        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "rejected", reason);
-      }
-      setSection(updated);
-      setBulkRejecting(false);
-      setBulkReason("");
-    } catch (err) {
-      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendations");
-    } finally {
-      setScoring(null);
       setBusy(false);
     }
   }
@@ -352,46 +321,12 @@ export function TaskCritiqueDetailPage() {
                   <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
 
-                    {report.recommendations.some((r) => r.decision === "pending") && !bulkRejecting && (
+                    {report.recommendations.some((r) => r.decision === "pending") && (
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            type="button"
-                            className="btn-outline"
-                            disabled={busy}
-                            onClick={() => setBulkRejecting(true)}
-                            style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                          >
-                            No
-                          </button>
                           <button type="button" className="btn-outline" disabled={busy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
                             Yes
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {bulkRejecting && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input
-                            type="text"
-                            className="field-value"
-                            placeholder="Rejection reason"
-                            value={bulkReason}
-                            onChange={(e) => setBulkReason(e.target.value)}
-                            style={{ flex: 1, height: "auto" }}
-                          />
-                          <button
-                            type="button"
-                            className="btn-outline"
-                            disabled={busy || !bulkReason.trim()}
-                            onClick={handleRejectAll}
-                            style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                          >
-                            Confirm Reject
                           </button>
                         </div>
                       </div>

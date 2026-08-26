@@ -161,8 +161,6 @@ function RecommendationGroup({
   setScoring: (reason: ScoringReason | null) => void;
 }) {
   const [uncheckedIds, setUncheckedIds] = useState<Set<number>>(new Set());
-  const [bulkRejecting, setBulkRejecting] = useState(false);
-  const [bulkReason, setBulkReason] = useState("");
   const [deselectPrompt, setDeselectPrompt] = useState(false);
   const [deselectReason, setDeselectReason] = useState("");
 
@@ -198,30 +196,6 @@ function RecommendationGroup({
     } catch (err) {
       setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendations");
     } finally {
-      setDecisionBusy(false);
-    }
-  }
-
-  async function rejectAll(ids: number[], reason: string) {
-    if (ids.length === 0) return;
-    setDecisionBusy(true);
-    setDecisionError(null);
-    if (wouldLockEverything(ids)) setScoring("all_decided");
-    try {
-      let updated: RcCapaState | undefined;
-      for (const id of ids) {
-        updated = await decide(id, "rejected", reason);
-      }
-      if (updated) onDecided(updated);
-      setBulkRejecting(false);
-      setBulkReason("");
-      setDeselectPrompt(false);
-      setDeselectReason("");
-      setUncheckedIds(new Set());
-    } catch (err) {
-      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendations");
-    } finally {
-      setScoring(null);
       setDecisionBusy(false);
     }
   }
@@ -265,46 +239,12 @@ function RecommendationGroup({
 
   return (
     <>
-      {pending.length > 0 && !bulkRejecting && (
+      {pending.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={decisionBusy}
-              onClick={() => setBulkRejecting(true)}
-              style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-            >
-              No
-            </button>
             <button type="button" className="btn-outline" disabled={decisionBusy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
               Yes
-            </button>
-          </div>
-        </div>
-      )}
-
-      {bulkRejecting && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              className="field-value"
-              placeholder="Rejection reason"
-              value={bulkReason}
-              onChange={(e) => setBulkReason(e.target.value)}
-              style={{ flex: 1, height: "auto" }}
-            />
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={decisionBusy || !bulkReason.trim()}
-              onClick={() => rejectAll(pending.map((r) => r.id), bulkReason.trim())}
-              style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-            >
-              Confirm Reject
             </button>
           </div>
         </div>
