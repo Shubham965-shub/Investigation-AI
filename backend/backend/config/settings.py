@@ -21,7 +21,19 @@ class Settings(BaseSettings):
 
     # ── Upstream InvestigationAi_DS service ──────────────────
     DS_SERVICE_BASE_URL: str = "http://localhost:8001"
-    DS_SERVICE_TIMEOUT_SECONDS: float = 60.0
+    # Split connect/read (2026-08-26, per the user) — a short connect timeout
+    # still fails fast when ds is genuinely down, while read gets much more
+    # room since real ds calls (critique, scoring) can legitimately run long.
+    # See clients/ds_client.py for how these compose into the default and
+    # heavy per-call timeouts.
+    DS_SERVICE_CONNECT_TIMEOUT_SECONDS: float = 10.0
+    DS_SERVICE_READ_TIMEOUT_SECONDS: float = 120.0
+    # Confirmed via read-only ds research (2026-08-26): /critique/analyse-task-report,
+    # RC/CAPA's critique endpoints, and /score/report are all multi-LLM-call
+    # operations (scoring alone can fire ~20 concurrent calls per request) —
+    # they get a much longer read timeout than the lightweight generation
+    # endpoints (/ps/v2/generate, /rci/plan).
+    DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS: float = 300.0
 
     # ── CORS (comma-separated origins) ───────────────────────
     CORS_ORIGINS: str = "http://localhost:5173"

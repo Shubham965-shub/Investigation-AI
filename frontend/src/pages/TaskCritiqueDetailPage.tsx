@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   decideTaskCritiqueRecommendation,
@@ -13,6 +13,7 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
+import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
@@ -61,6 +62,21 @@ export function TaskCritiqueDetailPage() {
   const [deselectReason, setDeselectReason] = useState("");
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
   const [history, setHistory] = useState<RecommendationHistoryAttempt[]>([]);
+
+  // Fires once every recommendation on this task's current report has been
+  // decided and a new upload becomes possible again — detected as
+  // can_upload's false -> true transition (2026-08-26, per the user), same
+  // approach as RcCapaCritiquePage.tsx. undefined -> true (e.g. on initial
+  // load of an already-fully-decided task) deliberately does NOT fire this.
+  const [showIncorporateDialog, setShowIncorporateDialog] = useState(false);
+  const prevCanUploadRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevCanUploadRef.current;
+    if (prev === false && section?.can_upload === true) {
+      setShowIncorporateDialog(true);
+    }
+    prevCanUploadRef.current = section?.can_upload;
+  }, [section?.can_upload]);
 
   useEffect(() => {
     if (!recordId || Number.isNaN(taskIndex)) return;
@@ -524,6 +540,8 @@ export function TaskCritiqueDetailPage() {
       )}
 
       {scoring && <ScoringDialog reason={scoring} />}
+
+      {showIncorporateDialog && <IncorporateChangesDialog onClose={() => setShowIncorporateDialog(false)} />}
     </div>
   );
 }

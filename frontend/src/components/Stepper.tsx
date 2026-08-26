@@ -58,6 +58,13 @@ export function Stepper({
         const isLast = index === RECORD_STEPS.length - 1;
         const clickable = step.path !== null;
         const isSkippable = step.key === "interview-questionnaire" && eventType === "Market Complaint";
+        // Small connector box between RCI Plan Creation (4) & Task Critique
+        // (5), and between Task Critique (5) & RC & CAPA Critique (6)
+        // (2026-08-26, per the user) — purely a visual marker on the
+        // connecting line, framed by dotted segments on both sides instead
+        // of the usual solid line.
+        const hasConnectorBox = index === 3 || index === 4;
+        const lineColor = status === "completed" ? "var(--color-primary)" : "var(--color-open-border)";
 
         return (
           <div key={step.key} style={{ display: "flex", alignItems: "center", flex: isLast ? "0 0 auto" : "1 1 auto" }}>
@@ -97,16 +104,22 @@ export function Stepper({
                 )}
               </div>
             </div>
-            {!isLast && (
+            {!isLast && (hasConnectorBox ? (
+              <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "0 8px 24px" }}>
+                <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
+                <div style={{ width: 14, height: 14, flexShrink: 0, margin: "0 6px", borderRadius: 3, border: `2px solid ${lineColor}`, background: "var(--color-surface)" }} />
+                <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
+              </div>
+            ) : (
               <div
                 style={{
                   height: 2,
                   flex: 1,
                   margin: "0 8px 24px",
-                  background: status === "completed" ? "var(--color-primary)" : "var(--color-open-border)",
+                  background: lineColor,
                 }}
               />
-            )}
+            ))}
           </div>
         );
       })}

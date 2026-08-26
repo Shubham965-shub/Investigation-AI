@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   decideRcCapaRecommendation,
@@ -22,6 +22,7 @@ import { BoldText } from "../components/BoldText";
 import { scoreGrade } from "../utils/scoreGrade";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
+import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -40,6 +41,94 @@ function formatDdMmYyyy(iso: string): string {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+// The RC/Impact/CAPA drilldown behind the completion screen's "Score
+// Details" button (2026-08-26, per the user) — same 3 score rows that used
+// to sit inline on the completion card, just moved into a dialog.
+function ScoreDetailsDialog({ report, onClose }: { report: RcCapaReport; onClose: () => void }) {
+  const rows = [
+    { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc"] },
+    { label: "IMPACT CRITIQUE SCORE", value: report.impact_score, sections: ["impact"] },
+    { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
+  ].filter((s) => s.value != null);
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(73, 84, 80, 0.45)", zIndex: 60 }} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "var(--color-surface)",
+          borderRadius: 10,
+          width: "min(480px, 92vw)",
+          padding: 24,
+          zIndex: 61,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>Score Details</p>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", fontSize: "var(--font-size-lg)", lineHeight: 1, color: "var(--color-text-muted)" }}>
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {rows.map((s) => {
+            const grade = scoreGrade(s.value!);
+            return (
+              <div
+                key={s.label}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  padding: 13,
+                  borderRadius: 8,
+                  background: grade.bg,
+                  border: `1px solid ${grade.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    border: `1.5px solid ${grade.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
+                    <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
+                  </p>
+                  <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: grade.text }}>{s.value}%</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
 }
 
 // One self-contained blanket accept/reject block per recommendation
@@ -318,9 +407,32 @@ export function RcCapaCritiquePage() {
   const [pushError, setPushError] = useState<string | null>(null);
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
+  // The RC/Impact/CAPA score drilldown moved out of the always-visible
+  // completion card into its own dialog behind a "Score Details" button
+  // (2026-08-26, per the user) — the total score stays inline as before.
+  const [showScoreDetails, setShowScoreDetails] = useState(false);
+
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyReports, setHistoryReports] = useState<RcCapaReport[]>([]);
+
+  // Fires once every recommendation on the current report has been decided
+  // and a new upload becomes possible again — detected as can_upload's
+  // false -> true transition (2026-08-26, per the user), rather than hooking
+  // every individual accept/reject call site, since that transition already
+  // uniquely identifies "just finished deciding, ready to re-upload"
+  // regardless of which decision path (bulk accept/reject/partial) got there.
+  // undefined -> true (e.g. on initial load of an already-fully-decided
+  // report) deliberately does NOT fire this — only a real transition does.
+  const [showIncorporateDialog, setShowIncorporateDialog] = useState(false);
+  const prevCanUploadRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevCanUploadRef.current;
+    if (prev === false && state?.can_upload === true) {
+      setShowIncorporateDialog(true);
+    }
+    prevCanUploadRef.current = state?.can_upload;
+  }, [state?.can_upload]);
 
   useEffect(() => {
     if (!recordId) return;
@@ -537,57 +649,9 @@ export function RcCapaCritiquePage() {
           })()}
 
           {report && (report.rc_score != null || report.impact_score != null || report.capa_score != null) && (
-            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-              {[
-                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc"] },
-                { label: "IMPACT CRITIQUE SCORE", value: report.impact_score, sections: ["impact"] },
-                { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
-              ]
-                .filter((s) => s.value != null)
-                .map((s) => {
-                  const grade = scoreGrade(s.value!);
-                  return (
-                    <div
-                      key={s.label}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 12,
-                        padding: 13,
-                        borderRadius: 8,
-                        background: grade.bg,
-                        border: `1px solid ${grade.border}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: "50%",
-                          border: `1.5px solid ${grade.border}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={grade.text} strokeWidth="2">
-                          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" strokeLinecap="round" strokeLinejoin="round" />
-                          <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                      <div style={{ textAlign: "center" }}>
-                        <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                          {s.label} <ScoreBreakdownTooltip tables={report.score_breakdown.filter((t) => s.sections.includes(t.section))} />
-                        </p>
-                        <p style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: grade.text }}>{s.value}%</p>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+            <button type="button" className="btn-outline" onClick={() => setShowScoreDetails(true)}>
+              Score Details
+            </button>
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
@@ -749,9 +813,13 @@ export function RcCapaCritiquePage() {
 
       {scoring && <ScoringDialog reason={scoring} />}
 
+      {showScoreDetails && report && <ScoreDetailsDialog report={report} onClose={() => setShowScoreDetails(false)} />}
+
       {showHistory && (
         <RcCapaHistoryPanel reports={historyReports} loading={historyLoading} onClose={() => setShowHistory(false)} />
       )}
+
+      {showIncorporateDialog && <IncorporateChangesDialog onClose={() => setShowIncorporateDialog(false)} />}
     </div>
   );
 }
