@@ -45,6 +45,12 @@ def _parse_score_breakdown(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
+def _parse_task_findings(raw: Any) -> List[Dict[str, Any]]:
+    if raw is None:
+        return []
+    return raw if isinstance(raw, list) else json.loads(raw)
+
+
 async def any_task_critique_started(deviation_id: int) -> bool:
     """Used by rci_plan.py to lock RCI Plan editing once Task Critique has
     begun on any of its tasks."""
@@ -70,7 +76,8 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
             rows = await conn.fetch(
                 """
                 SELECT id, task_index, attempt_number, file_name, is_gospel,
-                       summary, task_score, score_breakdown, recommendations, critique_failed, uploaded_at
+                       summary, task_score, score_breakdown, recommendations, task_findings,
+                       critique_failed, uploaded_at
                 FROM investigation_task_critique_reports
                 WHERE deviation_id = $1
                 """,
@@ -91,6 +98,7 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
                 "critique_failed": r["critique_failed"],
                 "uploaded_at": r["uploaded_at"],
                 "recommendations": _parse_recommendations(r["recommendations"]),
+                "task_findings": _parse_task_findings(r["task_findings"]),
             }
             for r in rows
         }
@@ -108,8 +116,8 @@ async def upsert_report(
             """
             INSERT INTO investigation_task_critique_reports
                 (deviation_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
-                 summary, task_score, score_breakdown, recommendations, critique_failed)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, FALSE)
+                 summary, task_score, score_breakdown, recommendations, task_findings, critique_failed)
+            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE)
             ON CONFLICT (deviation_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
@@ -119,6 +127,7 @@ async def upsert_report(
                 task_score = NULL,
                 score_breakdown = NULL,
                 recommendations = '[]'::jsonb,
+                task_findings = '[]'::jsonb,
                 critique_failed = FALSE,
                 uploaded_at = now()
             RETURNING id
@@ -132,16 +141,24 @@ async def upsert_report(
         )
 
 
-async def save_critique(report_id: int, summary: Optional[str], task_score: Optional[int], recommendations: List[str]) -> None:
+async def save_critique(
+    report_id: int,
+    summary: Optional[str],
+    task_score: Optional[int],
+    recommendations: List[str],
+    task_findings: Optional[List[Dict[str, Any]]] = None,
+) -> None:
     recs = _build_recommendation_records(recommendations)
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_task_critique_reports SET summary = $2, task_score = $3, recommendations = $4::jsonb WHERE id = $1",
+            "UPDATE investigation_task_critique_reports SET summary = $2, task_score = $3, "
+            "recommendations = $4::jsonb, task_findings = $5::jsonb WHERE id = $1",
             report_id,
             summary,
             task_score,
             json.dumps(recs),
+            json.dumps(task_findings or []),
         )
 
 

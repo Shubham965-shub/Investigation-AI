@@ -265,6 +265,12 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         rc_summary=rc_conclusion["rc_conclusion_text"],
         capa_recommendations=capa["recommendations"],
         capa_summary=capa["capa_text"],
+        rc_conclusion_text_raw=rc_conclusion.get("rc_conclusion_text_raw", ""),
+        is_repeat_occurrence=rc_conclusion.get("is_repeat_occurrence"),
+        impact_assessment_text=rc_conclusion.get("impact_assessment_text", ""),
+        correction_remedial_text=capa.get("correction_remedial_text", ""),
+        capa_text_raw=capa.get("capa_text_raw", ""),
+        capa_items=capa.get("capa_items", []),
     )
 
     # The 3rd attempt is final regardless of decision mix (see

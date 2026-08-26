@@ -51,6 +51,15 @@ class RciReportGenerationRequest(BaseModel):
     task_critique: List[TaskAssignmentItem] = Field(default_factory=list)
     accepted_rc_conclusion: AcceptedRCConclusion
     accepted_capa: AcceptedCAPAProposal
+    # The uploaded RC & CAPA document's own verbatim Impact Assessment / Correction &
+    # Remedial Action text (deterministically extracted by ds's own
+    # extract_rci_report_sections, no LLM) — added 2026-08-25 so those two sections can
+    # ground on the investigator's own drafted content instead of only TrackWise fields.
+    # Neither fits AcceptedRCConclusion/AcceptedCAPAProposal (neither is an "accepted
+    # proposal" concept), hence new top-level siblings. None when no RC & CAPA document has
+    # been uploaded yet — always optional, never required for generation to succeed.
+    uploaded_impact_assessment_text: Optional[str] = None
+    uploaded_correction_remedial_text: Optional[str] = None
     # Gates Risk Assessment; None -> module defaults to "applicable" (the safer
     # default for a compliance report — see GAPS.md).
     mc_confirmed: Optional[bool] = None

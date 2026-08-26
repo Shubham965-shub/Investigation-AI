@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import difflib
+import io
 import json
 import logging
 import re
@@ -12,6 +14,7 @@ from typing import Any, Dict, List
 from docx import Document
 from docx.oxml.ns import qn
 from markitdown import MarkItDown
+from PIL import Image
 
 from src.agents.critique.api.services.relevance_validation import validate_document_relevance
 from src.agents.critique.graph.schemas import (
@@ -142,6 +145,44 @@ def _segment_sections(body: str) -> list[tuple[str, str]]:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _is_effectively_bold(run, paragraph) -> bool:
+    """run.bold is None whenever boldness comes from the paragraph's style (e.g. Word's built-in
+    'Heading N' styles) rather than being set on the run itself — treating None as falsy would
+    miss every style-based heading, so fall back to the paragraph's style chain."""
+    if run.bold is not None:
+        return run.bold
+    style = paragraph.style
+    while style is not None:
+        if style.font.bold is not None:
+            return style.font.bold
+        style = style.base_style
+    return False
+
+
+# OpenAI's "high" image detail mode downscales any input to fit within 2048x2048 before
+# tiling, so shipping the original multi-megapixel phone-camera blob buys no analysis quality —
+# it only adds base64/network overhead. Pre-shrinking to the same bound the API applies anyway
+# cuts payload size (and therefore per-image request latency) with no quality tradeoff.
+_MAX_IMAGE_DIM = 2048
+
+
+def _resize_and_encode_image(blob: bytes, content_type: str) -> tuple[str, str]:
+    """Downscale to _MAX_IMAGE_DIM and re-encode as JPEG if the image exceeds that bound;
+    otherwise return the original bytes untouched (no quality loss, no wasted recompression)."""
+    try:
+        with Image.open(io.BytesIO(blob)) as img:
+            if max(img.size) <= _MAX_IMAGE_DIM:
+                return base64.b64encode(blob).decode(), content_type
+            img = img.convert("RGB")
+            img.thumbnail((_MAX_IMAGE_DIM, _MAX_IMAGE_DIM), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
+    except Exception:
+        logger.warning("Image resize failed; sending original bytes", exc_info=True)
+        return base64.b64encode(blob).decode(), content_type
+
+
 def _extract_images_from_docx(doc: Document) -> List[Dict[str, Any]]:
     """
     Extract all images with their surrounding context label.
@@ -181,16 +222,27 @@ def _extract_images_from_docx(doc: Document) -> List[Dict[str, Any]]:
             if part_name not in part_map:
                 continue
             blob, content_type = part_map[part_name]
+            b64, media_type = _resize_and_encode_image(blob, content_type)
             images.append({
                 "name": part_name.split("/")[-1],
-                "b64": base64.b64encode(blob).decode(),
-                "media_type": content_type,
+                "b64": b64,
+                "media_type": media_type,
                 "context_label": context_label,
             })
 
-    # Collect from paragraph-level images
+    # Collect from paragraph-level images, labelling each with the most recent bold
+    # sub-heading paragraph seen so far. Images consistently sit in their own empty
+    # paragraph immediately followed by a "Figure N: ..." caption paragraph — neither the
+    # image's own (empty) paragraph nor that caption is the sub-heading extract_tasks asks
+    # the LLM to copy into section_labels, so every real-world image was falling back to
+    # the generic "General section" label and could never match any task (2026-08-24, per
+    # live test docs in ~/Downloads/test/ — confirmed across 5 records, 46/46 images).
+    current_heading = "General section"
     for para in doc.paragraphs:
-        _collect_from_element(para._element, para.text.strip() or "General section")
+        runs = [r for r in para.runs if r.text and r.text.strip()]
+        if runs and all(_is_effectively_bold(r, para) for r in runs):
+            current_heading = para.text.strip() or current_heading
+        _collect_from_element(para._element, para.text.strip() or current_heading)
 
     # Collect from tables — use the header cell text as context label
     for table in doc.tables:
@@ -503,14 +555,56 @@ async def analyze_images(state: TaskReportCritiqueState) -> Dict[str, Any]:
     return {"image_analyses": list(analyses)}
 
 
+_LABEL_PUNCT_RE = re.compile(r"[^\w\s]")
+
+# Above this SequenceMatcher ratio (on normalized strings), two labels are treated as the same
+# section even if wording drifted slightly — see _labels_match.
+_LABEL_FUZZY_THRESHOLD = 0.82
+
+
+def _normalize_label(label: str) -> str:
+    return re.sub(r"\s+", " ", _LABEL_PUNCT_RE.sub(" ", label.lower())).strip()
+
+
+def _contains_as_words(needle: str, haystack: str) -> bool:
+    """Whole-word containment: 'table' must not match inside 'tablets'."""
+    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
+
+
+_LABEL_DIGITS_RE = re.compile(r"\d+")
+
+
+def _labels_match(context_label: str, section_label: str) -> bool:
+    """context_label is extracted deterministically from the docx (paragraph text or a table's
+    first cell); section_label is the extraction LLM's best-effort copy of that same header text.
+    Exact string equality silently dropped any image whose label picked up different whitespace,
+    punctuation, or minor wording between the two independent extractions — fuzzy-match instead."""
+    a, b = _normalize_label(context_label), _normalize_label(section_label)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if _contains_as_words(a, b) or _contains_as_words(b, a):
+        return True
+    # Character-level similarity alone can't tell "Stage 1 Yield" from "Stage 2 Yield" apart
+    # (ratio 0.92, well above the threshold below) — require any digit tokens present in either
+    # label to match exactly before trusting the fuzzy ratio, so distinct numbered
+    # stages/tables never get conflated with each other.
+    digits_a, digits_b = _LABEL_DIGITS_RE.findall(a), _LABEL_DIGITS_RE.findall(b)
+    if digits_a or digits_b:
+        if digits_a != digits_b:
+            return False
+    return difflib.SequenceMatcher(None, a, b).ratio() >= _LABEL_FUZZY_THRESHOLD
+
+
 def _build_visual_obs_for_task(task: Dict[str, Any], image_analyses: List[Dict[str, Any]]) -> str:
-    """Return visual observations that belong to this task, matched via section_labels."""
-    section_labels = {lbl.lower() for lbl in task.get("section_labels", [])}
+    """Return visual observations that belong to this task, fuzzy-matched via section_labels."""
+    section_labels = task.get("section_labels", [])
     matched = [
         a for a in image_analyses
         if a.get("is_evidence_photo")
         and a.get("observation")
-        and a.get("context_label", "").lower() in section_labels
+        and any(_labels_match(a.get("context_label", ""), lbl) for lbl in section_labels)
     ]
     if not matched:
         return "No photographic evidence for this task."
@@ -588,6 +682,7 @@ async def format_result(state: TaskReportCritiqueState) -> Dict[str, Any]:
         problem_statement=state.report_metadata.get("problem_statement", ""),
         objective=state.report_metadata.get("objective", ""),
         task_critiques=[TaskCritiqueDetail.model_validate(c) for c in state.task_critiques],
+        task_evidence=[ExtractedTask.model_validate(t) for t in state.extracted_tasks],
         total_tasks_analyzed=len(state.task_critiques),
     )
     return {"final_result": final.model_dump()}
