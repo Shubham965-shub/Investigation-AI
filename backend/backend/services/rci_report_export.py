@@ -297,8 +297,16 @@ def _fill_initial_impact_assessment(doc, section, errors: dict) -> None:
     for i, (row, item) in enumerate(zip(rows, impacts)):
         _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], item.material_product_batch)
-        _set_cell_text(row.cells[2], item.stage)
-        action = f"{item.type_of_impact} — Qty involved: {item.quantity_involved}; Qty on hold: {_sourced(item.quantity_on_hold)}"
+        # cells[2]'s template header is "Batch Number" — the batch number itself is
+        # already folded into material_product_batch above (per confirmed UI), so
+        # there's no separate figure to put here; `stage` is labeled explicitly
+        # rather than dropped silently into a column its own header doesn't name.
+        _set_cell_text(row.cells[2], f"Stage: {item.stage}" if item.stage else "")
+        # cells[3]'s template header is "Action taken (Hold/Quarantined etc.)" — lead
+        # with the actual hold/quarantine status rather than burying it after the
+        # impact classification, which isn't a "Hold/Quarantined etc." action at all.
+        hold_status = f"On hold: {_sourced(item.quantity_on_hold)}" if _sourced(item.quantity_on_hold) else "No hold/quarantine action recorded"
+        action = f"{hold_status} (Qty involved: {item.quantity_involved}; Impact: {item.type_of_impact})"
         _set_cell_text(row.cells[3], action)
 
     equip = section.equipment_impacts
@@ -344,6 +352,7 @@ def _fill_history_review(doc, section, errors: dict) -> None:
         _set_cell_text(row.cells[4], item.capa_implementation_date)
 
     lines = [
+        section.search_scope_note,
         f"Lookback period: {section.lookback_months} months.",
         "No similar events found in the lookback window." if section.no_similar_events_found else "",
         section.closing_narrative,

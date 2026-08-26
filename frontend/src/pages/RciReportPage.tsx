@@ -1243,6 +1243,9 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.history_review} />
             ) : (
               <>
+                <Field label="Search Scope">
+                  <ReadOnlyValue value={report.history_review.search_scope_note} />
+                </Field>
                 <Field label="Lookback Months">
                   <TextInput
                     type="number"
