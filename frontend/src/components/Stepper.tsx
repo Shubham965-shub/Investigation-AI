@@ -1,3 +1,5 @@
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 export type StepStatus = "completed" | "in-progress" | "open";
@@ -30,6 +32,114 @@ function circleStyle(status: StepStatus): React.CSSProperties {
 
 function labelColor(status: StepStatus): string {
   return status === "open" ? "var(--color-text-muted)" : "var(--color-primary-text)";
+}
+
+// What actually happens off-screen between these two step pairs — the app
+// itself has no workflow for it, so the person icon on the connecting line
+// explains it on hover (2026-08-26, per the user).
+const CONNECTOR_NOTES: Record<number, string[]> = {
+  3: [
+    "RCI Plan is taken to SIT Lead for review and signoff",
+    "Approved RCI Plan is uploaded to TW",
+    "Tasks are given to appropriate Task Owners",
+    "Task Owners create Reports for their tasks",
+    "Task Reports are uploaded to Athena for Critique",
+  ],
+  4: [
+    "Critiqued Task Reports are uploaded to Database",
+    "RC, Impact & CAPA Report is created",
+    "RC, Impact & CAPA Report is uploaded to Athena for Critique",
+  ],
+};
+
+// Hover-only popover anchored to the connector's person icon, portaled to
+// document.body (position: fixed) so it isn't clipped by any ancestor's
+// overflow and never nudges the stepper's own layout.
+function ConnectorPersonIcon({ color, notes }: { color: string; notes: string[] }) {
+  const [hovered, setHovered] = useState(false);
+  const [rect, setRect] = useState<{ left: number; top: number } | null>(null);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const hideTimeout = useRef<number | null>(null);
+
+  function show() {
+    if (hideTimeout.current !== null) {
+      window.clearTimeout(hideTimeout.current);
+      hideTimeout.current = null;
+    }
+    const r = anchorRef.current?.getBoundingClientRect();
+    if (r) setRect({ left: r.left + r.width / 2, top: r.bottom });
+    setHovered(true);
+  }
+
+  function scheduleHide() {
+    hideTimeout.current = window.setTimeout(() => setHovered(false), 150);
+  }
+
+  return (
+    <span
+      ref={anchorRef}
+      onMouseEnter={show}
+      onMouseLeave={scheduleHide}
+      style={{ position: "relative", display: "inline-flex", flexShrink: 0, margin: "0 6px" }}
+    >
+      {/* Absolutely positioned so it doesn't add height to the connector row
+          (which would throw off the dotted lines' vertical centering on the
+          icon itself) (2026-08-26, per the user). */}
+      <span
+        style={{
+          position: "absolute",
+          bottom: "100%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          marginBottom: 4,
+          whiteSpace: "nowrap",
+          fontSize: "var(--font-size-xs)",
+          fontWeight: 600,
+          color: "var(--color-text-muted)",
+        }}
+      >
+        Manual Input
+      </span>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+      </svg>
+
+      {rect &&
+        createPortal(
+          <div
+            onMouseEnter={show}
+            onMouseLeave={scheduleHide}
+            style={{
+              position: "fixed",
+              top: rect.top + 10,
+              left: Math.min(Math.max(rect.left - 150, 16), window.innerWidth - 316),
+              width: 300,
+              zIndex: 1000,
+              opacity: hovered ? 1 : 0,
+              visibility: hovered ? "visible" : "hidden",
+              transform: hovered ? "translateY(0)" : "translateY(-4px)",
+              transition: "opacity 150ms ease, transform 150ms ease",
+              pointerEvents: hovered ? "auto" : "none",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-card-border)",
+              borderRadius: 10,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+              padding: "14px 16px",
+            }}
+          >
+            <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+              {notes.map((note, i) => (
+                <li key={i} style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text)", lineHeight: 1.4 }}>
+                  {note}
+                </li>
+              ))}
+            </ul>
+          </div>,
+          document.body
+        )}
+    </span>
+  );
 }
 
 export function Stepper({
@@ -107,20 +217,7 @@ export function Stepper({
             {!isLast && (hasConnectorBox ? (
               <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "0 8px 24px" }}>
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={lineColor}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ flexShrink: 0, margin: "0 6px" }}
-                >
-                  <circle cx="12" cy="8" r="4" />
-                  <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" />
-                </svg>
+                <ConnectorPersonIcon color={lineColor} notes={CONNECTOR_NOTES[index]} />
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
               </div>
             ) : (
