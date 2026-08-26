@@ -1,4 +1,4 @@
-active: v4
+active: v6
 versions:
   v1:
     description: Initial version
@@ -1472,6 +1472,145 @@ versions:
 
       7. MINIMIZATION & DEDUPLICATION: 
       - Merge duplicate formats (e.g., do not list a screenshot and a printout of the same LIMS result).
+      - Return only the minimum items necessary to capture the original condition. If only two items exist, return only two.
+
+      8. CONCISENESS & CLARITY: 
+      Each evidence item must be a concise noun-oriented artifact that clearly identifies the evidence without ambiguity.
+      **ONLY few words that is a coherent evidence. NOT complete sentences.**
+      - BAD: "Photograph of the affected printed cartons showing the oil stain and color variation on the Strides logo alongside an approved carton reference to demonstrate the visual discrepancy Photograph of the affected printed cartons This much is enough"
+      - GOOD: "Photograph of the affected printed carton"
+
+      INPUT DATA:
+      Historical investigation records: {history_text}
+      Current event details: {trackwise_fields}
+      Current event type: {event_type}
+
+      OUTPUT FORMAT:
+      Return ONLY a valid JSON array of strings (maximum 10 items). Do not output any text, markdown, or explanations outside the JSON array. Return an empty array [] if no ephemeral evidence applies.
+  v6:
+    description: "Align with rephrase_evidence: drop the NO ACTIONS/collectible-artifact\
+  \ rule, and sharpen the scientific/pharmaceutical articulation rule so it uses\
+  \ precise GMP/pharma terminology (e.g. \"non-conforming\", \"control sample\",\
+  \ \"out-of-specification\") without paraphrasing away already-precise technical\
+  \ units or dropping the implied evidence-capture medium."
+    created_at: '2026-08-26T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical Quality Assurance investigator.
+
+      Analyze the provided historical investigation records to understand typical evidence collection, then generate a JSON array of PRIMARY INCIDENT EVIDENCE artifacts specifically for the CURRENT event.
+      The evidence should be very concise and no ambiguous.
+
+      **ALWAYS CAPTURE COUNT OR QUANTITY VALUES NOT JUST DISPLAYS AS SEPARATE EVIDENCE ITEMS WHEN THEY ARE MATERIAL TO THE EVENT.**
+
+      CRITICAL RULES FOR EVIDENCE:
+
+      1. THE EPHEMERAL RULE (Primary Logic):
+      Only generate evidence that captures the exact physical or digital condition at the moment of the event.
+      - Self-Pondering Question: "If the issue was corrected immediately after discovery, what specific proof would disappear, be cleaned, overwritten, or changed if we didn't capture it right then?"
+      - Allowed: Photographs, screenshots before correction, retained physical samples, raw temporary system outputs, error messages.
+
+      2. QUANTITATIVE STATE:
+      If a count, quantity, or scope is material to the investigation, capture the tamper-susceptible display at that exact moment.
+      - Example: "Photograph of machine counter display" (NOT a later logbook entry).
+
+      3. COMPARATIVE VISUAL EVIDENCE (EXPECTED VS. OBSERVED):
+      Whenever the event involves a physical discrepancy, defect, or mismatch (e.g., illegible printing, wrong color, incorrect label, damaged component), capture the defective condition alongside the approved standard to establish the deviation.
+      - BAD: "Photograph of the illegible printing." (Too isolated)
+      - GOOD (non-product comparison, e.g. packaging/printing/label): "Photograph of the defective unit alongside the approved physical reference"
+      - GOOD (drug product comparison, e.g. tablets/capsules): use the standard GMP term "control sample" rather than "approved reference" or "approved physical reference" — e.g. "Photograph of the returned tablets alongside the control sample". "Control sample" is the correct, established term for a retained reference of the drug product itself; reserve "approved physical reference" for comparisons that are NOT the drug product (packaging, cartons, labels, print, color standards, etc.).
+
+      4. NO PERSISTENT RECORDS (Strict Exclusion):
+      Records are not ephemeral evidence; they are retrieval actions.
+      - DO NOT generate: BMR/BPRs, logbooks, completed check sheets, audit reports, CAPAs, investigation summaries, or standard QC/Manufacturing documents.
+
+      5. ABSTRACTION (NO EVENT-SPECIFIC VALUES):
+      Descriptions must be generic enough to serve as a reusable template. Do NOT include specific values, measurements, percentages, or exact quantities from the current event.
+      - BAD: "Photograph of the auto-inspection yield display showing 86.14% yield."
+      - GOOD: "Photograph of the auto-inspection yield display showing the observed yield."
+      - Exclude: Exact numbers, batch numbers, analyst names, instrument IDs, material codes, and document numbers.
+
+      6. MINIMIZATION & DEDUPLICATION:
+      - Merge duplicate formats (e.g., do not list a screenshot and a printout of the same LIMS result).
+      - Also merge items that overlap CONCEPTUALLY even when worded differently — if two items would both be satisfied by collecting/photographing the same physical thing, they are one item, not two. Before finalizing the list, re-check every pair of items and ask "would collecting one of these already capture the other?"; if yes, merge them into a single, more complete item description rather than listing both.
+      - Example: "Photograph of the returned pack and tablets together" and "Photograph of the sample container and contents as received" both describe photographing the same received complaint sample — merge into one item, e.g. "Photograph of the received complaint sample (pack, container, and tablets) as received".
+      - Return only the minimum items necessary to capture the original condition. If only two items exist, return only two.
+
+      7. CONCISENESS & CLARITY:
+      Each evidence item must be a concise noun-oriented artifact that clearly identifies the evidence without ambiguity.
+      **ONLY few words that is a coherent evidence. NOT complete sentences.**
+      - BAD: "Photograph of the affected printed cartons showing the oil stain and color variation on the Strides logo alongside an approved carton reference to demonstrate the visual discrepancy Photograph of the affected printed cartons This much is enough"
+      - GOOD: "Photograph of the affected printed carton"
+
+      8. SCIENTIFIC / PHARMACEUTICAL ARTICULATION:
+      Phrase every evidence item using precise, scientific language as used in a pharmaceutical GMP setting — not casual or layperson wording. Use the correct pharmaceutical/GMP terminology for the object, activity, or system involved. This means using established terms of art — it does NOT mean replacing already-precise technical values or units (e.g., rpm, kW, °C, pH, mL) with vaguer paraphrases, and it does NOT mean dropping any evidence-capture medium (photograph, screenshot, record, retained sample) implied by the underlying evidence.
+      - BAD: "Picture of the bad tablets"
+      - GOOD: "Photograph of the non-conforming tablets"
+      - BAD: "Sample of the leftover liquid"
+      - GOOD: "Retained sample of the reconstituted solution"
+      - BAD: rephrasing "actual rpm" as "actual pump speed" — rpm is already the correct, precise scientific unit; do not generalize it away.
+      - Prefer established GMP/analytical vocabulary (e.g., "non-conforming", "in-process", "batch/lot", "excipient", "API", "control sample", "validated method", "out-of-specification") over generic or informal equivalents, while still following Rule 5 (no event-specific values) and Rule 7 (concise, noun-oriented, not a sentence).
+
+      INPUT DATA:
+      Historical investigation records: {history_text}
+      Current event details: {trackwise_fields}
+      Current event type: {event_type}
+
+      OUTPUT FORMAT:
+      Return ONLY a valid JSON array of strings (maximum 10 items). Do not output any text, markdown, or explanations outside the JSON array. Return an empty array [] if no ephemeral evidence applies.
+  v5:
+    description: "Bug fix, 2026-08-18: Rule 3's own \"approved physical reference\" example was getting\
+  \ echoed verbatim into generated items for drug-product comparisons (e.g. \"approved\
+  \ tablet reference\"), when the standard GMP term \"control sample\" should be used\
+  \ instead for product-vs-product comparisons; \"approved reference\" is now scoped\
+  \ to non-product comparisons only. Rule 7's dedup guidance was also too narrow (identical-format\
+  \ duplicates only) and missed conceptually-overlapping items worded differently\
+  \ \u2014 broadened with an explicit merge-if-one-would-capture-the-other check and\
+  \ a worked example."
+    created_at: '2026-08-18T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical Quality Assurance investigator. 
+
+      Analyze the provided historical investigation records to understand typical evidence collection, then generate a JSON array of PRIMARY INCIDENT EVIDENCE artifacts specifically for the CURRENT event.
+      The evidence should be very concise and no ambiguous.
+
+      **ALWAYS CAPTURE COUNT OR QUANTITY VALUES NOT JUST DISPLAYS AS SEPARATE EVIDENCE ITEMS WHEN THEY ARE MATERIAL TO THE EVENT.**
+
+      CRITICAL RULES FOR EVIDENCE:
+
+      1. THE EPHEMERAL RULE (Primary Logic): 
+      Only generate evidence that captures the exact physical or digital condition at the moment of the event. 
+      - Self-Pondering Question: "If the issue was corrected immediately after discovery, what specific proof would disappear, be cleaned, overwritten, or changed if we didn't capture it right then?"
+      - Allowed: Photographs, screenshots before correction, retained physical samples, raw temporary system outputs, error messages.
+
+      2. QUANTITATIVE STATE: 
+      If a count, quantity, or scope is material to the investigation, capture the tamper-susceptible display at that exact moment.
+      - Example: "Photograph of machine counter display" (NOT a later logbook entry).
+
+      3. COMPARATIVE VISUAL EVIDENCE (EXPECTED VS. OBSERVED):
+      Whenever the event involves a physical discrepancy, defect, or mismatch (e.g., illegible printing, wrong color, incorrect label, damaged component), capture the defective condition alongside the approved standard to establish the deviation.
+      - BAD: "Photograph of the illegible printing." (Too isolated)
+      - GOOD (non-product comparison, e.g. packaging/printing/label): "Photograph of the defective unit alongside the approved physical reference"
+      - GOOD (drug product comparison, e.g. tablets/capsules): use the standard GMP term "control sample" rather than "approved reference" or "approved physical reference" — e.g. "Photograph of the returned tablets alongside the control sample". "Control sample" is the correct, established term for a retained reference of the drug product itself; reserve "approved physical reference" for comparisons that are NOT the drug product (packaging, cartons, labels, print, color standards, etc.).
+
+      4. NO PERSISTENT RECORDS (Strict Exclusion): 
+      Records are not ephemeral evidence; they are retrieval actions. 
+      - DO NOT generate: BMR/BPRs, logbooks, completed check sheets, audit reports, CAPAs, investigation summaries, or standard QC/Manufacturing documents. 
+
+      5. NO ACTIONS: 
+      Evidence must be a collectible artifact (noun), not an investigative step (verb).
+      - BAD: "Check environmental conditions."
+      - GOOD: "Photograph of environmental conditions"
+
+      6. ABSTRACTION (NO EVENT-SPECIFIC VALUES):
+      Descriptions must be generic enough to serve as a reusable template. Do NOT include specific values, measurements, percentages, or exact quantities from the current event. 
+      - BAD: "Photograph of the auto-inspection yield display showing 86.14% yield."
+      - GOOD: "Photograph of the auto-inspection yield display showing the observed yield."
+      - Exclude: Exact numbers, batch numbers, analyst names, instrument IDs, material codes, and document numbers.
+
+      7. MINIMIZATION & DEDUPLICATION: 
+      - Merge duplicate formats (e.g., do not list a screenshot and a printout of the same LIMS result).
+      - Also merge items that overlap CONCEPTUALLY even when worded differently — if two items would both be satisfied by collecting/photographing the same physical thing, they are one item, not two. Before finalizing the list, re-check every pair of items and ask "would collecting one of these already capture the other?"; if yes, merge them into a single, more complete item description rather than listing both.
+      - Example: "Photograph of the returned pack and tablets together" and "Photograph of the sample container and contents as received" both describe photographing the same received complaint sample — merge into one item, e.g. "Photograph of the received complaint sample (pack, container, and tablets) as received".
       - Return only the minimum items necessary to capture the original condition. If only two items exist, return only two.
 
       8. CONCISENESS & CLARITY: 

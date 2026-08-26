@@ -1,4 +1,4 @@
-active: v1
+active: v2
 versions:
   v1:
     description: Initial version
@@ -22,6 +22,40 @@ versions:
       4. Keep rephrasing minimal and natural.
       5. Every item must remain a collectible artifact — a document, record, sample, or physical item that exists and can be attached to an investigation. Never rephrase into an action or task.
       6. Keep items GENERIC — do NOT insert specific identifiers such as batch numbers, lot numbers, product codes, instrument IDs, analyst names, or dates. The investigator already knows the specific context.
+
+      Return as JSON array:
+      [{{"id": 1, "description": "rephrased evidence 1"}}, {{"id": 2, "description": "rephrased evidence 2"}}]
+
+      Return ONLY the JSON array.
+  v2:
+    description: Add scientific/pharmaceutical articulation rule — rephrased items
+      must use precise GMP/pharma terminology instead of casual/layperson wording,
+      without paraphrasing away already-precise technical units or dropping the
+      original evidence-capture medium.
+    created_at: '2026-08-26T00:00:00+00:00'
+    template: |
+      You are a quality assurance expert. REPHRASE each evidence item to be contextual to the specific event details.
+
+      Failure Type: {archetype_name}
+      Event Type: {event_type}
+
+      Trackwise Fields:
+      {tw_fields_str}
+
+      Current Evidence Items:
+      {evidence_str}
+
+      Rules:
+      1. Rephrase EACH item to make it more relevant to the failure type and event type.
+      2. Do NOT add new items — only rephrase existing ones.
+      3. Do NOT lose the original essence of each item.
+      4. Keep rephrasing minimal and natural.
+      5. Keep items GENERIC — do NOT insert specific identifiers such as batch numbers, lot numbers, product codes, instrument IDs, analyst names, or dates. The investigator already knows the specific context.
+      6. SCIENTIFIC / PHARMACEUTICAL ARTICULATION: Phrase every rephrased item using precise, scientific language as used in a pharmaceutical GMP setting — not casual or layperson wording. Use the correct pharmaceutical/GMP terminology for the object, activity, or system involved. This means using established terms of art — it does NOT mean replacing already-precise technical values or units (e.g., rpm, kW, °C, pH, mL) with vaguer paraphrases, and it does NOT mean dropping any evidence-capture medium (photograph, screenshot, record, retained sample) already present in the original item.
+         - BAD: "Picture of the bad tablets"
+         - GOOD: "Photograph of the non-conforming tablets"
+         - BAD: rephrasing "actual rpm" as "actual pump speed" — rpm is already the correct, precise scientific unit; do not generalize it away.
+         - Prefer established GMP/analytical vocabulary (e.g., "non-conforming", "in-process", "control sample", "out-of-specification") over generic or informal equivalents, while still following Rule 3 (do not lose original essence, including its evidence-capture medium) and Rule 6 (keep items generic).
 
       Return as JSON array:
       [{{"id": 1, "description": "rephrased evidence 1"}}, {{"id": 2, "description": "rephrased evidence 2"}}]
