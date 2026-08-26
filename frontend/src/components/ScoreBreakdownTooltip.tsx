@@ -15,13 +15,31 @@ function verdictColor(verdict: string): string {
 // combined RC score) — shown via a small info icon next to the generated
 // score (2026-08-14, per the user), same rows/columns as ds's own marking-
 // checklist spreadsheet (ID/Checkpoint/Max/Verdict/Score/Rationale/Evidence).
-export function ScoreBreakdownTooltip({ tables }: { tables: ScoreBreakdownTable[] }) {
-  if (tables.length === 0) return null;
+export function ScoreBreakdownTooltip({
+  tables,
+  description,
+  hideTables = false,
+}: {
+  tables: ScoreBreakdownTable[];
+  // Optional explanatory line shown above the breakdown tables — e.g. for
+  // the combined RC & CAPA Critique Score, clarifying it's a cumulative
+  // figure rather than its own independently-scored section (2026-08-25,
+  // per the user).
+  description?: string;
+  // Skips the per-checkpoint tables entirely, showing only `description` —
+  // for a combined/derived score (e.g. RC & CAPA Critique Score) that has no
+  // checkpoints of its own to break down (2026-08-25, per the user).
+  hideTables?: boolean;
+}) {
+  if (tables.length === 0 && !description) return null;
 
   return (
     <InfoTooltip label="Score breakdown" width={880}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {tables.map((table, i) => (
+        {description && (
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>{description}</p>
+        )}
+        {!hideTables && tables.map((table, i) => (
           <div key={`${table.section}-${i}`}>
             <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-md)" }}>
               {table.label} (/{table.native_max})

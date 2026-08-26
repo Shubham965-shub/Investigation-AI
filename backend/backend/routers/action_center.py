@@ -126,6 +126,13 @@ async def get_action_center_summary(
         "not exactly dim_event.criticality = 'Critical' (including NULL), mirroring the existing "
         "criticality != 'Critical' check already used for the status cards/pending actions below.",
     ),
+    oos_oot_phase: Optional[str] = Query(
+        None,
+        description="'phase1' or 'phase2' (2026-08-25, per the user) — the OOS/OOT-only equivalent of "
+        "`criticality`'s Major/Minor tiers, replacing them for those two event types specifically. "
+        "Applies page-wide, same places `criticality` does, matching against "
+        "dim_event.oos_oot_phase = 'Phase 1' / 'Phase 2'.",
+    ),
     status: Optional[str] = Query(
         None,
         description="'open' (default, omitted, or any other value) or 'cancelled' — which set the "
@@ -172,6 +179,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
@@ -208,6 +216,7 @@ async def get_action_center_summary(
                 "department": r["department"],
                 "product": r["product"],
                 "criticality": r["criticality"],
+                "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
                 "due_date": due_date,
                 "date_opened": date_opened,
@@ -248,6 +257,10 @@ async def get_action_center_summary(
         scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["criticality"] == "Critical"]
     elif criticality == "non_critical":
         scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["criticality"] != "Critical"]
+    if oos_oot_phase == "phase1":
+        scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["oos_oot_phase"] == "Phase 1"]
+    elif oos_oot_phase == "phase2":
+        scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["oos_oot_phase"] == "Phase 2"]
     if start_date_from is not None:
         scoped_for_investigator_options = [
             i for i in scoped_for_investigator_options if i["date_opened"] and i["date_opened"] >= start_date_from
@@ -287,6 +300,10 @@ async def get_action_center_summary(
         enriched = [i for i in enriched if i["criticality"] == "Critical"]
     elif criticality == "non_critical":
         enriched = [i for i in enriched if i["criticality"] != "Critical"]
+    if oos_oot_phase == "phase1":
+        enriched = [i for i in enriched if i["oos_oot_phase"] == "Phase 1"]
+    elif oos_oot_phase == "phase2":
+        enriched = [i for i in enriched if i["oos_oot_phase"] == "Phase 2"]
     if start_date_from is not None:
         enriched = [i for i in enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:
@@ -310,6 +327,10 @@ async def get_action_center_summary(
         cancelled_enriched = [i for i in cancelled_enriched if i["criticality"] == "Critical"]
     elif criticality == "non_critical":
         cancelled_enriched = [i for i in cancelled_enriched if i["criticality"] != "Critical"]
+    if oos_oot_phase == "phase1":
+        cancelled_enriched = [i for i in cancelled_enriched if i["oos_oot_phase"] == "Phase 1"]
+    elif oos_oot_phase == "phase2":
+        cancelled_enriched = [i for i in cancelled_enriched if i["oos_oot_phase"] == "Phase 2"]
     if start_date_from is not None:
         cancelled_enriched = [i for i in cancelled_enriched if i["date_opened"] and i["date_opened"] >= start_date_from]
     if start_date_to is not None:
@@ -345,18 +366,25 @@ async def get_action_center_summary(
     # just a single count line now, previously split into near/far day bands
     # per Figma node 1246:15617.
     def _build_status_cards(items: List[Dict[str, Any]]) -> List[StatusCard]:
-        unassigned = [i for i in items if i["bucket"] == "unassigned"]
+        unassigned_all = [i for i in items if i["bucket"] == "unassigned"]
+        # Phase 1 OOS/OOT investigations get their own pill instead of
+        # counting toward the general Unassigned pill (2026-08-25, per the
+        # user) — Unassigned itself now covers everything else (Deviations,
+        # Market Complaints, and Phase 2 — or not-yet-phased — OOS/OOT).
+        unassigned_phase1 = [i for i in unassigned_all if i["oos_oot_phase"] == "Phase 1"]
+        unassigned = [i for i in unassigned_all if i["oos_oot_phase"] != "Phase 1"]
         on_track = [i for i in items if i["bucket"] == "on_track"]
         delay = [i for i in items if i["bucket"] == "delay"]
         overdue = [i for i in items if i["bucket"] == "overdue"]
 
-        # Order: Overdue, Delay, Unassigned, On Track (per the user,
-        # 2026-07-30) — most urgent first, not the original Unassigned/On
-        # Track/Delay/Overdue grouping.
+        # Order: Overdue, Delay, Unassigned, Concluded in Phase 1, On Track
+        # (per the user, 2026-07-30 and 2026-08-25) — most urgent first, not
+        # the original Unassigned/On Track/Delay/Overdue grouping.
         return [
             StatusCard(key="overdue", label="Overdue", count=len(overdue), rows=[]),
             StatusCard(key="delay", label="At Risk of Delay", count=len(delay), rows=[]),
             StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=[]),
+            StatusCard(key="unassigned_phase1", label="Concluded in Phase 1", count=len(unassigned_phase1), rows=[]),
             StatusCard(key="on-track", label="On Track", count=len(on_track), rows=[]),
         ]
 
@@ -490,6 +518,7 @@ async def get_action_center_summary(
                 product=i["product"],
                 is_cancelled=True,
                 escalation_level=i["escalation_level"],
+                oos_oot_phase=i["oos_oot_phase"],
             )
             for i in cancelled_enriched
         ]
@@ -511,6 +540,7 @@ async def get_action_center_summary(
                 product=i["product"],
                 is_cancelled=i["is_cancelled"],
                 escalation_level=i["escalation_level"],
+                oos_oot_phase=i["oos_oot_phase"],
             )
             for i in enriched
         ]

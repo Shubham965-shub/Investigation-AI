@@ -386,6 +386,7 @@ export interface RcCapaReport {
   file_name: string;
   is_gospel: boolean;
   rc_score: number | null;
+  impact_score: number | null;
   capa_score: number | null;
   total_score: number | null;
   score_breakdown: ScoreBreakdownTable[];
@@ -482,6 +483,7 @@ export interface InvestigationRowResponse {
   product: string | null;
   is_cancelled: boolean;
   escalation_level: string | null;
+  oos_oot_phase: "Phase 1" | "Phase 2" | null;
 }
 
 export interface FilterOptions {
@@ -525,6 +527,11 @@ export interface ActionCenterFilters {
   // Page-wide filter (2026-08-14, per the user) — unlike `status` above, this
   // narrows stat cards/chart/pending actions AND the investigations table.
   criticality?: "critical" | "non_critical";
+  // OOS/OOT-only equivalent of `criticality` above (2026-08-25, per the
+  // user) — those two event types show Phase 1/Phase 2 instead of Major &
+  // Minor in the same toggle, so this is a separate param rather than
+  // overloading criticality's values. Same page-wide scope as criticality.
+  oosOotPhase?: "phase1" | "phase2";
 }
 
 export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<ActionCenterSummaryResponse> {
@@ -537,6 +544,7 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.startDateTo) params.set("start_date_to", filters.startDateTo);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.criticality) params.set("criticality", filters.criticality);
+  if (filters?.oosOotPhase) params.set("oos_oot_phase", filters.oosOotPhase);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
 }
@@ -923,19 +931,23 @@ export interface ApprovalSection {
 
 export interface RciReportSections {
   event_type: string;
-  executive_summary: ExecutiveSummarySection;
-  description_of_event: DescriptionOfEventSection;
-  initial_impact_assessment: InitialImpactAssessmentSection;
-  history_review: HistoryReviewSection;
-  investigation_task: InvestigationTaskSection;
-  root_cause_conclusion: RootCauseConclusionSection;
-  impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection;
-  risk_assessment: RiskAssessmentSection;
-  correction_remedial_action: CorrectionRemedialActionSection;
-  capa: CAPASection;
-  capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection;
+  // Every section is nullable — ds skips one rather than failing the whole
+  // request when a required TrackWise field is blank, or when a section it
+  // depends on was itself skipped. `errors` explains why, keyed by field name.
+  executive_summary: ExecutiveSummarySection | null;
+  description_of_event: DescriptionOfEventSection | null;
+  initial_impact_assessment: InitialImpactAssessmentSection | null;
+  history_review: HistoryReviewSection | null;
+  investigation_task: InvestigationTaskSection | null;
+  root_cause_conclusion: RootCauseConclusionSection | null;
+  impact_assessment_batch_disposition: ImpactAssessmentBatchDispositionSection | null;
+  risk_assessment: RiskAssessmentSection | null;
+  correction_remedial_action: CorrectionRemedialActionSection | null;
+  capa: CAPASection | null;
+  capa_effectiveness_check_plan: CAPAEffectivenessCheckPlanSection | null;
   annexures: AnnexuresSection;
   approval: ApprovalSection;
+  errors: Record<string, string>;
 }
 
 export interface RciReportRecordResponse {
@@ -966,4 +978,11 @@ export function generateRciReport(recordId: string): Promise<RciReportRecordResp
 
 export function updateRciReportSections(recordId: string, report: RciReportSections): Promise<RciReportRecordResponse> {
   return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}`, report);
+}
+
+/** The real .docx download for "Download and View" — filled from the
+ * company's RCI Report Word template with this investigation's persisted
+ * report (2026-08-25, per the user). */
+export function exportRciReportDocx(recordId: string): Promise<Blob> {
+  return apiGetBlob(`/rci-report/${recordId}/export`);
 }

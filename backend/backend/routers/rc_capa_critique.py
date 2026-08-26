@@ -83,20 +83,22 @@ def _section_percentage(sections: Dict[str, Any], *keys: str) -> "int | None":
 
 async def _score_rc_capa_report(
     event_type: str, filename: str | None, file_bytes: bytes, content_type: str | None
-) -> "tuple[int | None, int | None, int | None, list[dict]]":
+) -> "tuple[int | None, int | None, int | None, int | None, list[dict]]":
     """Scores the final (locked) report against DS's rubric-based /score/report
-    endpoint and returns (rc_score, capa_score, total_score, the full `info`
-    breakdown table list — see schemas/scoring.py — for score_breakdown) —
-    rc_score combines the 'rc' and 'impact' rubric sections (matching this
-    module's own "RC Impact Assessment Critique" category, which already
-    bundles the two together everywhere else); capa_score is the 'capa'
-    section alone; total_score combines all three (2026-08-07, per the user:
-    the underlying raw marks added together, divided by their combined max —
-    not a naive average of rc_score and capa_score). Column split matches
-    investigation_rc_capa_reports as already created against the live DB
-    (2026-08-07). Best-effort, same as routers/task_critique.py's
-    _score_task_report — a scoring failure must not undo an upload that
-    already succeeded and persisted."""
+    endpoint and returns (rc_score, impact_score, capa_score, total_score, the
+    full `info` breakdown table list — see schemas/scoring.py — for
+    score_breakdown). ds itself scores 'rc' and 'impact' as two genuinely
+    separate rubric sections (confirmed 2026-08-25) — rc_score/impact_score
+    are each shown on their own now (2026-08-25, per the user), no longer
+    merged into one combined figure the way they used to be (they still sit
+    under the same "RC Impact Assessment Critique" panel everywhere else in
+    this module, just as two distinct score badges instead of one). capa_score
+    is the 'capa' section alone; total_score still combines all three
+    (2026-08-07, per the user: the underlying raw marks added together,
+    divided by their combined max — not a naive average of the parts).
+    Best-effort, same as routers/task_critique.py's _score_task_report — a
+    scoring failure must not undo an upload that already succeeded and
+    persisted."""
     client = get_client()
     try:
         response = await client.post(
@@ -107,14 +109,15 @@ async def _score_rc_capa_report(
         response.raise_for_status()
     except httpx.HTTPError:
         logger.warning("RC & CAPA report scoring failed for %s", filename, exc_info=True)
-        return None, None, None, []
+        return None, None, None, None, []
     data = response.json()
     sections = data.get("sections") or {}
-    rc_score = _section_percentage(sections, "rc", "impact")
+    rc_score = _section_percentage(sections, "rc")
+    impact_score = _section_percentage(sections, "impact")
     capa_score = _section_percentage(sections, "capa")
     total_score = _section_percentage(sections, "rc", "impact", "capa")
     info = data.get("info") or []
-    return rc_score, capa_score, total_score, info
+    return rc_score, impact_score, capa_score, total_score, info
 
 
 def _find_recommendation(reports: List[Dict[str, Any]], recommendation_id: int) -> bool:
@@ -142,7 +145,7 @@ async def _build_state(record_id: str, deviation_id: int, row: Any = None) -> Rc
         latest_report=state["latest"],
         sit_review_status=sit_review_status,
         investigator=row["investigator"] if row else None,
-        due_date=row["due_date"].strftime("%d %b %Y") if row and row["due_date"] else None,
+        due_date=row["due_date"].strftime("%d/%m/%Y") if row and row["due_date"] else None,
     )
 
 
@@ -206,8 +209,8 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
         # A gospel report is final the moment it's uploaded — score it now
         # (2026-08-07, per the user), same trigger as Task Critique's.
-        rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
+        rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
         return await _build_state(record_id, deviation_id, row)
 
     # Real DS endpoints (per the user, 2026-08-06: module 6/RC & CAPA Critique
@@ -274,8 +277,8 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     # critique_state.compute_upload_state) — score it now, since no further
     # upload will ever supersede it.
     if attempt_number >= MAX_UPLOADS:
-        rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
+        rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
     return await _build_state(record_id, deviation_id, row)
 
@@ -310,10 +313,10 @@ async def decide_rc_capa_recommendation(
         file_bytes = await fetch_report_file_bytes(report_id)
         if file_bytes is not None:
             _, _, event_type = await _deviation_id_and_row(record_id)
-            rc_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(
+            rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(
                 event_type, new_state["latest"]["file_name"], file_bytes, None
             )
-            await set_rc_capa_scores(report_id, rc_score, capa_score, total_score, score_breakdown)
+            await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
     return await _build_state(record_id, deviation_id, row)
 

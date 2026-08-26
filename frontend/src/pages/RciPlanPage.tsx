@@ -56,10 +56,12 @@ export function RciPlanPage() {
   const [trackwiseFields, setTrackwiseFields] = useState<TrackwiseFields | undefined>(undefined);
   const [sections, setSections] = useState<RciSectionItem[] | null>(null);
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({});
-  // Toggled by the header "Edit" button (previously cosmetic/disabled) —
-  // reveals an "Add Task" row at the bottom of each open section's task
-  // list. Scoped to just adding subtasks for now, per the user (2026-08-05);
-  // editing existing task text/checking is already possible without this.
+  // Toggled by the header "Edit" button — gates every edit affordance in
+  // the plan (section title/correlation, TCD, assignee, task text/check,
+  // include/exclude, add task/section). Previously several of these
+  // (TCD, assignee, task text/check, include/exclude) were editable
+  // whenever the plan merely wasn't locked, regardless of this flag —
+  // fixed 2026-08-25, per the user: edits must only be possible in edit mode.
   const [editMode, setEditMode] = useState(false);
   // Per-section draft text for the new-task input, keyed by section index —
   // each section's "Add Task" row needs its own independent in-progress text.
@@ -431,11 +433,11 @@ export function RciPlanPage() {
                 <button
                   type="button"
                   className={`checklist-checkbox ${included ? "" : "unchecked"}`}
-                  onClick={lockedForEditing ? undefined : () => toggleSectionIncluded(index)}
+                  onClick={editMode && !lockedForEditing ? () => toggleSectionIncluded(index) : undefined}
                   aria-label={included ? "Exclude section from final plan" : "Include section in final plan"}
                   title={included ? "Exclude from final plan" : "Include in final plan"}
-                  style={{ flexShrink: 0, cursor: lockedForEditing ? "default" : "pointer" }}
-                  disabled={lockedForEditing}
+                  style={{ flexShrink: 0, cursor: editMode && !lockedForEditing ? "pointer" : "default" }}
+                  disabled={!editMode || lockedForEditing}
                 >
                   {included && <img src={checkIcon} alt="" width={12} height={12} />}
                 </button>
@@ -478,9 +480,7 @@ export function RciPlanPage() {
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
                   <span>TCD:</span>
-                  {lockedForEditing ? (
-                    <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
-                  ) : (
+                  {editMode && !lockedForEditing ? (
                     <input
                       type="date"
                       min={minDueDate}
@@ -489,12 +489,12 @@ export function RciPlanPage() {
                       onClick={(e) => e.stopPropagation()}
                       style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
                     />
+                  ) : (
+                    <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: lockedForEditing ? "9px 13px" : "5px 7px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
-                  {lockedForEditing ? (
-                    <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
-                  ) : (
+                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: editMode && !lockedForEditing ? "5px 7px" : "9px 13px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
+                  {editMode && !lockedForEditing ? (
                     <select
                       value={section.assignee ?? ""}
                       onChange={(e) => setSectionAssignee(index, e.target.value || null)}
@@ -511,6 +511,8 @@ export function RciPlanPage() {
                         </option>
                       ))}
                     </select>
+                  ) : (
+                    <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
                   )}
                 </div>
                 <button
@@ -538,18 +540,14 @@ export function RciPlanPage() {
                           <button
                             type="button"
                             className={`checklist-checkbox ${checked ? "" : "unchecked"}`}
-                            onClick={lockedForEditing ? undefined : () => toggleTask(index, taskIndex)}
+                            onClick={editMode && !lockedForEditing ? () => toggleTask(index, taskIndex) : undefined}
                             aria-label={checked ? "Uncheck task" : "Check task"}
-                            style={{ flexShrink: 0, marginTop: 2, cursor: lockedForEditing ? "default" : "pointer" }}
-                            disabled={lockedForEditing}
+                            style={{ flexShrink: 0, marginTop: 2, cursor: editMode && !lockedForEditing ? "pointer" : "default" }}
+                            disabled={!editMode || lockedForEditing}
                           >
                             {checked && <img src={checkIcon} alt="" width={12} height={12} />}
                           </button>
-                          {lockedForEditing ? (
-                            <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
-                              {task.description}
-                            </span>
-                          ) : (
+                          {editMode && !lockedForEditing ? (
                             <textarea
                               value={task.description}
                               onChange={(e) => setTaskDescription(index, taskIndex, e.target.value)}
@@ -575,6 +573,10 @@ export function RciPlanPage() {
                                 overflowWrap: "break-word",
                               }}
                             />
+                          ) : (
+                            <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
+                              {task.description}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -640,7 +642,7 @@ export function RciPlanPage() {
           onClick={() => setShowConfirm(true)}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
-          {pushed ? "Pushed — downloading…" : "Accept and Push for SIT Review"}
+          {pushed ? "Pushed — downloading…" : "Accept and Next"}
         </button>
       </div>
 

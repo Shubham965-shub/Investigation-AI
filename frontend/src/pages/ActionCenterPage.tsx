@@ -3,6 +3,8 @@ import { StatusChart } from "../components/StatusChart";
 import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FilterSelect } from "../components/FilterSelect";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { CriticalityGuidelines } from "../components/CriticalityGuidelines";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
@@ -28,6 +30,7 @@ const STATUS_ICONS: Record<string, string> = {
 // reuse. See src/routers/action_center.py for how these buckets are computed.
 const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
   unassigned: "unassigned",
+  unassigned_phase1: "unassigned",
   "on-track": "on-track",
   delay: "delay",
   overdue: "overdue",
@@ -40,10 +43,23 @@ const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
 // the user, same click-to-filter UX as the event-type pills below).
 const CARD_KEY_TO_BUCKET: Record<string, string> = {
   unassigned: "unassigned",
+  unassigned_phase1: "unassigned",
   "on-track": "on_track",
   delay: "delay",
   overdue: "overdue",
 };
+
+// The Unassigned bucket itself splits into two status-card pills
+// (2026-08-25, per the user): "Concluded in Phase 1" for Phase 1 OOS/OOT
+// investigations only, and "Unassigned" for everything else (Deviations,
+// Market Complaints, and Phase 2 — or not-yet-phased — OOS/OOT). Bucket
+// alone can't tell those apart, so this checks oos_oot_phase too instead of
+// a plain CARD_KEY_TO_BUCKET lookup.
+function matchesStatusCard(inv: InvestigationRowResponse, cardKey: string): boolean {
+  if (cardKey === "unassigned_phase1") return inv.bucket === "unassigned" && inv.oos_oot_phase === "Phase 1";
+  if (cardKey === "unassigned") return inv.bucket === "unassigned" && inv.oos_oot_phase !== "Phase 1";
+  return inv.bucket === CARD_KEY_TO_BUCKET[cardKey];
+}
 
 // Real backend bucket -> the table/grid status-pill styling + label.
 const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
@@ -215,6 +231,14 @@ export function ActionCenterPage() {
   // this narrows stat cards/chart/pending actions AND the investigations
   // table alike, same as site/department/product/investigator/date.
   const [criticalityFilter, setCriticalityFilter] = useState("");
+  // The criticality/phase toggle switches its whole option set between
+  // Critical/Major & Minor and Critical/Phase 1/Phase 2 depending on the
+  // event type selected above (2026-08-25, per the user) — a value from one
+  // set (e.g. "phase1") is meaningless in the other, so switching event
+  // types resets the toggle back to "All" rather than carrying it over.
+  useEffect(() => {
+    setCriticalityFilter("");
+  }, [activeFilter]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
 
@@ -256,7 +280,9 @@ export function ActionCenterPage() {
       product: productFilter || undefined,
       investigator: investigatorFilter || undefined,
       status: showCancelled ? "cancelled" : "open",
-      criticality: (criticalityFilter as "critical" | "non_critical") || undefined,
+      criticality:
+        criticalityFilter === "critical" || criticalityFilter === "non_critical" ? criticalityFilter : undefined,
+      oosOotPhase: criticalityFilter === "phase1" || criticalityFilter === "phase2" ? criticalityFilter : undefined,
     })
       .then((data) => {
         if (!cancelled) setSummary(data);
@@ -292,9 +318,24 @@ export function ActionCenterPage() {
     return <DbErrorModal message={dbError ?? "No data returned."} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
 
+  // Selecting a status pill (Unassigned/On Track/Delay/Overdue) narrows the
+  // event-type pill counts/percentages the same way selecting an event type
+  // already narrows the status cards via status_cards_by_event_type
+  // (2026-08-25, per the user) — computed client-side from the same
+  // already-fetched summary.investigations list the table itself filters,
+  // rather than a new backend field, since every investigation's
+  // event_type/bucket is already right there.
+  const statusFilteredInvestigations = summary.investigations.filter(
+    (inv) => !statusFilter || matchesStatusCard(inv, statusFilter)
+  );
+  const eventTypeCounts = summary.event_type_counts.map((s) => {
+    const count = statusFilteredInvestigations.filter((inv) => inv.event_type === s.label).length;
+    return { ...s, count, percent: statusFilteredInvestigations.length > 0 ? Math.round((count / statusFilteredInvestigations.length) * 100) : 0 };
+  });
+
   const visibleInvestigations = summary.investigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
-    .filter((inv) => !statusFilter || inv.bucket === CARD_KEY_TO_BUCKET[statusFilter])
+    .filter((inv) => !statusFilter || matchesStatusCard(inv, statusFilter))
     .filter((inv) => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
@@ -373,7 +414,7 @@ export function ActionCenterPage() {
           <span className="ac-total-count">{summary.total_investigations}</span>
         </div>
         <div className="ac-stat-pills">
-          {summary.event_type_counts.map((s) => (
+          {eventTypeCounts.map((s) => (
             <div
               className={`ac-stat-pill ${activeFilter === s.label ? "active" : ""}`}
               key={s.label}
@@ -473,17 +514,43 @@ export function ActionCenterPage() {
                 >
                   Critical
                 </button>
-                <button
-                  type="button"
-                  className={criticalityFilter === "non_critical" ? "active" : ""}
-                  onClick={() => {
-                    setCriticalityFilter("non_critical");
-                    setPage(1);
-                  }}
-                >
-                  Major & Minor
-                </button>
+                {activeFilter === "OOS" || activeFilter === "OOT" ? (
+                  <>
+                    <button
+                      type="button"
+                      className={criticalityFilter === "phase1" ? "active" : ""}
+                      onClick={() => {
+                        setCriticalityFilter("phase1");
+                        setPage(1);
+                      }}
+                    >
+                      Phase 1
+                    </button>
+                    <button
+                      type="button"
+                      className={criticalityFilter === "phase2" ? "active" : ""}
+                      onClick={() => {
+                        setCriticalityFilter("phase2");
+                        setPage(1);
+                      }}
+                    >
+                      Phase 2
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className={criticalityFilter === "non_critical" ? "active" : ""}
+                    onClick={() => {
+                      setCriticalityFilter("non_critical");
+                      setPage(1);
+                    }}
+                  >
+                    Major & Minor
+                  </button>
+                )}
               </div>
+              <CriticalityGuidelines eventType={activeFilter} />
             </div>
             <p>{summary.total_investigations} investigations total</p>
           </div>
@@ -532,16 +599,22 @@ export function ActionCenterPage() {
                 formatOption={formatInvestigatorLabel}
               />
             )}
-            <button
-              type="button"
-              className={`ac-filter-pill${showCancelled ? " active" : ""}`}
-              onClick={() => {
-                setShowCancelled((v) => !v);
-                setPage(1);
-              }}
-            >
-              {showCancelled ? "Showing Cancelled" : "Show Cancelled"}
-            </button>
+            {/* Button removed (2026-08-25, per the user: never show cancelled
+                deviations) — showCancelled/setShowCancelled and the
+                status: "cancelled" query branch are kept as-is below, just
+                unreachable with no way to toggle this on. */}
+            {false && (
+              <button
+                type="button"
+                className={`ac-filter-pill${showCancelled ? " active" : ""}`}
+                onClick={() => {
+                  setShowCancelled((v) => !v);
+                  setPage(1);
+                }}
+              >
+                {showCancelled ? "Showing Cancelled" : "Show Cancelled"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -591,6 +664,15 @@ export function ActionCenterPage() {
                     style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
                   >
                     {col.label}
+                    {col.key === "due_date" && (
+                      <span style={{ marginLeft: 4, display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+                        <InfoTooltip label="How the due date is calculated">
+                          <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
+                            Due date is 30 days from the start date for Deviation, OOS, and OOT events, and 55 days from the start date for Market Complaints.
+                          </p>
+                        </InfoTooltip>
+                      </span>
+                    )}
                     {sortColumn === col.key && (
                       <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
                     )}

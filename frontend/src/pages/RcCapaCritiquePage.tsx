@@ -35,6 +35,13 @@ const CATEGORY_GUIDELINES: Record<RcCapaCritique["category"], () => ReactElement
   capa: CapaProposalGuidelines,
 };
 
+function formatDdMmYyyy(iso: string): string {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
 export function RcCapaCritiquePage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
@@ -282,7 +289,7 @@ export function RcCapaCritiquePage() {
               onClick={() => setShowConfirm(true)}
             >
               <img src={exportIcon} alt="" width={16} height={16} />
-              Accept and Push for SIT Review
+              Accept and Push for SIT Lead Review
             </button>
           )}
         </div>
@@ -308,7 +315,7 @@ export function RcCapaCritiquePage() {
             </svg>
           </div>
           <div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>RC Impact Assessment & CAPA Critique Complete!</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Root Cause, Impact Assessment & CAPA Critique Complete!</p>
             <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
               All observations have been resolved and the RC & CAPA Critique is fully completed.
               {waitingForSitReview ? " Waiting for SIT Review." : ""}
@@ -350,7 +357,12 @@ export function RcCapaCritiquePage() {
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <p style={{ margin: 0, fontSize: "var(--font-size-xs)", fontWeight: 600, letterSpacing: "0.05em", color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                    RC & CAPA CRITIQUE SCORE <ScoreBreakdownTooltip tables={report.score_breakdown} />
+                    RC & CAPA CRITIQUE SCORE{" "}
+                    <ScoreBreakdownTooltip
+                      tables={report.score_breakdown}
+                      description="This is the cumulative score from the RC, Impact, and CAPA scores — not an independently scored section of its own."
+                      hideTables
+                    />
                   </p>
                   <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: grade.text }}>{report.total_score}%</p>
                 </div>
@@ -358,10 +370,11 @@ export function RcCapaCritiquePage() {
             );
           })()}
 
-          {report && (report.rc_score != null || report.capa_score != null) && (
+          {report && (report.rc_score != null || report.impact_score != null || report.capa_score != null) && (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc", "impact"] },
+                { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc"] },
+                { label: "IMPACT CRITIQUE SCORE", value: report.impact_score, sections: ["impact"] },
                 { label: "CAPA CRITIQUE SCORE", value: report.capa_score, sections: ["capa"] },
               ]
                 .filter((s) => s.value != null)
@@ -413,20 +426,20 @@ export function RcCapaCritiquePage() {
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
             {state.due_date && (
-              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)", fontWeight: 700 }}>
                 TCD: {state.due_date}
               </span>
             )}
             {report && (
-              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
-                Completed: {new Date(report.uploaded_at).toLocaleDateString()}
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)", fontWeight: 700 }}>
+                Completed On: {formatDdMmYyyy(report.uploaded_at)}
               </span>
             )}
-            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+            <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)", fontWeight: 700 }}>
               Record: {recordId}
             </span>
             {state.investigator && (
-              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)" }}>
+              <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)", fontWeight: 700 }}>
                 Investigator: {state.investigator}
               </span>
             )}
