@@ -14,12 +14,39 @@ sys.path.insert(0, str(project_root))
 
 from src.config.settings import settings
 
+# The RCI report/plan/evidence modules only ever know the app-level event
+# type shown in the UI ("Deviation" / "OOS" / "OOT" / "OOS/OOT" / "Market
+# Complaint"), not the DB's own qe_type values ("Deviation" / "Out Of
+# Specification" / "Out of Trend" / "Complaint"). Only "Deviation" happens to
+# be spelled the same both ways, which let every OOS/OOT/Market Complaint
+# historical-search filter silently match zero rows (exact-match SQL, no
+# raised error) while Deviation records worked — this is the reverse of
+# backend/backend/db/field_mapping.py's QE_TYPE_TO_EVENT_TYPE (DB -> app),
+# which ds/ has no access to (separate services, no cross-import).
+APP_EVENT_TYPE_TO_QE_TYPE: dict[str, str | list[str]] = {
+    "Deviation": "Deviation",
+    "OOS": "Out Of Specification",
+    "OOT": "Out of Trend",
+    "OOS/OOT": ["Out Of Specification", "Out of Trend"],
+    "Market Complaint": "Complaint",
+}
+
+
+def resolve_qe_type_filter(event_type: Optional[str]) -> Optional[str | list[str]]:
+    """Translate an app-level event_type into the DB-native qe_type value(s)
+    to filter on. Falls back to the input unchanged for anything not in the
+    known set, rather than dropping the filter silently.
+    """
+    if event_type is None:
+        return None
+    return APP_EVENT_TYPE_TO_QE_TYPE.get(event_type, event_type)
+
 
 @dataclass
 class SearchFilters:
     """Encapsulates optional search filter parameters."""
 
-    qe_type: Optional[str] = None  # search_on parameter
+    qe_type: Optional[str | list[str]] = None  # search_on parameter
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     locations: Optional[list[str]] = None  # sites parameter
@@ -137,8 +164,12 @@ def build_filter_clause(
 
     # Single value filters
     if filters.qe_type is not None:
-        clause.fragments.append(f'"{settings.COLUMN_QE_TYPE}" = ${idx}')
-        clause.params.append(filters.qe_type)
+        if isinstance(filters.qe_type, list):
+            clause.fragments.append(f'"{settings.COLUMN_QE_TYPE}" = ANY(${idx})')
+            clause.params.append(filters.qe_type)
+        else:
+            clause.fragments.append(f'"{settings.COLUMN_QE_TYPE}" = ${idx}')
+            clause.params.append(filters.qe_type)
         idx += 1
 
     if filters.exclude_id is not None:
