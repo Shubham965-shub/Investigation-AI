@@ -147,8 +147,19 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
     # TW one), but each is still the sole/primary content this section is
     # built from, so a blank value here is just as fatal to the section as
     # every relevant field being blank is to Description of Event.
-    if section_key == "correction_remedial_action" and _blank(ctx.tw("correction_or_remedial_action")):
-        missing.append("TrackWise field 'correction_or_remedial_action'")
+    # Correction/Remedial Action gained a second possible source 2026-08-25 —
+    # the uploaded RC & CAPA document's own Section 9/10 text
+    # (uploaded_correction_remedial_text) — so it's only genuinely missing
+    # when BOTH the TW field and the uploaded document are blank.
+    if (
+        section_key == "correction_remedial_action"
+        and _blank(ctx.tw("correction_or_remedial_action"))
+        and _blank(ctx.uploaded_correction_remedial_text)
+    ):
+        missing.append(
+            "TrackWise field 'correction_or_remedial_action' and no uploaded RC & CAPA "
+            "document text"
+        )
 
     if section_key in ("root_cause_conclusion", "impact_assessment_batch_disposition"):
         if _blank(ctx.accepted_rc_conclusion.rc_conclusion_text):
@@ -258,9 +269,15 @@ async def _generate_initial_impact_assessment(
 async def _generate_investigation_task(llm: LLMClient, ctx: RciReportContext) -> InvestigationTaskSection:
     rci_plan_text = json.dumps([section.model_dump() for section in ctx.rci_plan_sections])
     task_critique_text = json.dumps([item.model_dump() for item in ctx.task_critique])
+    rc = ctx.accepted_rc_conclusion
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\nRCI Plan Sections:\n{rci_plan_text}\n\n"
-        f"Task Critique Output:\n{task_critique_text}"
+        f"Task Critique Output:\n{task_critique_text}\n\n"
+        f"Accepted Root Cause Conclusion (identify which task(s) above genuinely "
+        f"support this):\n{rc.rc_conclusion_text}\n\n"
+        f"Loose taxonomy hints from upstream critique (may be blank, may not align "
+        f"with the 6M-factor taxonomy used above): broad_category={rc.broad_category}, "
+        f"category={rc.category}, root_cause_sub_category={rc.root_cause_sub_category}"
     )
     return await call_with_retry(
         lambda: llm.get_structured_response(
@@ -306,8 +323,13 @@ async def _generate_impact_assessment(
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
         f"Accepted Root Cause Conclusion:\n{ctx.accepted_rc_conclusion.rc_conclusion_text}\n\n"
-        f"Cleaned Impact Details (may be blank — ground subsections in whatever other "
-        f"context below IS available if so):\n{ctx.impact_details_text_clean}\n\n"
+        f"Uploaded RC & CAPA document's own Impact Assessment & Conclusion (Batch disposition) "
+        f"text (may be blank if no RC & CAPA document has been uploaded yet — this is the most "
+        f"authoritative source when present, prefer it over the TrackWise fields below):\n"
+        f"{ctx.uploaded_impact_assessment_text}\n\n"
+        f"Cleaned Impact Details (TrackWise, supplementary/fallback — may be blank; ground "
+        f"subsections in whatever other context below IS available if so):\n"
+        f"{ctx.impact_details_text_clean}\n\n"
         f"Medical/impact-related TrackWise fields (Market Complaint only, may be blank):\n"
         f"medical_investigation_summary={ctx.tw('medical_investigation_summary')}, "
         f"medical_impact_analysis={ctx.tw('medical_impact_analysis')}, "
@@ -331,7 +353,12 @@ async def _generate_correction_remedial(
 ) -> CorrectionRemedialActionSection:
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
-        f"Cleaned Correction/Remedial Action text:\n{ctx.correction_remedial_text_clean}"
+        f"Uploaded RC & CAPA document's own Correction and/or Remedial Action text (may be "
+        f"blank if no RC & CAPA document has been uploaded yet — this is the most "
+        f"authoritative source when present, prefer it over the TrackWise field below):\n"
+        f"{ctx.uploaded_correction_remedial_text}\n\n"
+        f"Cleaned Correction/Remedial Action TrackWise field text (supplementary/fallback):\n"
+        f"{ctx.correction_remedial_text_clean}"
     )
     return await call_with_retry(
         lambda: llm.get_structured_response(

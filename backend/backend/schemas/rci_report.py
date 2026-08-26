@@ -136,38 +136,74 @@ class HistoryReviewSection(BaseModel):
     batches_manufactured_note: Optional[str] = None
 
 
-RCAMethod = Literal[
+SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
+
+RCADemonstrableMethod = Literal[
     "Why-Why Analysis",
     "Fishbone / Ishikawa",
     "Fault Tree Analysis",
     "Flowchart / Process Mapping",
-    "GEMBA Walk",
-    "Failure Mode Effective Analysis (FMEA)",
-    "Not explicitly stated",
 ]
-SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
 
 
-class InvestigationTaskFinding(BaseModel):
-    sop_reference: Optional[str] = None
-    finding: str
-
-
-class InvestigationTaskSubsection(BaseModel):
+class TaskSummaryItem(BaseModel):
+    tick: str
     title: str
-    six_m_factors: List[SixMFactor] = Field(default_factory=list)
-    findings: List[InvestigationTaskFinding] = Field(default_factory=list)
+    six_m_factor: SixMFactor
+    outcome: str
 
 
-class InvestigationTaskGroup(BaseModel):
-    section_title: str
-    subsections: List[InvestigationTaskSubsection] = Field(default_factory=list)
+class InvestigationTaskSummarySection(BaseModel):
+    overview: str
+    tasks: List[TaskSummaryItem] = Field(default_factory=list)
+
+
+class RootCauseTaskLink(BaseModel):
+    tick: str
+    title: str
+    six_m_factor: SixMFactor
+    explanation: str
+
+
+class RootCauseIdentificationSection(BaseModel):
+    grounding_evidence: str
+    applicable_tasks: List[RootCauseTaskLink] = Field(default_factory=list)
+
+
+class WhyWhyStep(BaseModel):
+    question: str
+    answer: str
+
+
+class FishboneBranch(BaseModel):
+    six_m_factor: SixMFactor
+    causes: List[str] = Field(default_factory=list)
+
+
+class FaultTreeNode(BaseModel):
+    event: str
+    contributing_causes: List[str] = Field(default_factory=list)
+
+
+class FlowchartStep(BaseModel):
+    step_number: int
+    description: str
+    decision_point: Optional[str] = None
+
+
+class RCAToolDemonstration(BaseModel):
+    method: RCADemonstrableMethod
+    method_rationale: str
+    why_why_chain: List[WhyWhyStep] = Field(default_factory=list)
+    fishbone_branches: List[FishboneBranch] = Field(default_factory=list)
+    fault_tree: List[FaultTreeNode] = Field(default_factory=list)
+    flowchart_steps: List[FlowchartStep] = Field(default_factory=list)
 
 
 class InvestigationTaskSection(BaseModel):
-    rca_method_evidence: str
-    rca_methods_used: List[RCAMethod] = Field(default_factory=list)
-    groups: List[InvestigationTaskGroup] = Field(default_factory=list)
+    task_summary: InvestigationTaskSummarySection
+    root_cause_identification: RootCauseIdentificationSection
+    rca_tool_demonstrations: List[RCAToolDemonstration] = Field(default_factory=list)
 
 
 class RootCauseTaxonomy(BaseModel):

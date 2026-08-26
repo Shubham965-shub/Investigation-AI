@@ -348,9 +348,14 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     recommendations: List[str] = sorted(
         flattened_recommendations, key=lambda r: not r.startswith(_UNADDRESSED_MARKER)
     )[:_MAX_RECOMMENDATIONS]
+    # The real per-task objective/findings/inference ds's extract_tasks step produced from this
+    # document (ds's TaskReportCritiqueResponse.task_evidence) — stored as-is so RCI Report
+    # Section 5 can ground on the report's actual content instead of only the `summary` blurb
+    # above, which is strengths-only and shared identically across every subtask in this section.
+    task_findings: List[Dict[str, Any]] = data.get("task_evidence", [])
 
     report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
-    await save_critique(report_id, summary, task_score=None, recommendations=recommendations)
+    await save_critique(report_id, summary, task_score=None, recommendations=recommendations, task_findings=task_findings)
     await insert_recommendation_history(deviation_id, task_index, attempt_number, summary, recommendations)
 
     # The 3rd attempt is final regardless of how its recommendations end up

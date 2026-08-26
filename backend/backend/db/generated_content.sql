@@ -134,11 +134,23 @@ CREATE TABLE IF NOT EXISTS investigation_task_critique_reports (
     -- whenever it's set (2026-08-14, per the user: shown via a small info
     -- icon next to the score).
     score_breakdown JSONB,
+    -- The real per-task {task_number, title, objective, findings, inference,
+    -- section_labels} ds's extract_tasks step produced from the uploaded document
+    -- (ds's TaskReportCritiqueResponse.task_evidence) — previously computed and
+    -- then discarded before reaching this table entirely, leaving `summary`
+    -- (a thin strengths-only blurb, one per report/section, not per task) as the
+    -- only trace of the upload reaching RCI Report Section 5. Added 2026-08-25,
+    -- per the user, so Section 5 can ground on the report's real findings/
+    -- inference instead. Reset to '[]' on every re-upload, same as
+    -- `recommendations` above.
+    task_findings JSONB NOT NULL DEFAULT '[]'::jsonb,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (deviation_id, task_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id ON investigation_task_critique_reports(deviation_id);
+
+ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS task_findings JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- Append-only audit log of every attempt's generated recommendation set
 -- (2026-08-07, per the user) — investigation_task_critique_reports above
@@ -207,10 +219,31 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     -- all present here, unlike Task Critique's single task_report section),
     -- stored verbatim as a JSON array.
     score_breakdown JSONB,
+    -- The real per-section content ds's extract_rci_report_sections already computes
+    -- deterministically (no LLM) from the uploaded document, but which — until 2026-08-25 —
+    -- never left ds: only rc_summary/capa_summary (LLM-condensed 3-4 sentence blurbs) ever
+    -- reached this table. Added so RCI Report generation (Root Cause Conclusion, Impact
+    -- Assessment, Correction/Remedial Action, CAPA) can ground on the uploaded RC & CAPA
+    -- document's own text/structure instead of thin summaries or TrackWise fields. Same
+    -- "surface what was already being discarded" pattern as
+    -- investigation_task_critique_reports.task_findings.
+    rc_conclusion_text_raw TEXT,
+    is_repeat_occurrence BOOLEAN,
+    impact_assessment_text TEXT,
+    correction_remedial_text TEXT,
+    capa_text_raw TEXT,
+    capa_items JSONB NOT NULL DEFAULT '[]'::jsonb,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_deviation_id ON investigation_rc_capa_reports(deviation_id);
+
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS rc_conclusion_text_raw TEXT;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS is_repeat_occurrence BOOLEAN;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS impact_assessment_text TEXT;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS correction_remedial_text TEXT;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_text_raw TEXT;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_items JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- RCI Report (module step 7 of 7) — one row per investigation, upserted in
 -- place on regenerate (2026-08-21, per the user: no "attempt" concept in

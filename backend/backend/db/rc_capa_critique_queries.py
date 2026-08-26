@@ -37,6 +37,12 @@ def _parse_score_breakdown(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
+def _parse_capa_items(raw: Any) -> List[Dict[str, Any]]:
+    if raw is None:
+        return []
+    return raw if isinstance(raw, list) else json.loads(raw)
+
+
 async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
     """Returns all reports for this investigation ordered by attempt_number
     — compute_rc_capa_state below only looks at the last one, but the full
@@ -49,7 +55,9 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                 SELECT id, attempt_number, file_name, is_gospel,
                        rc_summary, rc_recommendations,
                        capa_summary, capa_recommendations,
-                       rc_score, capa_score, total_score, score_breakdown, uploaded_at
+                       rc_score, capa_score, total_score, score_breakdown, uploaded_at,
+                       rc_conclusion_text_raw, is_repeat_occurrence, impact_assessment_text,
+                       correction_remedial_text, capa_text_raw, capa_items
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
                 """,
@@ -74,11 +82,22 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                         "category": "rc_impact",
                         "summary": r["rc_summary"],
                         "recommendations": _parse_recommendations(r["rc_recommendations"]),
+                        # Added 2026-08-25: the report's own real extracted content — see
+                        # save_critiques' docstring. Not part of RcCapaCritique's public
+                        # schema (extra keys silently ignored there); consumed only by
+                        # RCI Report generation (backend/services/rci_report_request.py),
+                        # which reads this dict directly, bypassing that schema.
+                        "rc_conclusion_text_raw": r["rc_conclusion_text_raw"],
+                        "is_repeat_occurrence": r["is_repeat_occurrence"],
+                        "impact_assessment_text": r["impact_assessment_text"],
                     },
                     {
                         "category": "capa",
                         "summary": r["capa_summary"],
                         "recommendations": _parse_recommendations(r["capa_recommendations"]),
+                        "capa_text_raw": r["capa_text_raw"],
+                        "capa_items": _parse_capa_items(r["capa_items"]),
+                        "correction_remedial_text": r["correction_remedial_text"],
                     },
                 ],
             }
@@ -122,6 +141,12 @@ async def save_critiques(
     rc_summary: str,
     capa_recommendations: List[str],
     capa_summary: str,
+    rc_conclusion_text_raw: str = "",
+    is_repeat_occurrence: Optional[bool] = None,
+    impact_assessment_text: str = "",
+    correction_remedial_text: str = "",
+    capa_text_raw: str = "",
+    capa_items: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """Persists both fixed categories' critique directly onto the report row.
     `rc_summary`/`capa_summary` are sourced from the report's own RC Conclusion / CAPA section
@@ -137,7 +162,13 @@ async def save_critiques(
     0..len(rc)-1, impact_recommendations continue from there, then capa's.
     Each rc_impact recommendation is tagged "rc" or "impact" (2026-08-24, per
     the user) so the frontend can render the two as separate subsections;
-    capa's own recommendations carry no type (not split this way)."""
+    capa's own recommendations carry no type (not split this way).
+
+    rc_conclusion_text_raw/is_repeat_occurrence/impact_assessment_text/
+    correction_remedial_text/capa_text_raw/capa_items (2026-08-25, per the user): the same
+    extraction's real verbatim/structured content, persisted alongside the condensed
+    summaries above rather than instead of them — consumed only by RCI Report generation,
+    which needs the report's own text, not a dashboard-card blurb."""
     rc_recs = [
         {"id": i, "description": d, "type": "rc", "decision": "pending", "reason": None, "decided_at": None}
         for i, d in enumerate(rc_recommendations)
@@ -155,7 +186,10 @@ async def save_critiques(
             """
             UPDATE investigation_rc_capa_reports SET
                 rc_summary = $2, rc_recommendations = $3::jsonb,
-                capa_summary = $4, capa_recommendations = $5::jsonb
+                capa_summary = $4, capa_recommendations = $5::jsonb,
+                rc_conclusion_text_raw = $6, is_repeat_occurrence = $7,
+                impact_assessment_text = $8, correction_remedial_text = $9,
+                capa_text_raw = $10, capa_items = $11::jsonb
             WHERE id = $1
             """,
             report_id,
@@ -163,6 +197,12 @@ async def save_critiques(
             json.dumps(rc_recs),
             capa_summary,
             json.dumps(capa_recs),
+            rc_conclusion_text_raw,
+            is_repeat_occurrence,
+            impact_assessment_text,
+            correction_remedial_text,
+            capa_text_raw,
+            json.dumps(capa_items or []),
         )
 
 
