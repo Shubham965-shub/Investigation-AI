@@ -335,21 +335,49 @@ def _fill_history_review(doc, section, errors: dict) -> None:
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
 def _fill_investigation_task(doc, section, errors: dict) -> None:
+    """Matches InvestigationTaskSection (schemas/rci_report.py, copied
+    verbatim from ds's measure_analyze.py) — task_summary/
+    root_cause_identification/rca_tool_demonstrations, not the older
+    rca_method_evidence/rca_methods_used/groups shape this previously
+    (incorrectly) assumed.
+
+    Paragraph 132's own style in the template is "Heading 1" — inherited
+    from the "Investigation tasks:" heading and its italic guidance
+    paragraphs right above it (confirmed via python-docx), unlike every
+    other section's blank (e.g. Executive Summary's, "Normal"/"List
+    Paragraph"). Left as-is, real content here renders as an oversized bold
+    heading instead of body text — reset explicitly so this reads like the
+    rest of the document.
+    """
+    _body_paragraph(doc, 132).style = "Normal"
+
     if section is None:
         _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
         return
 
-    lines = [f"RCA method evidence: {section.rca_method_evidence}"]
-    if section.rca_methods_used:
-        lines.append(f"RCA method(s) used: {', '.join(section.rca_methods_used)}")
-    for group in section.groups:
-        lines.append(group.section_title)
-        for sub in group.subsections:
-            factors = f" ({', '.join(sub.six_m_factors)})" if sub.six_m_factors else ""
-            lines.append(f"  {sub.title}{factors}")
-            for finding in sub.findings:
-                prefix = f"{finding.sop_reference}: " if finding.sop_reference else ""
-                lines.append(f"    - {prefix}{finding.finding}")
+    lines = [f"Overview: {section.task_summary.overview}"]
+    for task in section.task_summary.tasks:
+        lines.append(f"  {task.tick} {task.title} ({task.six_m_factor}): {task.outcome}")
+
+    lines.append(f"Root Cause Identification — Grounding Evidence: {section.root_cause_identification.grounding_evidence}")
+    for link in section.root_cause_identification.applicable_tasks:
+        lines.append(f"  {link.tick} {link.title} ({link.six_m_factor}): {link.explanation}")
+
+    for demo in section.rca_tool_demonstrations:
+        lines.append(f"RCA Tool — {demo.method}: {demo.method_rationale}")
+        for step in demo.why_why_chain:
+            lines.append(f"  Q: {step.question}")
+            lines.append(f"  A: {step.answer}")
+        for branch in demo.fishbone_branches:
+            causes = ", ".join(branch.causes) if branch.causes else "—"
+            lines.append(f"  {branch.six_m_factor}: {causes}")
+        for node in demo.fault_tree:
+            causes = ", ".join(node.contributing_causes) if node.contributing_causes else "—"
+            lines.append(f"  Event: {node.event} — Contributing causes: {causes}")
+        for step in demo.flowchart_steps:
+            decision = f" [Decision: {step.decision_point}]" if step.decision_point else ""
+            lines.append(f"  Step {step.step_number}: {step.description}{decision}")
+
     _set_paragraph_lines(doc, 132, lines)
 
 
