@@ -187,6 +187,7 @@ async def fetch_historical_data(state: Any) -> Any:
     Results are truncated to _HISTORICAL_TOP_K (already sorted by cosine
     score descending by combine_results_node) before being stored in state.
     """
+    from src.agents.search_agent.api.services.filters import resolve_qe_type_filter
     from src.agents.search_agent.graph.builder import build_search_graph
 
     pool = await get_db_pool()
@@ -198,7 +199,7 @@ async def fetch_historical_data(state: Any) -> Any:
         "query": query,
         "search_fields": ["description", "root_cause_summary"],
         "search_type": "Semantic",
-        "filters": {"qe_type": state.event_type},
+        "filters": {"qe_type": resolve_qe_type_filter(state.event_type)},
         "determined_search_type": "",
         "keyword_results": [],
         "semantic_results": [],
