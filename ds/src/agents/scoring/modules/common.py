@@ -64,8 +64,7 @@ async def sample_section(llm: LLMClient, prompt: str) -> List[SectionScoringLLMO
 def consensus(section: str, samples: List[SectionScoringLLMOutput]) -> List[CheckpointVerdict]:
     """Majority verdict per checkpoint across samples; ties break to the lowest
     marks (conservative). Verdicts are compared after rubric normalisation so
-    'Assignable (proven)'/'assignable' and 'CAPA Level 3'/'level_3' each count as
-    one vote."""
+    'Assignable (proven)'/'assignable' each count as one vote."""
     cps = {cp.id: cp for cp in get_section(section).checkpoints}
     per_id: dict[str, list[CheckpointVerdict]] = defaultdict(list)
     for sample in samples:

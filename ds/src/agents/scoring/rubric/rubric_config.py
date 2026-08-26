@@ -3,7 +3,7 @@ Rubric configuration — the single source of truth for report scoring.
 
 Encodes the two marking checklists as structured data:
   • Task Report Execution rubric (Task_Report_Execution_Rubric_40marks.docx) → section "task_report"
-  • IQ Score rubric (IQ _ RC ,IMPACT & CAPA .xlsx)                          → sections "rc", "impact", "capa"
+  • IQ Score rubric (IQ _ RC ,IMPACT & CAPA_revised .xlsx)                  → sections "rc", "impact", "capa"
 
 The LLM only judges each checkpoint (verdict + rationale + evidence quote).
 All marks and totals are computed HERE, deterministically, so scoring is
@@ -17,7 +17,7 @@ checkpoint, except RC which is a single mutually-exclusive classification.
         (NA only allowed where allow_na=True; an unjustified/unpermitted NA claim
         is scored as No)
   • RC classification  → verdict ∈ {"assignable", "probable", "none"}
-        assignable → 30 | probable → 10 | none → -5   (always applicable)
+        assignable → 30 | probable → 20 | none → -5   (always applicable)
 """
 
 from __future__ import annotations
@@ -36,18 +36,7 @@ NA = "NA"
 BINARY_VERDICTS = frozenset({YES, NO, NA})
 
 # RC classification tiers (mutually exclusive)
-RC_TIERS: Dict[str, float] = {"assignable": 30.0, "probable": 10.0, "none": -5.0}
-
-# CAPA 7.2 effectiveness levels (mutually exclusive). Marks per the checklist's
-# Max-Score column: L1=4, L2=4, L3=8, L4=10, L5=10; 'none' = no adequate CAPA.
-CAPA_LEVELS: Dict[str, float] = {
-    "none": 0.0,
-    "level_1": 4.0,
-    "level_2": 4.0,
-    "level_3": 8.0,
-    "level_4": 10.0,
-    "level_5": 10.0,
-}
+RC_TIERS: Dict[str, float] = {"assignable": 30.0, "probable": 20.0, "none": -5.0}
 
 
 @dataclass(frozen=True)
@@ -147,7 +136,7 @@ _RC = SectionSpec(
             "1", "1 Root Cause / Probable Causes",
             "Classify the root-cause conclusion: 'assignable' = proven through evidence, "
             "reproducible, direct linkage established (30); 'probable' = evidence/data "
-            "suggest a likely reason, scientifically justified (10); 'none' = no root cause "
+            "suggest a likely reason, scientifically justified (20); 'none' = no root cause "
             "established (-5).",
             30.0,
             kind="classification",
@@ -162,20 +151,13 @@ _IMPACT = SectionSpec(
     label="Final Impact Assessment",
     native_max=10.0,
     checkpoints=[
-        # 6.1 — Final Impact Assessment on Current Batches (max 4 = 4 rows × 1)
+        # 6.1 — Final Impact Assessment on Current Batches (max 4 = 2 + 1 + 1)
         Checkpoint(
             "6.1a", "6.1 Final Impact Assessment on Current Batches",
             "Impact on the current/affected batch(es) is accurately identified (patient "
             "safety, product quality, area compliance status or other status such as "
             "documentation) based on the nature of the non-conformance.",
-            1.0,
-        ),
-        Checkpoint(
-            "6.1b", "6.1 Final Impact Assessment on Current Batches",
-            "Where patient safety is impacted and the product is in market, the "
-            "health-hazard-evaluation (HHE) requirement has been checked — or it is "
-            "appropriately reasoned that HHE is not required.",
-            1.0,
+            2.0,
         ),
         Checkpoint(
             "6.1c", "6.1 Final Impact Assessment on Current Batches",
@@ -208,9 +190,10 @@ _IMPACT = SectionSpec(
         # 6.3 — Batch Disposition (max 2 = 1 row × 2)
         Checkpoint(
             "6.3", "6.3 Batch Disposition",
-            "The batch disposition decision is clearly written (i.e. whether the "
-            "non-conformance affects release of the current / other batches).",
+            "The batch disposition decision is clearly written, if applicable (i.e. whether "
+            "the non-conformance affects release of the current / other batches).",
             2.0,
+            allow_na=True,
         ),
     ],
 )
@@ -224,27 +207,23 @@ _CAPA = SectionSpec(
         # 7.1 — Remedial action / Correction (max 2 = 2 rows × 1)
         Checkpoint(
             "7.1a", "7.1 Remedial Action (Correction)",
-            "The correction / remedial action addresses the effect of the non-conformance "
-            "based on its nature and root cause (what, where documented, who, by when) — or a "
-            "rationale is given if no correction is recommended.",
+            "The correction addresses the non-conformance (if applicable).",
             1.0,
+            allow_na=True,
         ),
         Checkpoint(
             "7.1b", "7.1 Remedial Action (Correction)",
-            "Evidence / justification is provided that the correction does not adversely "
-            "affect product quality and allows the product to meet specifications.",
+            "Evidence / justification is provided for the correction done (if applicable).",
             1.0,
+            allow_na=True,
         ),
-        # 7.2 — CAPA effectiveness level (max 10; pick one level)
+        # CAPA consistency with the investigation (max 10)
         Checkpoint(
             "7.2", "7.2 Corrective Action / Preventive Action (CAPA)",
-            "Classify the CAPA proposed against the identified root cause by its effectiveness "
-            "level (marks: Level 1=4, Level 2=4, Level 3=8, Level 4=10, Level 5=10). Use "
-            "'none' when there is no adequate CAPA. Higher levels are more robust / systemic; "
-            "see the level definitions in the CAPA prompt.",
+            "The CAPA is consistent with the problem statement and investigation findings, "
+            "contradicting nothing established during the investigation.",
             10.0,
-            kind="classification",
-            tiers=dict(CAPA_LEVELS),
+            allow_na=True,
         ),
         # Interim control (max 4)
         Checkpoint(
@@ -254,11 +233,11 @@ _CAPA = SectionSpec(
             4.0,
             allow_na=True,
         ),
-        # CAPA effectiveness check (max 4)
+        # CAPA scope extension (max 4)
         Checkpoint(
             "7.4", "7.2 Corrective Action / Preventive Action (CAPA)",
-            "CAPA effectiveness check is explained appropriately with clear objectives, "
-            "responsibilities and a timeline (or appropriate justification if not applicable).",
+            "CAPA scope is extended to other products / area / equipment as applicable "
+            "(or appropriate justification if not applicable).",
             4.0,
             allow_na=True,
         ),
