@@ -414,7 +414,7 @@ function TextInput({
 function TextArea({
   value,
   onChange,
-  rows = 3,
+  rows = 5,
   placeholder,
   style,
 }: {
