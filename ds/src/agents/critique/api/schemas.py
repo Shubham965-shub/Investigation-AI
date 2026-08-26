@@ -133,6 +133,15 @@ class RCConclusionCritiqueResponse(BaseModel):
     # RC Impact Assessment Critique panel.
     rc_recommendations: List[str]
     impact_recommendations: List[str]
+    # Added 2026-08-25: the real per-section content extract_rci_report_sections already
+    # computes deterministically (no LLM) but which, until now, never left ds — only the
+    # condensed rc_conclusion_text above (a 3-4 sentence UI blurb) ever crossed this response
+    # boundary. Additive fields, not a replacement — rc_conclusion_text keeps its existing
+    # display behavior unchanged. Consumed by RCI Report generation (Section 6/7) to ground
+    # on the uploaded RC & CAPA document's own text instead of thin TrackWise fields.
+    rc_conclusion_text_raw: str = ""       # verbatim Section 6 text, uncondensed
+    is_repeat_occurrence: Optional[bool] = None  # deterministically detected; None = genuinely unknown
+    impact_assessment_text: str = ""       # verbatim Section 7 "Impact Assessment & Conclusion" text
 
 
 # ---------- CAPA Critique ----------
@@ -165,3 +174,13 @@ class CAPACritiqueResponse(BaseModel):
     # then condensed to 3-4 plain-language sentences (see rc_conclusion_text above for the
     # same pattern).
     capa_text: str = ""
+    # Added 2026-08-25: additive, same pattern as RCConclusionCritiqueResponse above —
+    # capa_text keeps its existing condensed-summary behavior unchanged; these carry the
+    # real extracted content for RCI Report generation to ground on.
+    capa_text_raw: str = ""                # verbatim Section 11 CAPA free text, correctly
+                                            # scoped (previously polluted by a heading-
+                                            # detection bug — see GAPS.md)
+    capa_items: List[CAPAItemDetail] = []  # structured CAPA action rows, deterministically
+                                            # parsed from the real CAPA-action table only
+    correction_remedial_text: str = ""     # verbatim Section 9/10 "Correction and or
+                                            # Remedial action" text — never captured before

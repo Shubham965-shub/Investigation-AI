@@ -63,4 +63,10 @@ class TaskReportCritiqueResponse(BaseModel):
     problem_statement: str
     objective: str
     task_critiques: List[TaskCritiqueDetail]
+    # The real per-task objective/findings/inference extract_tasks already produced from the
+    # uploaded document (used as critique_tasks' own input) — previously computed and then
+    # discarded before this response was built. Surfaced here as-is (not re-derived by the
+    # critique LLM) so a downstream caller (e.g. rci_report's Section 5) can ground on the
+    # actual extracted report content instead of only `strengths`/`recommendations`.
+    task_evidence: List[ExtractedTask] = []
     total_tasks_analyzed: int

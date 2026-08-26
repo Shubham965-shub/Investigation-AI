@@ -1,5 +1,6 @@
 """
-Extract sections 8 (RC Conclusion) and 12 (CAPA) from a completed RCI report docx.
+Extract Root Cause Conclusion, Impact Assessment & Conclusion (Batch disposition),
+Correction and/or Remedial Action, and CAPA from a completed RCI report docx.
 
 The RCI report is a free-form Word document structured with headings. This module
 scans body elements in document order to locate and extract the relevant sections.
@@ -56,6 +57,29 @@ def _sym_checked(sym_elem) -> bool:
     return (font, char) in _CHECKED_SYMBOLS
 
 
+_UNCHECKED_YES_NO_RE = re.compile(r"\byes\b\s*/?\s*\bno\b")
+
+
+def _repeat_occurrence_from_text(text: str) -> bool | None:
+    """Plain-text (no checkbox/symbol available) repeat-occurrence heuristic, shared
+    between the table-row and paragraph extraction paths. Returns None (genuinely
+    unknown) rather than guessing when the text is an unchecked "Yes No" template
+    placeholder — found live (2026-08-25) against a real document whose text was
+    literally "...is a repeat occurrence Yes No. If yes, Mention the details as:
+    Not Applicable": the previous naive "'yes' in text and 'no' not in text.split
+    ('yes')[-1]" check split on the WRONG "yes" occurrence (there are two — the
+    unchecked option and the "if yes" clause) and misread this unmarked placeholder
+    as a confirmed True."""
+    tl = text.lower()
+    if re.search(r"no recurring|no recurrence|not.*repeat", tl):
+        return False
+    if _UNCHECKED_YES_NO_RE.search(tl):
+        return None
+    if re.search(r"\byes\b", tl) and "no" not in tl.split("yes")[-1]:
+        return True
+    return None
+
+
 def _detect_repeat_occurrence(tbl_elem) -> bool | None:
     """
     Scan a table element for the 'repeat occurrence' row.
@@ -66,26 +90,32 @@ def _detect_repeat_occurrence(tbl_elem) -> bool | None:
         if "repeat occurrence" not in row_text and "repeat" not in row_text:
             continue
 
-        # Walk runs looking for symbol+label pairs
-        checked_labels = []
+        # A checkbox symbol and its label word live in ADJACENT runs, not the same run
+        # (confirmed live, 2026-08-25, against a real report: a Wingdings <w:sym> run
+        # with no text, immediately followed by a separate text run carrying "Yes"/
+        # "No") — the previous same-run pairing could never match this real structure,
+        # so it always fell through to the plain-text fallback even when a genuine
+        # checked checkbox was present. Track the most recently seen symbol and pair
+        # it with the next run that actually carries a "yes"/"no" word.
+        pending_checked: bool | None = None
         for r_elem in tr.findall(f".//{{{_W}}}r"):
             sym = r_elem.find(f"{{{_W}}}sym")
-            is_checked = _sym_checked(sym) if sym is not None else None
+            if sym is not None:
+                pending_checked = _sym_checked(sym)
+                continue
             t_text = "".join(t.text or "" for t in r_elem.findall(f"{{{_W}}}t")).strip().lower()
-            if t_text and is_checked is not None and is_checked:
-                checked_labels.append(t_text)
+            if not t_text or pending_checked is None:
+                continue
+            if t_text.startswith("yes"):
+                if pending_checked:
+                    return True
+                pending_checked = None
+            elif t_text.startswith("no"):
+                if pending_checked:
+                    return False
+                pending_checked = None
 
-        if "yes" in checked_labels:
-            return True
-        if "no" in checked_labels:
-            return False
-
-        # Plain-text fallback
-        if re.search(r"no recurring|no recurrence|not.*repeat", row_text):
-            return False
-        if re.search(r"\byes\b", row_text) and "no" not in row_text.split("yes")[-1]:
-            return True
-        return False
+        return _repeat_occurrence_from_text(row_text)
 
     return None
 
@@ -99,6 +129,23 @@ def _table_to_text(tbl_elem) -> str:
         if line:
             lines.append(line)
     return "\n".join(lines)
+
+
+def _is_capa_action_table(tbl_elem) -> bool:
+    """Distinguishes the real CAPA action table from other tables that also appear
+    inside the CAPA section (Interim Control Plan, CAPA Extrapolation, signature
+    block) — all of which previously got misparsed into capa_items indiscriminately,
+    since every table encountered while current_section == "capa" was parsed as a
+    CAPA action row regardless of its own header."""
+    rows = tbl_elem.findall(f"{{{_W}}}tr")
+    if not rows:
+        return False
+    header = _elem_text(rows[0]).lower()
+    return (
+        "capa description" in header
+        or ("corrective action" in header and "preventive action" in header)
+        or "capa action" in header
+    )
 
 
 def _table_to_capa_items(tbl_elem) -> list[dict]:
@@ -135,8 +182,30 @@ def _is_capa_heading(text: str) -> bool:
     return (
         ("corrective" in tl and ("preventive" in tl or "capa" in tl))
         or ("remedial" in tl and "capa" in tl)
-        or ("correction" in tl and "remedial" in tl)   # "Correction and or Remedial action"
     )
+
+
+def _is_impact_assessment_heading(text: str) -> bool:
+    """Matches both the template's 'Impact Assessment & Conclusion (Batch disposition)'
+    and a real completed report's shorter '8 Impact Assessment:' heading (confirmed live,
+    2026-08-25 — the "conclusion"/"batch disposition" suffix isn't always present) — must
+    NOT match Section 2's earlier 'Initial Impact Assessment & Immediate Actions' heading."""
+    tl = text.lower()
+    if "initial" in tl or "immediate action" in tl:
+        return False
+    return "impact assessment" in tl
+
+
+def _is_correction_remedial_heading(text: str) -> bool:
+    """Matches both the template's 'Correction and or Remedial action' and a real
+    completed report's bare 'Remedial Action:' heading (confirmed live, 2026-08-25 — the
+    "Correction" half isn't always present) — distinct from the CAPA heading (previously
+    conflated: this heading also matched _is_capa_heading's old third clause, causing
+    Correction/Remedial content to be misattributed as CAPA content)."""
+    tl = text.lower()
+    if "capa" in tl or "corrective" in tl:
+        return False
+    return ("correction" in tl and "remedial" in tl) or "remedial action" in tl
 
 
 def _is_problem_statement_heading(text: str) -> bool:
@@ -152,21 +221,6 @@ def _is_exec_summary_heading(text: str) -> bool:
     return "executive summary" in text.lower()
 
 
-def _is_post_rc_heading(text: str) -> bool:
-    """H1 headings that signal we've moved past the RC conclusion section."""
-    tl = text.lower()
-    return any(k in tl for k in ("impact assessment", "risk assessment", "remedial action"))
-
-
-def _is_post_capa_heading(text: str) -> bool:
-    """H1 headings that signal we've moved past the CAPA section."""
-    tl = text.lower()
-    return any(k in tl for k in (
-        "effectiveness check", "list of annexure", "approval",
-        "conclusion statement", "description of event",
-    ))
-
-
 # ── Main extractor ─────────────────────────────────────────────────────────────
 
 def extract_rci_report_sections(docx_path) -> dict:
@@ -176,8 +230,10 @@ def extract_rci_report_sections(docx_path) -> dict:
       - rc_conclusion_text      (section 8 table text)
       - is_repeat_occurrence    (section 8 checkbox)
       - investigation_summary   (contributory factors brief summary)
-      - capa_overall_text       (free text before CAPA table in section 12)
-      - capa_items              (rows from section 12 table)
+      - impact_assessment_text  (section 7 "Impact Assessment & Conclusion (Batch disposition)")
+      - correction_remedial_text (section 9/10 "Correction and or Remedial action")
+      - capa_overall_text       (free text before CAPA table in section 12, real CAPA-action table only)
+      - capa_items              (rows from the real CAPA-action table only — see _is_capa_action_table)
     """
     doc = Document(str(docx_path))
 
@@ -186,11 +242,13 @@ def extract_rci_report_sections(docx_path) -> dict:
         "rc_conclusion_text": "",
         "is_repeat_occurrence": None,
         "investigation_summary": "",
+        "impact_assessment_text": "",
+        "correction_remedial_text": "",
         "capa_overall_text": "",
         "capa_items": [],
     }
 
-    current_section = None   # "exec" | "rc" | "capa" | None
+    current_section = None   # "exec" | "rc" | "impact" | "correction_remedial" | "capa" | None
     collecting_ps = False
     collecting_rc_in_exec = False   # RC text embedded as body text in exec summary
     collecting_summary = False
@@ -221,11 +279,28 @@ def extract_rci_report_sections(docx_path) -> dict:
                 elif _is_rc_heading(text):
                     current_section = "rc"
                     collecting_ps = False
+                elif _is_impact_assessment_heading(text):
+                    current_section = "impact"
+                elif _is_correction_remedial_heading(text):
+                    current_section = "correction_remedial"
+                    # The answer is sometimes embedded directly in the heading line itself
+                    # with no separate body paragraph following (confirmed live, 2026-08-25:
+                    # a real report's heading was literally "REMEDIAL ACTION: Not
+                    # Applicable." with the very next paragraph already being the CAPA
+                    # heading) — capture that inline content now, since it would otherwise
+                    # be silently lost (H1 heading text is never collected as content).
+                    after = re.sub(
+                        r".*?(?:correction\s+and\s*/?\s*or\s+)?remedial\s+action[:\s]*",
+                        "", text, flags=re.IGNORECASE
+                    ).strip()
+                    if after:
+                        result["correction_remedial_text"] += after + "\n"
                 elif _is_capa_heading(text):
                     current_section = "capa"
-                elif _is_post_rc_heading(text) and current_section == "rc":
-                    current_section = None
-                elif _is_post_capa_heading(text) and current_section == "capa":
+                elif current_section in ("rc", "impact", "correction_remedial", "capa"):
+                    # Any other H1 heading (Risk Assessment, CAPA Effectiveness Check Plan,
+                    # List of Annexures, Approval, etc.) signals we've moved past whichever
+                    # of these four sections we were collecting.
                     current_section = None
                 continue   # never collect H1 text as content
 
@@ -311,9 +386,19 @@ def extract_rci_report_sections(docx_path) -> dict:
             elif current_section == "rc":
                 tl = text.lower()
                 if "repeat occurrence" in tl:
-                    result["is_repeat_occurrence"] = "yes" in tl and "no" not in tl.split("yes")[-1]
+                    ri = _repeat_occurrence_from_text(tl)
+                    if ri is not None:
+                        result["is_repeat_occurrence"] = ri
                 else:
                     result["rc_conclusion_text"] += text + "\n"
+
+            # Impact Assessment content (including H2/H3 sub-heading text)
+            elif current_section == "impact":
+                result["impact_assessment_text"] += text + "\n"
+
+            # Correction/Remedial Action content (including H2/H3 sub-heading text)
+            elif current_section == "correction_remedial":
+                result["correction_remedial_text"] += text + "\n"
 
             # CAPA content (including H2/H3 sub-heading text)
             elif current_section == "capa":
@@ -339,13 +424,26 @@ def extract_rci_report_sections(docx_path) -> dict:
             elif current_section == "exec" and collecting_summary:
                 result["investigation_summary"] += _table_to_text(elem) + "\n"
 
+            elif current_section == "impact":
+                result["impact_assessment_text"] += _table_to_text(elem) + "\n"
+
+            elif current_section == "correction_remedial":
+                result["correction_remedial_text"] += _table_to_text(elem) + "\n"
+
             elif current_section == "capa":
-                items = _table_to_capa_items(elem)
-                if items:
-                    result["capa_items"].extend(items)
+                if _is_capa_action_table(elem):
+                    items = _table_to_capa_items(elem)
+                    if items:
+                        result["capa_items"].extend(items)
+                else:
+                    # Interim Control / Extrapolation / signature tables — keep as
+                    # supplementary text rather than misparsing into capa_items.
+                    result["capa_overall_text"] += _table_to_text(elem) + "\n"
 
     # Tidy up
     result["rc_conclusion_text"] = result["rc_conclusion_text"].strip()
+    result["impact_assessment_text"] = result["impact_assessment_text"].strip()
+    result["correction_remedial_text"] = result["correction_remedial_text"].strip()
     result["capa_overall_text"] = result["capa_overall_text"].strip()
     result["investigation_summary"] = result["investigation_summary"].strip()
     result["problem_statement"] = result["problem_statement"].strip()
