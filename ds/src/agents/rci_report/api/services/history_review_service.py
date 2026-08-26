@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from src.agents.capa_depth_effectiveness.api.services.capa_depth_effectiveness_service import call_with_retry
 from src.agents.rci_report.api.schemas.measure_analyze import HistoryReviewRow, HistoryReviewSection
+from src.agents.search_agent.api.services.filters import resolve_qe_type_filter
 from src.agents.search_agent.graph.builder import build_search_graph
 from src.config.settings import settings
 from src.llm.client import LLMClient
@@ -110,7 +111,11 @@ async def generate_history_review(
         "query": search_query,
         "search_fields": search_fields,
         "search_type": "Semantic",
-        "filters": {"qe_type": event_type, "date_from": date_from, "exclude_id": exclude_id},
+        "filters": {
+            "qe_type": resolve_qe_type_filter(event_type),
+            "date_from": date_from,
+            "exclude_id": exclude_id,
+        },
         "determined_search_type": "",
         "keyword_results": [],
         "semantic_results": [],
