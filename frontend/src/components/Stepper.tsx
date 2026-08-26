@@ -14,7 +14,7 @@ export const RECORD_STEPS: StepDef[] = [
   { key: "interview-questionnaire", label: "Interview Questionnaire", path: "interview-questionnaire" },
   { key: "rci-plan", label: "RCI Plan Creation", path: "rci-plan" },
   { key: "task-critique", label: "Task Critique", path: "task-critique" },
-  { key: "rc-capa-critique", label: "RC & CAPA Critique", path: "rc-capa-critique" },
+  { key: "rc-capa-critique", label: "RC, Impact & CAPA Critique", path: "rc-capa-critique" },
   { key: "rci-report", label: "RCI Report", path: "rci-report" },
 ];
 

@@ -443,7 +443,7 @@ export function RcCapaCritiquePage() {
   if (!state) {
     return (
       <div className="empty-state">
-        <p>Complete the earlier steps first — RC & CAPA Critique needs this investigation's record to exist.</p>
+        <p>Complete the earlier steps first — RC, Impact & CAPA Critique needs this investigation's record to exist.</p>
         <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
           Go to Task Critique
         </button>
@@ -519,7 +519,7 @@ export function RcCapaCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">RC & CAPA Critique</p>
+        <p className="card-title">RC, Impact & CAPA Critique</p>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button type="button" className="btn-outline" onClick={handleOpenHistory}>
             Recommendation History
@@ -565,7 +565,7 @@ export function RcCapaCritiquePage() {
           <div>
             <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Root Cause, Impact Assessment & CAPA Critique Complete!</p>
             <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-              All observations have been resolved and the RC & CAPA Critique is fully completed.
+              All observations have been resolved and the RC, Impact & CAPA Critique is fully completed.
               {waitingForSitReview ? " Waiting for SIT Review." : ""}
             </p>
           </div>
@@ -655,7 +655,7 @@ export function RcCapaCritiquePage() {
 
       {state.can_upload && (
         <div className="card" style={{ gap: 12 }}>
-          <p className="card-title">{state.upload_count === 0 ? "Upload Report" : "Upload Updated RC & CAPA Critique"}</p>
+          <p className="card-title">{state.upload_count === 0 ? "Upload Report" : "Upload Updated RC, Impact & CAPA Critique"}</p>
           <FileDropzone
             disabled={uploading}
             loading={uploading}
@@ -775,7 +775,7 @@ export function RcCapaCritiquePage() {
       {showConfirm && (
         <ConfirmDialog
           title="Accept RCI & CAPA Critique?"
-          message="Are you sure you want to accept and push the RC & CAPA Critique for SIT Review?"
+          message="Are you sure you want to accept and push the RC, Impact & CAPA Critique for SIT Review?"
           onCancel={() => setShowConfirm(false)}
           onConfirm={handlePushToSitReview}
         />

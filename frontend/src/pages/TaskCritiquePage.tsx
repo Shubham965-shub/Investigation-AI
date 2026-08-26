@@ -183,7 +183,7 @@ export function TaskCritiquePage() {
           onClick={() => navigate(`/records/${recordId}/rc-capa-critique`)}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
-          Agree and Push to RC & CAPA Critique
+          Agree and Push to RC, Impact & CAPA Critique
         </button>
       </div>
 
