@@ -49,6 +49,10 @@ export interface ProblemStatementRecordResponse {
   // True once Evidence Collection has any real data — Problem Statement is
   // read-only at that point (see ProblemStatementPage.tsx's lockedForEditing).
   locked_for_editing?: boolean;
+  // Verbatim dim_event.criticality (upstream/Trackwise) — only meaningful
+  // for Deviation/Market Complaint (2026-08-26, per the user: used by
+  // Stepper to pick which SLA tier applies to this investigation).
+  criticality?: string | null;
 }
 
 export function getProblemStatementRecord(
