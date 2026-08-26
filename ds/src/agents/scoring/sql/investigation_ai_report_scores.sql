@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public.investigation_ai_report_score_checkpoint (
     sub_criteria    text,
     checkpoint_text text,
     max_marks       numeric,
-    verdict         text,                       -- Yes | No | NA | assignable | probable | none | level_1..level_5
+    verdict         text,                       -- Yes | No | NA | assignable | probable | none
     marks_awarded   numeric,
     applicable      boolean,
     rationale       text,                       -- why this verdict

@@ -141,25 +141,17 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
             f"TrackWise field '{name}'" for name in sorted(ctx.missing_required_tw_fields & required_tw)
         ]
 
-    # These three aren't in a "required" TW schema (Correction/Remedial and
-    # Impact Details are Optional there — see shared/schemas.py — and Root
-    # Cause Conclusion's real input is the already-critiqued API field, not a
-    # TW one), but each is still the sole/primary content this section is
-    # built from, so a blank value here is just as fatal to the section as
-    # every relevant field being blank is to Description of Event.
-    # Correction/Remedial Action gained a second possible source 2026-08-25 —
-    # the uploaded RC & CAPA document's own Section 9/10 text
-    # (uploaded_correction_remedial_text) — so it's only genuinely missing
-    # when BOTH the TW field and the uploaded document are blank.
-    if (
-        section_key == "correction_remedial_action"
-        and _blank(ctx.tw("correction_or_remedial_action"))
-        and _blank(ctx.uploaded_correction_remedial_text)
-    ):
-        missing.append(
-            "TrackWise field 'correction_or_remedial_action' and no uploaded RC & CAPA "
-            "document text"
-        )
+    # Impact Details isn't in a "required" TW schema (it's Optional there —
+    # see shared/schemas.py), but it's still the sole/primary content that
+    # section is built from, so a blank value here is just as fatal to the
+    # section as every relevant field being blank is to Description of Event.
+    # Correction/Remedial Action is intentionally NOT grounded on the
+    # TrackWise field at all (2026-08-26, per the user) — TrackWise's
+    # 'correction_or_remedial_action' is often just an audit-log stub, not the
+    # real corrective/remedial action text, so this section is sourced solely
+    # from the uploaded RC & CAPA document's own Section 9/10 text.
+    if section_key == "correction_remedial_action" and _blank(ctx.uploaded_correction_remedial_text):
+        missing.append("no uploaded RC & CAPA document text")
 
     if section_key in ("root_cause_conclusion", "impact_assessment_batch_disposition"):
         if _blank(ctx.accepted_rc_conclusion.rc_conclusion_text):
@@ -353,12 +345,9 @@ async def _generate_correction_remedial(
 ) -> CorrectionRemedialActionSection:
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
-        f"Uploaded RC & CAPA document's own Correction and/or Remedial Action text (may be "
-        f"blank if no RC & CAPA document has been uploaded yet — this is the most "
-        f"authoritative source when present, prefer it over the TrackWise field below):\n"
-        f"{ctx.uploaded_correction_remedial_text}\n\n"
-        f"Cleaned Correction/Remedial Action TrackWise field text (supplementary/fallback):\n"
-        f"{ctx.correction_remedial_text_clean}"
+        f"Uploaded RC & CAPA document's own Correction and/or Remedial Action text "
+        f"(the sole source for this section — not grounded on TrackWise):\n"
+        f"{ctx.uploaded_correction_remedial_text}"
     )
     return await call_with_retry(
         lambda: llm.get_structured_response(

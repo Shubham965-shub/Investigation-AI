@@ -80,9 +80,9 @@ export function ScoreBreakdownTooltip({
                   </tr>
                 </thead>
                 <tbody>
-                  {table.rows.map((row) => (
+                  {table.rows.map((row, rowIndex) => (
                     <tr key={row.id} style={{ borderBottom: "1px solid var(--color-card-border)" }}>
-                      <td style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{row.id}</td>
+                      <td style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{rowIndex + 1}</td>
                       <td style={{ padding: "6px 8px", verticalAlign: "top", minWidth: 200 }}>{row.checkpoint}</td>
                       <td style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{row.max}</td>
                       <td style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap", fontWeight: 600, color: verdictColor(row.verdict) }}>

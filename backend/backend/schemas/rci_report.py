@@ -130,6 +130,7 @@ class HistoryReviewRow(BaseModel):
 
 class HistoryReviewSection(BaseModel):
     lookback_months: int
+    search_scope_note: str
     rows: List[HistoryReviewRow]
     no_similar_events_found: bool
     closing_narrative: str
