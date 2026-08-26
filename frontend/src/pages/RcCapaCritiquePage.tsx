@@ -42,6 +42,261 @@ function formatDdMmYyyy(iso: string): string {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
+// One self-contained blanket accept/reject block per recommendation
+// subsection (Root Cause / Impact Assessment / CAPA's own "Recommendations
+// for Improvements") — mirrors Task Critique's single-section version
+// (2026-08-26, per the user: "do the same in rc and capa critique"), just
+// instantiated once per subsection here since this page has three instead
+// of one. Checkboxes + local bulk/deselect state live per-group (ids never
+// collide across groups since they're real DB row ids); the actual decision
+// calls and the "does this lock the whole report" prediction go through the
+// parent, since that prediction needs every recommendation across BOTH
+// critique categories, not just this group's own.
+function RecommendationGroup({
+  recs,
+  allRecsFlat,
+  decisionBusy,
+  decide,
+  onDecided,
+  setDecisionBusy,
+  setDecisionError,
+  setScoring,
+}: {
+  recs: RcCapaRecommendation[];
+  allRecsFlat: RcCapaRecommendation[];
+  decisionBusy: boolean;
+  decide: (recommendationId: number, decision: "accepted" | "rejected", reason?: string) => Promise<RcCapaState>;
+  onDecided: (updated: RcCapaState) => void;
+  setDecisionBusy: (busy: boolean) => void;
+  setDecisionError: (err: string | null) => void;
+  setScoring: (reason: ScoringReason | null) => void;
+}) {
+  const [uncheckedIds, setUncheckedIds] = useState<Set<number>>(new Set());
+  const [bulkRejecting, setBulkRejecting] = useState(false);
+  const [bulkReason, setBulkReason] = useState("");
+  const [deselectPrompt, setDeselectPrompt] = useState(false);
+  const [deselectReason, setDeselectReason] = useState("");
+
+  const pending = recs.filter((r) => r.decision === "pending");
+
+  function toggleChecked(id: number) {
+    setUncheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Every recommendation NOT in this batch must already be rejected for the
+  // batch's rejections to result in the whole report having nothing but
+  // rejected recommendations left — same rule the page previously applied
+  // per single recommendation, generalized to a batch.
+  function wouldLockEverything(batchIds: number[]): boolean {
+    return allRecsFlat.filter((r) => !batchIds.includes(r.id)).every((r) => r.decision === "rejected");
+  }
+
+  async function acceptAll(ids: number[]) {
+    if (ids.length === 0) return;
+    setDecisionBusy(true);
+    setDecisionError(null);
+    try {
+      let updated: RcCapaState | undefined;
+      for (const id of ids) {
+        updated = await decide(id, "accepted");
+      }
+      if (updated) onDecided(updated);
+    } catch (err) {
+      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendations");
+    } finally {
+      setDecisionBusy(false);
+    }
+  }
+
+  async function rejectAll(ids: number[], reason: string) {
+    if (ids.length === 0) return;
+    setDecisionBusy(true);
+    setDecisionError(null);
+    if (wouldLockEverything(ids)) setScoring("all_decided");
+    try {
+      let updated: RcCapaState | undefined;
+      for (const id of ids) {
+        updated = await decide(id, "rejected", reason);
+      }
+      if (updated) onDecided(updated);
+      setBulkRejecting(false);
+      setBulkReason("");
+      setDeselectPrompt(false);
+      setDeselectReason("");
+      setUncheckedIds(new Set());
+    } catch (err) {
+      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendations");
+    } finally {
+      setScoring(null);
+      setDecisionBusy(false);
+    }
+  }
+
+  function handleYesClick() {
+    const hasDeselected = pending.some((r) => uncheckedIds.has(r.id));
+    if (!hasDeselected) {
+      acceptAll(pending.map((r) => r.id));
+      return;
+    }
+    setDeselectPrompt(true);
+  }
+
+  async function handlePartialAccept() {
+    const reason = deselectReason.trim();
+    if (!reason) return;
+    const toAccept = pending.filter((r) => !uncheckedIds.has(r.id));
+    const toReject = pending.filter((r) => uncheckedIds.has(r.id));
+    setDecisionBusy(true);
+    setDecisionError(null);
+    if (toReject.length > 0 && wouldLockEverything(toReject.map((r) => r.id))) setScoring("all_decided");
+    try {
+      let updated: RcCapaState | undefined;
+      for (const rec of toAccept) {
+        updated = await decide(rec.id, "accepted");
+      }
+      for (const rec of toReject) {
+        updated = await decide(rec.id, "rejected", reason);
+      }
+      if (updated) onDecided(updated);
+      setDeselectPrompt(false);
+      setDeselectReason("");
+      setUncheckedIds(new Set());
+    } catch (err) {
+      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to record recommendation decisions");
+    } finally {
+      setScoring(null);
+      setDecisionBusy(false);
+    }
+  }
+
+  return (
+    <>
+      {pending.length > 0 && !bulkRejecting && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={decisionBusy}
+              onClick={() => setBulkRejecting(true)}
+              style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+            >
+              No
+            </button>
+            <button type="button" className="btn-outline" disabled={decisionBusy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+              Yes
+            </button>
+          </div>
+        </div>
+      )}
+
+      {bulkRejecting && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              type="text"
+              className="field-value"
+              placeholder="Rejection reason"
+              value={bulkReason}
+              onChange={(e) => setBulkReason(e.target.value)}
+              style={{ flex: 1, height: "auto" }}
+            />
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={decisionBusy || !bulkReason.trim()}
+              onClick={() => rejectAll(pending.map((r) => r.id), bulkReason.trim())}
+              style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+            >
+              Confirm Reject
+            </button>
+          </div>
+        </div>
+      )}
+
+      {recs.map((rec, recIdx) => (
+        <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <input
+              type="checkbox"
+              checked={rec.decision === "pending" ? !uncheckedIds.has(rec.id) : rec.decision === "accepted"}
+              disabled={rec.decision !== "pending" || decisionBusy}
+              onChange={() => toggleChecked(rec.id)}
+              style={{ marginTop: 3, cursor: rec.decision === "pending" ? "pointer" : "default" }}
+            />
+            <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
+              {recIdx + 1}. {rec.description}
+            </span>
+          </div>
+          {rec.decision === "rejected" && rec.reason && (
+            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
+          )}
+        </div>
+      ))}
+
+      {deselectPrompt && (
+        <>
+          <div onClick={() => setDeselectPrompt(false)} style={{ position: "fixed", inset: 0, background: "rgba(73, 84, 80, 0.45)", zIndex: 60 }} />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "var(--color-surface)",
+              borderRadius: 10,
+              width: "min(480px, 92vw)",
+              padding: 24,
+              zIndex: 61,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>
+              {(() => {
+                const deselectedNumbers = recs
+                  .map((r, i) => ({ r, num: i + 1 }))
+                  .filter(({ r }) => r.decision === "pending" && uncheckedIds.has(r.id))
+                  .map(({ num }) => `#${num}`);
+                return deselectedNumbers.length === 1
+                  ? `Why was Recommendation ${deselectedNumbers[0]} deselected?`
+                  : `Why were Recommendations ${deselectedNumbers.join(", ")} deselected?`;
+              })()}
+            </p>
+            <input
+              type="text"
+              className="field-value"
+              placeholder="Reason"
+              value={deselectReason}
+              onChange={(e) => setDeselectReason(e.target.value)}
+              style={{ height: "auto" }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+              <button type="button" className="btn-outline" onClick={() => setDeselectPrompt(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" disabled={decisionBusy || !deselectReason.trim()} onClick={handlePartialAccept}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export function RcCapaCritiquePage() {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
@@ -55,8 +310,6 @@ export function RcCapaCritiquePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const [rejectingId, setRejectingId] = useState<number | null>(null);
-  const [reasonDrafts, setReasonDrafts] = useState<Record<number, string>>({});
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
@@ -138,43 +391,11 @@ export function RcCapaCritiquePage() {
     }
   }
 
-  async function handleAccept(recommendationId: number) {
-    setDecisionBusy(true);
-    setDecisionError(null);
-    try {
-      const updated = await decideRcCapaRecommendation(recordId!, recommendationId, "accepted");
-      setState(updated);
-    } catch (err) {
-      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendation");
-    } finally {
-      setDecisionBusy(false);
-    }
-  }
-
-  async function handleReject(recommendationId: number) {
-    const reason = (reasonDrafts[recommendationId] ?? "").trim();
-    if (!reason) return;
-    setDecisionBusy(true);
-    setDecisionError(null);
-    // Rejecting the LAST still-pending recommendation across BOTH categories
-    // (rc_impact + capa combined — see db/critique_state.py, which flattens
-    // them before applying its all-rejected rule), where every other one is
-    // already rejected too, immediately locks and scores this report.
-    // Predicted client-side from the state as of this click.
-    const allRecs = state!.latest_report!.critiques.flatMap((c) => c.recommendations);
-    if (allRecs.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
-      setScoring("all_decided");
-    }
-    try {
-      const updated = await decideRcCapaRecommendation(recordId!, recommendationId, "rejected", reason);
-      setState(updated);
-      setRejectingId(null);
-    } catch (err) {
-      setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
-    } finally {
-      setDecisionBusy(false);
-      setScoring(null);
-    }
+  // Shared by every RecommendationGroup instance below — each group drives
+  // its own blanket accept/reject UI, but every actual decision still goes
+  // through this one page-level call (and updates the one shared `state`).
+  function decideRecommendation(recommendationId: number, decision: "accepted" | "rejected", reason?: string) {
+    return decideRcCapaRecommendation(recordId!, recommendationId, decision, reason);
   }
 
   function handleOpenHistory() {
@@ -200,63 +421,8 @@ export function RcCapaCritiquePage() {
     }
   }
 
-  function renderRecommendationCard(rec: RcCapaRecommendation) {
-    const isRejecting = rejectingId === rec.id;
-    return (
-      <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
-          {rec.decision === "pending" && !isRejecting && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className="btn-outline" disabled={decisionBusy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
-                Accept
-              </button>
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={decisionBusy}
-                onClick={() => setRejectingId(rec.id)}
-                style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-              >
-                Reject
-              </button>
-            </div>
-          )}
-          {rec.decision === "accepted" && <span className="status-pill complete">Accepted</span>}
-          {rec.decision === "rejected" && <span className="status-pill" style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}>Rejected</span>}
-        </div>
-        {isRejecting && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                className="field-value"
-                placeholder="Rejection reason"
-                value={reasonDrafts[rec.id] ?? ""}
-                onChange={(e) => setReasonDrafts((prev) => ({ ...prev, [rec.id]: e.target.value }))}
-                style={{ flex: 1, height: "auto" }}
-              />
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={decisionBusy || !(reasonDrafts[rec.id] ?? "").trim()}
-                onClick={() => handleReject(rec.id)}
-                style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-              >
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        )}
-        {rec.decision === "rejected" && rec.reason && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
-        )}
-      </div>
-    );
-  }
-
   const report = state.latest_report;
+  const allRecsFlat = report?.critiques.flatMap((c) => c.recommendations) ?? [];
   const isComplete = state.status === "complete";
   const waitingForSitReview = state.sit_review_status === "pending";
 
@@ -510,13 +676,31 @@ export function RcCapaCritiquePage() {
                             {rootCauseRecs.length > 0 && (
                               <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                                 <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Root Cause</p>
-                                {rootCauseRecs.map(renderRecommendationCard)}
+                                <RecommendationGroup
+                                  recs={rootCauseRecs}
+                                  allRecsFlat={allRecsFlat}
+                                  decisionBusy={decisionBusy}
+                                  decide={decideRecommendation}
+                                  onDecided={setState}
+                                  setDecisionBusy={setDecisionBusy}
+                                  setDecisionError={setDecisionError}
+                                  setScoring={setScoring}
+                                />
                               </div>
                             )}
                             {impactRecs.length > 0 && (
                               <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                                 <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Impact Assessment</p>
-                                {impactRecs.map(renderRecommendationCard)}
+                                <RecommendationGroup
+                                  recs={impactRecs}
+                                  allRecsFlat={allRecsFlat}
+                                  decisionBusy={decisionBusy}
+                                  decide={decideRecommendation}
+                                  onDecided={setState}
+                                  setDecisionBusy={setDecisionBusy}
+                                  setDecisionError={setDecisionError}
+                                  setScoring={setScoring}
+                                />
                               </div>
                             )}
                           </>
@@ -526,7 +710,16 @@ export function RcCapaCritiquePage() {
                   ) : (
                     <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                       <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
-                      {critique.recommendations.map(renderRecommendationCard)}
+                      <RecommendationGroup
+                        recs={critique.recommendations}
+                        allRecsFlat={allRecsFlat}
+                        decisionBusy={decisionBusy}
+                        decide={decideRecommendation}
+                        onDecided={setState}
+                        setDecisionBusy={setDecisionBusy}
+                        setDecisionError={setDecisionError}
+                        setScoring={setScoring}
+                      />
                     </div>
                   )
                 )}

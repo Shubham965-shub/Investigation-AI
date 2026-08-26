@@ -40,8 +40,25 @@ export function TaskCritiqueDetailPage() {
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [rejectingId, setRejectingId] = useState<number | null>(null);
-  const [reasonDrafts, setReasonDrafts] = useState<Record<number, string>>({});
+  // Blanket accept/reject for the whole batch of recommendations at once
+  // (2026-08-26, per the user), replacing per-recommendation Accept/Reject —
+  // still one decision call per recommendation under the hood, since the
+  // backend has no bulk-decision endpoint, but driven by a single Yes/No at
+  // the top of the section instead of a button pair per row.
+  const [bulkRejecting, setBulkRejecting] = useState(false);
+  const [bulkReason, setBulkReason] = useState("");
+  // Per-recommendation checkbox, defaulting to checked (2026-08-26, per the
+  // user) — lets the investigator deselect specific recommendations before
+  // hitting "Yes" instead of only ever accepting or rejecting the whole
+  // batch. Keyed by recommendation id; a missing entry means "checked" (see
+  // isRecChecked below), so this only needs writing to when something is
+  // actually unchecked.
+  const [uncheckedRecIds, setUncheckedRecIds] = useState<Set<number>>(new Set());
+  // Asks for ONE shared reason covering every deselected recommendation
+  // (2026-08-26, per the user: "a single reason", not one per recommendation)
+  // before the partial accept goes through.
+  const [deselectPrompt, setDeselectPrompt] = useState(false);
+  const [deselectReason, setDeselectReason] = useState("");
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
   const [history, setHistory] = useState<RecommendationHistoryAttempt[]>([]);
 
@@ -129,42 +146,112 @@ export function TaskCritiqueDetailPage() {
     }
   }
 
-  async function handleAccept(recommendationId: number) {
+  async function handleAcceptAll() {
+    const pendingIds = report!.recommendations.filter((r) => r.decision === "pending").map((r) => r.id);
+    if (pendingIds.length === 0) return;
     setBusy(true);
     setActionError("");
     try {
-      const updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, recommendationId, "accepted");
+      let updated = section!;
+      for (const id of pendingIds) {
+        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "accepted");
+      }
       setSection(updated);
     } catch (err) {
-      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendation");
+      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendations");
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleReject(recommendationId: number) {
-    const reason = (reasonDrafts[recommendationId] ?? "").trim();
+  async function handleRejectAll() {
+    const reason = bulkReason.trim();
     if (!reason) return;
+    const pendingIds = report!.recommendations.filter((r) => r.decision === "pending").map((r) => r.id);
+    if (pendingIds.length === 0) return;
     setBusy(true);
     setActionError("");
-    // Rejecting the LAST still-pending recommendation, where every other one
-    // is already rejected too, immediately locks and scores this report (see
+    // Rejecting every still-pending recommendation, where none of the rest
+    // are already accepted, immediately locks and scores this report (see
     // db/critique_state.py's all-rejected branch) — predicted client-side
     // from the state as of this click, not assumed from the response, so the
-    // dialog can appear the instant the request goes out.
-    if (report!.recommendations.filter((r) => r.id !== recommendationId).every((r) => r.decision === "rejected")) {
+    // dialog can appear the instant the requests go out.
+    if (!report!.recommendations.some((r) => r.decision === "accepted")) {
       setScoring("all_decided");
     }
     try {
-      const updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, recommendationId, "rejected", reason);
+      let updated = section!;
+      for (const id of pendingIds) {
+        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "rejected", reason);
+      }
       setSection(updated);
-      setRejectingId(null);
+      setBulkRejecting(false);
+      setBulkReason("");
     } catch (err) {
-      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendation");
+      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to reject recommendations");
     } finally {
       setScoring(null);
       setBusy(false);
     }
+  }
+
+  // "Yes" respects the per-recommendation checkboxes (2026-08-26, per the
+  // user): fully checked accepts everything immediately as before; any
+  // deselected ones (with at least one still checked) prompt for a single
+  // shared reason first, then accept the checked ones and reject the
+  // deselected ones with that reason.
+  function handleYesClick() {
+    const pending = report!.recommendations.filter((r) => r.decision === "pending");
+    const hasDeselected = pending.some((r) => uncheckedRecIds.has(r.id));
+    if (!hasDeselected) {
+      handleAcceptAll();
+      return;
+    }
+    setDeselectPrompt(true);
+  }
+
+  async function handlePartialAccept() {
+    const reason = deselectReason.trim();
+    if (!reason) return;
+    const pending = report!.recommendations.filter((r) => r.decision === "pending");
+    const toAccept = pending.filter((r) => !uncheckedRecIds.has(r.id));
+    const toReject = pending.filter((r) => uncheckedRecIds.has(r.id));
+    if (toAccept.length === 0 && toReject.length === 0) return;
+    setBusy(true);
+    setActionError("");
+    // Same all-rejected prediction as handleRejectAll — every deselected
+    // recommendation here plus nothing accepted (neither in this batch nor
+    // already) locks and scores the report immediately.
+    if (toAccept.length === 0 && !report!.recommendations.some((r) => r.decision === "accepted")) {
+      setScoring("all_decided");
+    }
+    try {
+      let updated = section!;
+      for (const rec of toAccept) {
+        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "accepted");
+      }
+      for (const rec of toReject) {
+        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "rejected", reason);
+      }
+      setSection(updated);
+      setDeselectPrompt(false);
+      setDeselectReason("");
+      setUncheckedRecIds(new Set());
+    } catch (err) {
+      setActionError(err instanceof ApiError ? String(err.detail) : "Failed to record recommendation decisions");
+    } finally {
+      setScoring(null);
+      setBusy(false);
+    }
+  }
+
+  function toggleRecChecked(recId: number) {
+    setUncheckedRecIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(recId)) next.delete(recId);
+      else next.add(recId);
+      return next;
+    });
   }
 
   const report = section.latest_report;
@@ -248,61 +335,71 @@ export function TaskCritiqueDetailPage() {
                 {!section.locked && report.recommendations.length > 0 && (
                   <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Recommendations for Improvements</p>
-                    {report.recommendations.map((rec) => {
-                      const isRejecting = rejectingId === rec.id;
-                      return (
-                        <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
-                            {rec.decision === "pending" && !isRejecting && (
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <button
-                                  type="button"
-                                  className="btn-outline"
-                                  disabled={busy}
-                                  onClick={() => setRejectingId(rec.id)}
-                                  style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                                >
-                                  Reject
-                                </button>
-                                <button type="button" className="btn-outline" disabled={busy} onClick={() => handleAccept(rec.id)} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
-                                  Accept
-                                </button>
-                              </div>
-                            )}
-                            {rec.decision === "accepted" && <span className="status-pill complete">Accepted</span>}
-                            {rec.decision === "rejected" && <span className="status-pill" style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}>Rejected</span>}
-                          </div>
-                          {isRejecting && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <input
-                                  type="text"
-                                  className="field-value"
-                                  placeholder="Rejection reason"
-                                  value={reasonDrafts[rec.id] ?? ""}
-                                  onChange={(e) => setReasonDrafts((prev) => ({ ...prev, [rec.id]: e.target.value }))}
-                                  style={{ flex: 1, height: "auto" }}
-                                />
-                                <button
-                                  type="button"
-                                  className="btn-outline"
-                                  disabled={busy || !(reasonDrafts[rec.id] ?? "").trim()}
-                                  onClick={() => handleReject(rec.id)}
-                                  style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
-                                >
-                                  Confirm Reject
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          {rec.decision === "rejected" && rec.reason && (
-                            <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
-                          )}
+
+                    {report.recommendations.some((r) => r.decision === "pending") && !bulkRejecting && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            className="btn-outline"
+                            disabled={busy}
+                            onClick={() => setBulkRejecting(true)}
+                            style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+                          >
+                            No
+                          </button>
+                          <button type="button" className="btn-outline" disabled={busy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+                            Yes
+                          </button>
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
+
+                    {bulkRejecting && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Reason *</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            type="text"
+                            className="field-value"
+                            placeholder="Rejection reason"
+                            value={bulkReason}
+                            onChange={(e) => setBulkReason(e.target.value)}
+                            style={{ flex: 1, height: "auto" }}
+                          />
+                          <button
+                            type="button"
+                            className="btn-outline"
+                            disabled={busy || !bulkReason.trim()}
+                            onClick={handleRejectAll}
+                            style={{ color: "var(--color-danger-text)", borderColor: "var(--color-danger-text)" }}
+                          >
+                            Confirm Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {report.recommendations.map((rec, recIdx) => (
+                      <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <input
+                            type="checkbox"
+                            checked={rec.decision === "pending" ? !uncheckedRecIds.has(rec.id) : rec.decision === "accepted"}
+                            disabled={rec.decision !== "pending" || busy}
+                            onChange={() => toggleRecChecked(rec.id)}
+                            style={{ marginTop: 3, cursor: rec.decision === "pending" ? "pointer" : "default" }}
+                          />
+                          <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
+                            {recIdx + 1}. {rec.description}
+                          </span>
+                        </div>
+                        {rec.decision === "rejected" && rec.reason && (
+                          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Reason: {rec.reason}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -372,6 +469,59 @@ export function TaskCritiqueDetailPage() {
           )}
         </div>
       </div>
+
+      {deselectPrompt && report && (
+        <>
+          <div onClick={() => setDeselectPrompt(false)} style={{ position: "fixed", inset: 0, background: "rgba(73, 84, 80, 0.45)", zIndex: 60 }} />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "var(--color-surface)",
+              borderRadius: 10,
+              width: "min(480px, 92vw)",
+              padding: 24,
+              zIndex: 61,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>
+              {(() => {
+                const deselectedNumbers = report.recommendations
+                  .map((r, i) => ({ r, num: i + 1 }))
+                  .filter(({ r }) => r.decision === "pending" && uncheckedRecIds.has(r.id))
+                  .map(({ num }) => `#${num}`);
+                return deselectedNumbers.length === 1
+                  ? `Why was Recommendation ${deselectedNumbers[0]} deselected?`
+                  : `Why were Recommendations ${deselectedNumbers.join(", ")} deselected?`;
+              })()}
+            </p>
+            <input
+              type="text"
+              className="field-value"
+              placeholder="Reason"
+              value={deselectReason}
+              onChange={(e) => setDeselectReason(e.target.value)}
+              style={{ height: "auto" }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+              <button type="button" className="btn-outline" onClick={() => setDeselectPrompt(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" disabled={busy || !deselectReason.trim()} onClick={handlePartialAccept}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {scoring && <ScoringDialog reason={scoring} />}
     </div>
