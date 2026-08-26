@@ -518,16 +518,6 @@ export function ActionCenterPage() {
                   <>
                     <button
                       type="button"
-                      className={criticalityFilter === "phase1" ? "active" : ""}
-                      onClick={() => {
-                        setCriticalityFilter("phase1");
-                        setPage(1);
-                      }}
-                    >
-                      Phase 1
-                    </button>
-                    <button
-                      type="button"
                       className={criticalityFilter === "phase2" ? "active" : ""}
                       onClick={() => {
                         setCriticalityFilter("phase2");
