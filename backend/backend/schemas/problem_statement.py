@@ -42,6 +42,12 @@ class ProblemStatementRecord(BaseModel):
     event_type: PSEventType
     trackwise_fields: Dict[str, Any]
     problem_statement: Optional[str] = None
+    # Verbatim dim_event.criticality (upstream/Trackwise, same source Action
+    # Center reads) — None when Trackwise hasn't set it. Only meaningful for
+    # Deviation/Market Complaint; OOS/OOT don't carry a criticality tier here
+    # (2026-08-26, per the user: used to pick which SLA tier the Stepper
+    # shows for this specific investigation).
+    criticality: Optional[str] = None
     # How many modules Trackwise's own status implies are already done (see
     # src/db/module_stage.py) — lets the frontend show this module as
     # already-complete (read-only trackwise fields) even without a real

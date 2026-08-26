@@ -34,6 +34,61 @@ function labelColor(status: StepStatus): string {
   return status === "open" ? "var(--color-text-muted)" : "var(--color-primary-text)";
 }
 
+// SLA target shown under each step's own label (2026-08-26, per the user) —
+// keyed by step, not by connector, since a couple of source stages
+// ("Evidence Collection and Interview Questionnaire") span two modules and
+// repeat verbatim under both. Phrased as a cumulative day range from the
+// investigation's own initiation — not from each stage's own local anchor
+// (2026-08-26, per the user: "not from its own anchor event") — since the
+// source table's later stages (Task Execution, Report Generation, Report
+// Sign Off) each count from the PRIOR stage's own deadline rather than from
+// initiation directly, the day range compounds: e.g. critical-tier Task
+// Execution is "within 8 days from RCI Plan sign-off", and RCI Plan sign-off
+// is itself "within 3 days from initiation", so Task Execution's cumulative
+// window from initiation is day 3 through day 11, not 0 through 8. The two
+// tiers only share an identical range for Problem Statement — every later
+// stage inherits and compounds whichever tier's earlier deadlines applied,
+// so both tiers diverge from Evidence Collection onward. End-of-chain totals
+// here (critical: day 15, other: day 19) match the source email's own
+// "Total days" row.
+type StepSla = string | { critical: string; other: string };
+const STEP_SLA: Record<string, StepSla> = {
+  "problem-statement": "Day 0–1",
+  "evidence-collection": { critical: "Day 0–2", other: "Day 0–3" },
+  "interview-questionnaire": { critical: "Day 0–2", other: "Day 0–3" },
+  "rci-plan": { critical: "Day 0–3", other: "Day 0–5" },
+  "task-critique": { critical: "Day 3–11", other: "Day 5–15" },
+  "rc-capa-critique": { critical: "Day 11–13", other: "Day 15–17" },
+  "rci-report": { critical: "Day 13–15", other: "Day 17–19" },
+};
+
+// Shows only the tier that actually applies to this investigation when
+// known; both tiers (unlabeled) when the investigation's criticality
+// couldn't be determined (2026-08-26, per the user: "it should only show
+// applicable definitions for applicable investigations", then "remove the
+// text before the colon" — the header names were only needed to tell the
+// two figures apart when both showed at once).
+function renderStepSla(entry: StepSla, tier: "critical" | "other" | null | undefined) {
+  if (typeof entry === "string") return entry;
+  if (tier === "critical") return entry.critical;
+  if (tier === "other") return entry.other;
+  return (
+    <>
+      <div>{entry.critical}</div>
+      <div style={{ marginTop: 4 }}>{entry.other}</div>
+    </>
+  );
+}
+
+// Native-tooltip fallback so the full figure is still reachable (on hover)
+// for the rare string long enough that the 2-line clamp above ellipsizes it.
+function slaTitle(entry: StepSla, tier: "critical" | "other" | null | undefined): string | undefined {
+  if (typeof entry === "string") return entry;
+  if (tier === "critical") return entry.critical;
+  if (tier === "other") return entry.other;
+  return `${entry.critical} / ${entry.other}`;
+}
+
 // What actually happens off-screen between these two step pairs — the app
 // itself has no workflow for it, so the person icon on the connecting line
 // explains it on hover (2026-08-26, per the user).
@@ -147,6 +202,7 @@ export function Stepper({
   currentStep,
   stepStatuses,
   eventType,
+  slaTier,
 }: {
   recordId: string;
   currentStep: string;
@@ -158,11 +214,24 @@ export function Stepper({
   // is optional" marker, not a real lock (nothing in this stepper actually
   // blocks navigation today).
   eventType?: string;
+  // Which SLA tier applies to this specific investigation (2026-08-26, per
+  // the user) — null/undefined shows both tiers (unknown criticality), same
+  // as before this was wired up.
+  slaTier?: "critical" | "other" | null;
 }) {
   const navigate = useNavigate();
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+    // paddingBottom reserves room for every step's label+SLA text, which is
+    // now absolutely positioned (see below) and so no longer contributes to
+    // this row's own layout height — without it, that text would overlap
+    // whatever renders directly below the stepper. paddingLeft/Right does
+    // the equivalent horizontally for step 1 and step 7 specifically —
+    // their label is centered on a circle sitting flush at the row's own
+    // edge, so without this buffer its centered (up to 170px wide) text
+    // would run off the edge of the page instead of just wrapping
+    // (2026-08-26, per the user: "now it's all extending too far").
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", width: "100%", padding: "0 90px 60px" }}>
       {RECORD_STEPS.map((step, index) => {
         const status = stepStatuses[step.key] ?? "open";
         const isLast = index === RECORD_STEPS.length - 1;
@@ -177,10 +246,10 @@ export function Stepper({
         const lineColor = status === "completed" ? "var(--color-primary)" : "var(--color-open-border)";
 
         return (
-          <div key={step.key} style={{ display: "flex", alignItems: "center", flex: isLast ? "0 0 auto" : "1 1 auto" }}>
+          <div key={step.key} style={{ display: "flex", alignItems: "flex-start", flex: isLast ? "0 0 auto" : "1 1 auto" }}>
             <div
               onClick={() => clickable && navigate(`/records/${recordId}/${step.path}`)}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: clickable ? "pointer" : "default" }}
+              style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", cursor: clickable ? "pointer" : "default" }}
             >
               <div
                 style={{
@@ -197,13 +266,27 @@ export function Stepper({
               >
                 {index + 1}
               </div>
+              {/* Absolutely positioned, like the connector's "Manual Input"
+                  label — so a long module name or SLA line doesn't widen
+                  this step's own box in the row, which was leaving barely
+                  any room for the connecting line to the next circle
+                  (2026-08-26, per the user: "still not connected"). The
+                  row's own height is reserved separately below since this
+                  no longer contributes to it. */}
               <div
                 style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   marginTop: 12,
+                  width: "max-content",
+                  maxWidth: 170,
                   fontSize: "var(--font-size-base)",
                   fontWeight: 600,
                   color: labelColor(status),
                   whiteSpace: "nowrap",
+                  textAlign: "center",
                 }}
               >
                 {step.label}
@@ -212,10 +295,43 @@ export function Stepper({
                     (Optional)
                   </span>
                 )}
+                {STEP_SLA[step.key] && (
+                  <div
+                    title={slaTitle(STEP_SLA[step.key], slaTier)}
+                    style={{
+                      marginTop: 2,
+                      fontWeight: 400,
+                      fontSize: "var(--font-size-xs)",
+                      color: "var(--color-text-muted)",
+                      whiteSpace: "normal",
+                      maxWidth: 170,
+                      textAlign: "center",
+                      lineHeight: 1.3,
+                      // Hard-capped at 2 lines regardless of how long the
+                      // figure's text is (2026-08-26, per the user) —
+                      // ellipsis is the fallback for the rare string that
+                      // still wouldn't fit even at this width.
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {renderStepSla(STEP_SLA[step.key], slaTier)}
+                  </div>
+                )}
               </div>
             </div>
+            {/* marginTop centers the connector on the 48px step circle
+                (circle's own vertical center sits 24px from the top of the
+                row, fixed regardless of how many lines of SLA text trail
+                below it now that the row top-aligns every step instead of
+                centering by each step's own — now variable — total height)
+                (2026-08-26, per the user: circles/lines were misaligning
+                once some steps' SLA text grew taller than others'). */}
             {!isLast && (hasConnectorBox ? (
-              <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "0 8px 24px" }}>
+              <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "10px 2px 0" }}>
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
                 <ConnectorPersonIcon color={lineColor} notes={CONNECTOR_NOTES[index]} />
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />
@@ -225,7 +341,7 @@ export function Stepper({
                 style={{
                   height: 2,
                   flex: 1,
-                  margin: "0 8px 24px",
+                  margin: "23px 2px 0",
                   background: lineColor,
                 }}
               />

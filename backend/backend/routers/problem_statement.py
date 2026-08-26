@@ -66,6 +66,7 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         problem_statement=await fetch_problem_statement(deviation_id),
         stage=stage_for(row["status"]),
         locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
+        criticality=row["criticality"],
     )
 
 

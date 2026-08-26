@@ -21,22 +21,43 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
   const [eventType, setEventType] = useState<string | undefined>(undefined);
+  const [criticality, setCriticality] = useState<string | null | undefined>(undefined);
 
   // Only used so the stepper can mark Interview Questionnaire "(Optional)"
-  // for Market Complaint investigations — a failed/absent fetch just leaves
-  // it unmarked rather than blocking the page.
+  // for Market Complaint investigations, and pick which SLA tier applies —
+  // a failed/absent fetch just leaves both unmarked rather than blocking
+  // the page.
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
     getProblemStatementRecord(recordId)
       .then((record) => {
-        if (!cancelled) setEventType(record?.event_type);
+        if (!cancelled) {
+          setEventType(record?.event_type);
+          setCriticality(record?.criticality ?? null);
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [recordId]);
+
+  // Which SLA tier (of the two shown under each Stepper step) applies to
+  // this specific investigation (2026-08-26, per the user: "only show
+  // applicable definitions for applicable investigations"). OOS/OOT always
+  // gets the strict tier — there's no data anywhere distinguishing "Real
+  // Time Stability Failure"/"Microbiocidal Failure" from any other OOS/OOT
+  // failure, so this errs toward the safer/faster SLA rather than guessing.
+  // Deviation/Market Complaint go by dim_event.criticality; anything other
+  // than exactly "Critical" — including null/missing (Trackwise hasn't set
+  // it, or the fetch failed) — defaults to the "other" tier (2026-08-26, per
+  // the user: "if an investigation does not have a criticality value, assume
+  // it is non critical").
+  const slaTier: "critical" | "other" =
+    eventType === "OOS" || eventType === "OOT" || eventType === "OOS/OOT" || criticality === "Critical"
+      ? "critical"
+      : "other";
 
   if (!recordId) return null;
 
@@ -59,7 +80,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
         </div>
       </div>
 
-      <Stepper recordId={recordId} currentStep={currentStep} stepStatuses={deriveStepStatuses(currentStep)} eventType={eventType} />
+      <Stepper recordId={recordId} currentStep={currentStep} stepStatuses={deriveStepStatuses(currentStep)} eventType={eventType} slaTier={slaTier} />
 
       <Outlet />
     </div>
