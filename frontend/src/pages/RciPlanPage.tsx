@@ -366,9 +366,14 @@ export function RciPlanPage() {
         <div className="card">
           <div className="card-header">
             <p className="card-title">Problem Statement</p>
-            <button type="button" onClick={handleExploreEvents} className="btn-outline">
-              Explore Events
-            </button>
+            {/* Event Explorer button removed from the UI while keeping the
+                handler/state intact (2026-08-26, per the user), same pattern
+                as Action Center's "Show Cancelled" button. */}
+            {false && (
+              <button type="button" onClick={handleExploreEvents} className="btn-outline">
+                Explore Events
+              </button>
+            )}
           </div>
           <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
@@ -392,9 +397,14 @@ export function RciPlanPage() {
       <div className="card">
         <div className="card-header">
           <p className="card-title">Problem Statement</p>
-          <button type="button" onClick={handleExploreEvents} className="btn-outline">
-            Explore Events
-          </button>
+          {/* Event Explorer button removed from the UI while keeping the
+              handler/state intact (2026-08-26, per the user), same pattern
+              as Action Center's "Show Cancelled" button. */}
+          {false && (
+            <button type="button" onClick={handleExploreEvents} className="btn-outline">
+              Explore Events
+            </button>
+          )}
         </div>
         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 12 }}>
           <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)", lineHeight: 1.9 }}>{problemStatement}</p>
@@ -421,6 +431,16 @@ export function RciPlanPage() {
         <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
           This RCI Plan is read-only — Task Critique has already started on it.
         </p>
+      )}
+
+      {sections.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+          <span style={{ width: 20, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0 }}>Task</span>
+          <span style={{ minWidth: 200 }}>Target Date</span>
+          <span style={{ minWidth: 200 }}>Investigator</span>
+          <span style={{ width: 24, flexShrink: 0 }} />
+        </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -470,7 +490,7 @@ export function RciPlanPage() {
                         <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>
                           {index + 1}. {section.title}
                         </span>
-                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "task" : "tasks"})</span>
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>({section.tasks.length} {section.tasks.length === 1 ? "action" : "actions"})</span>
                       </div>
                       {section.correlation && (
                         <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-faint)" }}>{section.correlation}</p>
@@ -479,7 +499,6 @@ export function RciPlanPage() {
                   )}
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
-                  <span>TCD:</span>
                   {editMode && !lockedForEditing ? (
                     <input
                       type="date"

@@ -369,7 +369,18 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
     ds/src/agents/rci_report/api/schemas/measure_analyze.py). Rendered flat with
     indentation, matching this file's existing line-based convention for every
     other multi-item section (no real Word list-numbering anywhere in this
-    template — see _set_paragraph_lines)."""
+    template — see _set_paragraph_lines).
+
+    Paragraph 132's own style in the template is "Heading 1" — inherited
+    from the "Investigation tasks:" heading and its italic guidance
+    paragraphs right above it (confirmed via python-docx), unlike every
+    other section's blank (e.g. Executive Summary's, "Normal"/"List
+    Paragraph"). Left as-is, real content here renders as an oversized bold
+    heading instead of body text — reset explicitly so this reads like the
+    rest of the document.
+    """
+    _body_paragraph(doc, 132).style = "Normal"
+
     if section is None:
         _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
         return

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
-from backend.clients.ds_client import _raise_for_upstream_error, get_client
+from backend.clients.ds_client import HEAVY_DS_TIMEOUT, _raise_for_upstream_error, get_client, raise_for_ds_request_error
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.critique_state import MAX_UPLOADS
 from backend.db.field_mapping import resolved_event_type
@@ -53,15 +53,13 @@ async def _call_critique_endpoint(
                 "previous_recommendations": json.dumps(previous_recommendations or []),
             },
             files={"file": (filename, file_bytes, content_type)},
+            timeout=HEAVY_DS_TIMEOUT,
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         _raise_for_upstream_error(exc)
     except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"InvestigationAi_DS service unreachable: {exc}",
-        ) from exc
+        raise_for_ds_request_error(exc)
     return response.json()
 
 
@@ -105,6 +103,7 @@ async def _score_rc_capa_report(
             "/score/report",
             data={"event_type": event_type},
             files={"file": (filename, file_bytes, content_type)},
+            timeout=HEAVY_DS_TIMEOUT,
         )
         response.raise_for_status()
     except httpx.HTTPError:

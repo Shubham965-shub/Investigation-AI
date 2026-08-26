@@ -187,24 +187,6 @@ export function LoginPage() {
               >
                 Athena · Investigation AI
               </div>
-              <h1
-                style={{
-                  marginTop: 12,
-                  marginBottom: 0,
-                  fontFamily: "var(--font-heading)",
-                  fontWeight: 700,
-                  fontSize: "var(--font-size-hero)",
-                  lineHeight: 1.1,
-                  backgroundImage: isDark
-                    ? "linear-gradient(90deg, #6ee7b7 0%, #34d399 50%, #10b981 100%)"
-                    : "linear-gradient(90deg, #00955e 0%, #027757 50%, #00402c 100%)",
-                  backgroundClip: "text",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                Turning investigations into clear, defensible root causes.
-              </h1>
               <p style={{ marginTop: 12, maxWidth: 440, fontSize: "var(--font-size-md)", lineHeight: 1.6, color: "var(--color-text-muted)" }}>
                 Sign in to manage problem statements, evidence, interview questionnaires and RCI plans — all in one place.
               </p>

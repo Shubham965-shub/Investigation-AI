@@ -6,7 +6,7 @@ import {
   generateRciReport,
   updateRciReportSections,
   exportRciReportDocx,
-  RCA_METHOD_OPTIONS,
+  RCA_DEMONSTRABLE_METHOD_OPTIONS,
   SIX_M_FACTOR_OPTIONS,
   DURATION_TIER_OPTIONS,
   CAPA_MECHANISM_OPTIONS,
@@ -16,9 +16,13 @@ import {
   type MaterialProductImpactItem,
   type EquipmentImpactItem,
   type HistoryReviewRow,
-  type InvestigationTaskGroup,
-  type InvestigationTaskSubsection,
-  type InvestigationTaskFinding,
+  type TaskSummaryItem,
+  type RootCauseTaskLink,
+  type RCAToolDemonstration,
+  type WhyWhyStep,
+  type FishboneBranch,
+  type FaultTreeNode,
+  type FlowchartStep,
   type ImpactSubsectionItem,
   type BatchShipperImpact,
   type RiskAssessmentCandidate,
@@ -30,8 +34,6 @@ import {
   type InterimControlItem,
   type CAPAEffectivenessPlanItem,
   type ApprovalRow,
-  type RCAMethod,
-  type SixMFactor,
 } from "../api/dashboard";
 import type { TrackwiseFields } from "../constants/trackwiseFields";
 import { ApiError } from "../api/client";
@@ -549,47 +551,6 @@ function StringListEditor({ items, onChange, placeholder }: { items: string[]; o
           Add
         </button>
       </div>
-    </div>
-  );
-}
-
-function ChipMultiSelect<T extends string>({ options, selected, onChange }: { options: readonly T[]; selected: T[]; onChange: (v: T[]) => void }) {
-  const editing = useContext(EditModeContext);
-  if (!editing) {
-    if (!selected.length) return <ReadOnlyValue value="" />;
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {selected.map((o) => (
-          <span
-            key={o}
-            style={{ fontSize: "var(--font-size-sm)", background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 6, padding: "4px 10px" }}
-          >
-            {o}
-          </span>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {options.map((o) => {
-        const isSelected = selected.includes(o);
-        return (
-          <button
-            key={o}
-            type="button"
-            className="btn-outline"
-            style={{
-              fontSize: "var(--font-size-sm)",
-              background: isSelected ? "var(--color-primary)" : undefined,
-              color: isSelected ? "#fff" : undefined,
-            }}
-            onClick={() => onChange(isSelected ? selected.filter((s) => s !== o) : [...selected, o])}
-          >
-            {o}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1335,149 +1296,339 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.investigation_task} />
             ) : (
               <>
-                <Field label="RCA Method Evidence">
-                  <TextArea value={report.investigation_task.rca_method_evidence} onChange={(v) => setSectionField("investigation_task", "rca_method_evidence", v)} />
-                </Field>
-                <Field label="RCA Methods Used">
-                  <ChipMultiSelect<RCAMethod>
-                    options={RCA_METHOD_OPTIONS}
-                    selected={report.investigation_task.rca_methods_used}
-                    onChange={(v) => setListField("investigation_task", "rca_methods_used", v)}
+                {/* Task Summary */}
+                <Field label="Task Summary — Overview">
+                  <TextArea
+                    value={report.investigation_task.task_summary.overview}
+                    onChange={(v) => setNestedField("investigation_task", "task_summary", { overview: v })}
                   />
                 </Field>
-
-                {(() => {
-                  const groups = report.investigation_task!.groups;
-                  const gh = listHelpers<InvestigationTaskGroup>("investigation_task", "groups", groups);
-                  const editing = editSections["investigation-task"];
-                  if (!editing) {
-                    if (!groups.length) return <ReadOnlyValue value="" />;
+                <Field label="Tasks Performed">
+                  {(() => {
+                    const tasks = report.investigation_task!.task_summary.tasks;
+                    const editing = editSections["investigation-task"];
+                    const updateTasks = (newTasks: TaskSummaryItem[]) => setNestedField("investigation_task", "task_summary", { tasks: newTasks });
+                    if (!editing) {
+                      if (!tasks.length) return <ReadOnlyValue value="" />;
+                      return (
+                        <DataTable
+                          columns={[
+                            { key: "tick", label: "Tick" },
+                            { key: "title", label: "Title" },
+                            { key: "six_m_factor", label: "6M Factor" },
+                            { key: "outcome", label: "Outcome" },
+                          ]}
+                          rows={tasks}
+                        />
+                      );
+                    }
                     return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                        {groups.map((group, gi) => (
-                          <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                            {group.section_title && (
-                              <p style={{ margin: 0, fontWeight: 700 }}>
-                                {gi + 1}. {group.section_title}
-                              </p>
-                            )}
-                            {group.subsections.map((sub, si) => (
-                              <div key={si} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>
-                                  {gi + 1}.{si + 1} {sub.title}
-                                </p>
-                                {sub.six_m_factors.length > 0 && (
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                    {sub.six_m_factors.map((f) => (
-                                      <span key={f} style={{ fontSize: "var(--font-size-xs)", background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 6, padding: "2px 8px" }}>
-                                        {f}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                {sub.findings.length > 0 && (
-                                  <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                                    {sub.findings.map((finding, fi) => (
-                                      <li key={fi} style={{ fontSize: "var(--font-size-base)" }}>
-                                        {finding.sop_reference && <strong>{finding.sop_reference}: </strong>}
-                                        {finding.finding}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            ))}
+                      <>
+                        {tasks.map((task, i) => (
+                          <div key={i} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <Field label="Tick">
+                              <TextInput value={task.tick} onChange={(v) => updateTasks(tasks.map((t, j) => (j === i ? { ...t, tick: v } : t)))} />
+                            </Field>
+                            <Field label="Title">
+                              <TextInput value={task.title} onChange={(v) => updateTasks(tasks.map((t, j) => (j === i ? { ...t, title: v } : t)))} />
+                            </Field>
+                            <Field label="6M Factor">
+                              <SelectInput value={task.six_m_factor} onChange={(v) => updateTasks(tasks.map((t, j) => (j === i ? { ...t, six_m_factor: v } : t)))} options={SIX_M_FACTOR_OPTIONS} />
+                            </Field>
+                            <Field label="Outcome">
+                              <TextArea value={task.outcome} rows={2} onChange={(v) => updateTasks(tasks.map((t, j) => (j === i ? { ...t, outcome: v } : t)))} />
+                            </Field>
+                            <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => updateTasks(tasks.filter((_, j) => j !== i))}>
+                              Remove
+                            </button>
                           </div>
                         ))}
-                      </div>
-                    );
-                  }
-                  return (
-                    <>
-                      {groups.map((group, gi) => {
-                        const sh = {
-                          add: (item: InvestigationTaskSubsection) => gh.update(gi, { subsections: [...group.subsections, item] }),
-                          remove: (si: number) => gh.update(gi, { subsections: group.subsections.filter((_, j) => j !== si) }),
-                          update: (si: number, patch: Partial<InvestigationTaskSubsection>) =>
-                            gh.update(gi, { subsections: group.subsections.map((s, j) => (j === si ? { ...s, ...patch } : s)) }),
-                        };
-                        return (
-                          <div key={gi} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                            <Field label="Group / Section Title">
-                              <TextInput value={group.section_title} onChange={(v) => gh.update(gi, { section_title: v })} />
-                            </Field>
-                            {group.subsections.map((sub, si) => {
-                              const fh = {
-                                add: (item: InvestigationTaskFinding) => sh.update(si, { findings: [...sub.findings, item] }),
-                                remove: (fi: number) => sh.update(si, { findings: sub.findings.filter((_, j) => j !== fi) }),
-                                update: (fi: number, patch: Partial<InvestigationTaskFinding>) =>
-                                  sh.update(si, { findings: sub.findings.map((f, j) => (j === fi ? { ...f, ...patch } : f)) }),
-                              };
-                              return (
-                                <div key={si} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 8, background: "var(--color-bg)" }}>
-                                  <Field label="Subsection Title">
-                                    <TextInput value={sub.title} onChange={(v) => sh.update(si, { title: v })} />
-                                  </Field>
-                                  <Field label="6M Factors">
-                                    <ChipMultiSelect<SixMFactor> options={SIX_M_FACTOR_OPTIONS} selected={sub.six_m_factors} onChange={(v) => sh.update(si, { six_m_factors: v })} />
-                                  </Field>
-                                  {sub.findings.map((finding, fi) => (
-                                    <div key={fi} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                                      <TextInput
-                                        placeholder="SOP Reference (optional)"
-                                        value={finding.sop_reference ?? ""}
-                                        onChange={(v) => fh.update(fi, { sop_reference: v || null })}
-                                        style={{ flex: "0 0 160px" }}
-                                      />
-                                      <TextArea
-                                        placeholder="Finding"
-                                        value={finding.finding}
-                                        onChange={(v) => fh.update(fi, { finding: v })}
-                                        style={{ flex: 1 }}
-                                        rows={2}
-                                      />
-                                      <EditOnly>
-                                        <button type="button" className="btn-outline" onClick={() => fh.remove(fi)}>
-                                          Remove
-                                        </button>
-                                      </EditOnly>
-                                    </div>
-                                  ))}
-                                  <EditOnly>
-                                    <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => fh.add({ sop_reference: null, finding: "" })}>
-                                      + Add Finding
-                                    </button>
-                                    <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => sh.remove(si)}>
-                                      Remove Subsection
-                                    </button>
-                                  </EditOnly>
-                                </div>
-                              );
-                            })}
-                            <EditOnly>
-                              <button
-                                type="button"
-                                className="btn-outline"
-                                style={{ alignSelf: "flex-start" }}
-                                onClick={() => sh.add({ title: "", six_m_factors: [], findings: [] })}
-                              >
-                                + Add Subsection
-                              </button>
-                              <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => gh.remove(gi)}>
-                                Remove Group
-                              </button>
-                            </EditOnly>
-                          </div>
-                        );
-                      })}
-                      <EditOnly>
-                        <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => gh.add({ section_title: "", subsections: [] })}>
-                          + Add Group
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          style={{ alignSelf: "flex-start" }}
+                          onClick={() => updateTasks([...tasks, { tick: "", title: "", six_m_factor: "Man", outcome: "" }])}
+                        >
+                          + Add Task
                         </button>
-                      </EditOnly>
-                    </>
-                  );
-                })()}
+                      </>
+                    );
+                  })()}
+                </Field>
+
+                {/* Root Cause Identification */}
+                <Field label="Root Cause Identification — Grounding Evidence">
+                  <TextArea
+                    value={report.investigation_task.root_cause_identification.grounding_evidence}
+                    onChange={(v) => setNestedField("investigation_task", "root_cause_identification", { grounding_evidence: v })}
+                  />
+                </Field>
+                <Field label="Applicable Tasks">
+                  {(() => {
+                    const links = report.investigation_task!.root_cause_identification.applicable_tasks;
+                    const editing = editSections["investigation-task"];
+                    const updateLinks = (newLinks: RootCauseTaskLink[]) => setNestedField("investigation_task", "root_cause_identification", { applicable_tasks: newLinks });
+                    if (!editing) {
+                      if (!links.length) return <ReadOnlyValue value="" />;
+                      return (
+                        <DataTable
+                          columns={[
+                            { key: "tick", label: "Tick" },
+                            { key: "title", label: "Title" },
+                            { key: "six_m_factor", label: "6M Factor" },
+                            { key: "explanation", label: "Explanation" },
+                          ]}
+                          rows={links}
+                        />
+                      );
+                    }
+                    return (
+                      <>
+                        {links.map((link, i) => (
+                          <div key={i} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <Field label="Tick">
+                              <TextInput value={link.tick} onChange={(v) => updateLinks(links.map((l, j) => (j === i ? { ...l, tick: v } : l)))} />
+                            </Field>
+                            <Field label="Title">
+                              <TextInput value={link.title} onChange={(v) => updateLinks(links.map((l, j) => (j === i ? { ...l, title: v } : l)))} />
+                            </Field>
+                            <Field label="6M Factor">
+                              <SelectInput value={link.six_m_factor} onChange={(v) => updateLinks(links.map((l, j) => (j === i ? { ...l, six_m_factor: v } : l)))} options={SIX_M_FACTOR_OPTIONS} />
+                            </Field>
+                            <Field label="Explanation">
+                              <TextArea value={link.explanation} rows={2} onChange={(v) => updateLinks(links.map((l, j) => (j === i ? { ...l, explanation: v } : l)))} />
+                            </Field>
+                            <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => updateLinks(links.filter((_, j) => j !== i))}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          style={{ alignSelf: "flex-start" }}
+                          onClick={() => updateLinks([...links, { tick: "", title: "", six_m_factor: "Man", explanation: "" }])}
+                        >
+                          + Add Applicable Task
+                        </button>
+                      </>
+                    );
+                  })()}
+                </Field>
+
+                {/* RCA Tool Demonstrations */}
+                <Field label="RCA Tool Demonstrations">
+                  {(() => {
+                    const demos = report.investigation_task!.rca_tool_demonstrations;
+                    const dh = listHelpers<RCAToolDemonstration>("investigation_task", "rca_tool_demonstrations", demos);
+                    const editing = editSections["investigation-task"];
+                    if (!editing) {
+                      if (!demos.length) return <ReadOnlyValue value="" />;
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                          {demos.map((demo, di) => (
+                            <div key={di} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              <p style={{ margin: 0, fontWeight: 700 }}>{demo.method}</p>
+                              <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "var(--font-size-base)" }}>{demo.method_rationale}</p>
+                              {demo.why_why_chain.length > 0 && (
+                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {demo.why_why_chain.map((step, si) => (
+                                    <li key={si} style={{ fontSize: "var(--font-size-base)" }}>
+                                      <strong>Q:</strong> {step.question} <strong>A:</strong> {step.answer}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {demo.fishbone_branches.length > 0 && (
+                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {demo.fishbone_branches.map((branch, bi) => (
+                                    <li key={bi} style={{ fontSize: "var(--font-size-base)" }}>
+                                      <strong>{branch.six_m_factor}:</strong> {branch.causes.join(", ") || "—"}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {demo.fault_tree.length > 0 && (
+                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {demo.fault_tree.map((node, ni) => (
+                                    <li key={ni} style={{ fontSize: "var(--font-size-base)" }}>
+                                      <strong>{node.event}:</strong> {node.contributing_causes.join(", ") || "—"}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {demo.flowchart_steps.length > 0 && (
+                                <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {demo.flowchart_steps.map((step, fi) => (
+                                    <li key={fi} style={{ fontSize: "var(--font-size-base)" }}>
+                                      {step.description}
+                                      {step.decision_point && <span style={{ color: "var(--color-text-muted)" }}> [Decision: {step.decision_point}]</span>}
+                                    </li>
+                                  ))}
+                                </ol>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return (
+                      <>
+                        {demos.map((demo, di) => {
+                          const wh = {
+                            add: (item: WhyWhyStep) => dh.update(di, { why_why_chain: [...demo.why_why_chain, item] }),
+                            remove: (i: number) => dh.update(di, { why_why_chain: demo.why_why_chain.filter((_, j) => j !== i) }),
+                            update: (i: number, patch: Partial<WhyWhyStep>) =>
+                              dh.update(di, { why_why_chain: demo.why_why_chain.map((s, j) => (j === i ? { ...s, ...patch } : s)) }),
+                          };
+                          const bh = {
+                            add: (item: FishboneBranch) => dh.update(di, { fishbone_branches: [...demo.fishbone_branches, item] }),
+                            remove: (i: number) => dh.update(di, { fishbone_branches: demo.fishbone_branches.filter((_, j) => j !== i) }),
+                            update: (i: number, patch: Partial<FishboneBranch>) =>
+                              dh.update(di, { fishbone_branches: demo.fishbone_branches.map((b, j) => (j === i ? { ...b, ...patch } : b)) }),
+                          };
+                          const th = {
+                            add: (item: FaultTreeNode) => dh.update(di, { fault_tree: [...demo.fault_tree, item] }),
+                            remove: (i: number) => dh.update(di, { fault_tree: demo.fault_tree.filter((_, j) => j !== i) }),
+                            update: (i: number, patch: Partial<FaultTreeNode>) =>
+                              dh.update(di, { fault_tree: demo.fault_tree.map((n, j) => (j === i ? { ...n, ...patch } : n)) }),
+                          };
+                          const fh = {
+                            add: (item: FlowchartStep) => dh.update(di, { flowchart_steps: [...demo.flowchart_steps, item] }),
+                            remove: (i: number) => dh.update(di, { flowchart_steps: demo.flowchart_steps.filter((_, j) => j !== i) }),
+                            update: (i: number, patch: Partial<FlowchartStep>) =>
+                              dh.update(di, { flowchart_steps: demo.flowchart_steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }),
+                          };
+                          return (
+                            <div key={di} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                              <Field label="Method">
+                                <SelectInput value={demo.method} onChange={(v) => dh.update(di, { method: v })} options={RCA_DEMONSTRABLE_METHOD_OPTIONS} />
+                              </Field>
+                              <Field label="Method Rationale">
+                                <TextArea value={demo.method_rationale} onChange={(v) => dh.update(di, { method_rationale: v })} />
+                              </Field>
+
+                              <Field label="Why-Why Chain">
+                                {demo.why_why_chain.map((step, si) => (
+                                  <div key={si} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                    <TextInput placeholder="Question" value={step.question} onChange={(v) => wh.update(si, { question: v })} style={{ flex: 1 }} />
+                                    <TextInput placeholder="Answer" value={step.answer} onChange={(v) => wh.update(si, { answer: v })} style={{ flex: 1 }} />
+                                    <EditOnly>
+                                      <button type="button" className="btn-outline" onClick={() => wh.remove(si)}>
+                                        Remove
+                                      </button>
+                                    </EditOnly>
+                                  </div>
+                                ))}
+                                <EditOnly>
+                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => wh.add({ question: "", answer: "" })}>
+                                    + Add Why-Why Step
+                                  </button>
+                                </EditOnly>
+                              </Field>
+
+                              <Field label="Fishbone Branches">
+                                {demo.fishbone_branches.map((branch, bi) => (
+                                  <div key={bi} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "var(--color-bg)" }}>
+                                    <Field label="6M Factor">
+                                      <SelectInput value={branch.six_m_factor} onChange={(v) => bh.update(bi, { six_m_factor: v })} options={SIX_M_FACTOR_OPTIONS} />
+                                    </Field>
+                                    <Field label="Causes">
+                                      <StringListEditor items={branch.causes} onChange={(v) => bh.update(bi, { causes: v })} />
+                                    </Field>
+                                    <EditOnly>
+                                      <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => bh.remove(bi)}>
+                                        Remove Branch
+                                      </button>
+                                    </EditOnly>
+                                  </div>
+                                ))}
+                                <EditOnly>
+                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => bh.add({ six_m_factor: "Man", causes: [] })}>
+                                    + Add Fishbone Branch
+                                  </button>
+                                </EditOnly>
+                              </Field>
+
+                              <Field label="Fault Tree">
+                                {demo.fault_tree.map((node, ni) => (
+                                  <div key={ni} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "var(--color-bg)" }}>
+                                    <Field label="Event">
+                                      <TextInput value={node.event} onChange={(v) => th.update(ni, { event: v })} />
+                                    </Field>
+                                    <Field label="Contributing Causes">
+                                      <StringListEditor items={node.contributing_causes} onChange={(v) => th.update(ni, { contributing_causes: v })} />
+                                    </Field>
+                                    <EditOnly>
+                                      <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => th.remove(ni)}>
+                                        Remove Node
+                                      </button>
+                                    </EditOnly>
+                                  </div>
+                                ))}
+                                <EditOnly>
+                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => th.add({ event: "", contributing_causes: [] })}>
+                                    + Add Fault Tree Node
+                                  </button>
+                                </EditOnly>
+                              </Field>
+
+                              <Field label="Flowchart Steps">
+                                {demo.flowchart_steps.map((step, fi) => (
+                                  <div key={fi} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                    <TextInput
+                                      type="number"
+                                      placeholder="#"
+                                      value={String(step.step_number)}
+                                      onChange={(v) => fh.update(fi, { step_number: Number(v) || 0 })}
+                                      style={{ flex: "0 0 60px" }}
+                                    />
+                                    <TextArea placeholder="Description" value={step.description} rows={1} onChange={(v) => fh.update(fi, { description: v })} style={{ flex: 1 }} />
+                                    <TextInput
+                                      placeholder="Decision point (optional)"
+                                      value={step.decision_point ?? ""}
+                                      onChange={(v) => fh.update(fi, { decision_point: v || null })}
+                                      style={{ flex: 1 }}
+                                    />
+                                    <EditOnly>
+                                      <button type="button" className="btn-outline" onClick={() => fh.remove(fi)}>
+                                        Remove
+                                      </button>
+                                    </EditOnly>
+                                  </div>
+                                ))}
+                                <EditOnly>
+                                  <button
+                                    type="button"
+                                    className="btn-outline"
+                                    style={{ alignSelf: "flex-start" }}
+                                    onClick={() => fh.add({ step_number: demo.flowchart_steps.length + 1, description: "", decision_point: null })}
+                                  >
+                                    + Add Flowchart Step
+                                  </button>
+                                </EditOnly>
+                              </Field>
+
+                              <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => dh.remove(di)}>
+                                Remove Demonstration
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          style={{ alignSelf: "flex-start" }}
+                          onClick={() =>
+                            dh.add({ method: "Why-Why Analysis", method_rationale: "", why_why_chain: [], fishbone_branches: [], fault_tree: [], flowchart_steps: [] })
+                          }
+                        >
+                          + Add RCA Tool Demonstration
+                        </button>
+                      </>
+                    );
+                  })()}
+                </Field>
               </>
             )}
           </DocSection>

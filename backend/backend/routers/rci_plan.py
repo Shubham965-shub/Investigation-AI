@@ -3,10 +3,11 @@ from __future__ import annotations
 import datetime
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
-from backend.clients.ds_client import ds_post, get_client
+from backend.clients.ds_client import _raise_for_upstream_error, ds_post, get_client, raise_for_ds_request_error
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections, replace_rci_sections
@@ -116,11 +117,10 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> RciTemplateUploa
             files={"file": (file.filename, contents, file.content_type)},
         )
         response.raise_for_status()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"InvestigationAi_DS service unreachable: {exc}",
-        ) from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_upstream_error(exc)
+    except httpx.RequestError as exc:
+        raise_for_ds_request_error(exc)
     return RciTemplateUploadResponse(**response.json())
 
 

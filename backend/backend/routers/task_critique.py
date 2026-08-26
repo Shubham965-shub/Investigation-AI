@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
-from backend.clients.ds_client import _raise_for_upstream_error, get_client
+from backend.clients.ds_client import HEAVY_DS_TIMEOUT, _raise_for_upstream_error, get_client, raise_for_ds_request_error
 from backend.db.critique_state import MAX_UPLOADS
 from backend.db.field_mapping import resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement
@@ -78,6 +78,7 @@ async def _score_task_report(
             "/score/report",
             data={"event_type": event_type},
             files={"file": (filename, file_bytes, content_type)},
+            timeout=HEAVY_DS_TIMEOUT,
         )
         response.raise_for_status()
         data = response.json()
@@ -295,6 +296,7 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
                 "task_index": str(task_index),
             },
             files={"file": (file.filename, file_bytes, file.content_type)},
+            timeout=HEAVY_DS_TIMEOUT,
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -304,10 +306,7 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     except httpx.RequestError as exc:
         if score_task is not None:
             score_task.cancel()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"InvestigationAi_DS service unreachable: {exc}",
-        ) from exc
+        raise_for_ds_request_error(exc)
 
     data = response.json()
     # TaskReportCritiqueResponse (v8): {problem_statement, objective,
