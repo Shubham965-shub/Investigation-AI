@@ -54,12 +54,12 @@ function labelColor(status: StepStatus): string {
 type StepSla = string | { critical: string; other: string };
 const STEP_SLA: Record<string, StepSla> = {
   "problem-statement": "Day 0–1",
-  "evidence-collection": { critical: "Day 0–2", other: "Day 0–3" },
-  "interview-questionnaire": { critical: "Day 0–2", other: "Day 0–3" },
-  "rci-plan": { critical: "Day 0–3", other: "Day 0–5" },
-  "task-critique": { critical: "Day 3–11", other: "Day 5–15" },
-  "rc-capa-critique": { critical: "Day 11–13", other: "Day 15–17" },
-  "rci-report": { critical: "Day 13–15", other: "Day 17–19" },
+  "evidence-collection": { critical: "Day 0–2", other: "Day 0–2" },
+  "interview-questionnaire": { critical: "Day 0–2", other: "Day 0–2" },
+  "rci-plan": { critical: "Day 0–2", other: "Day 0–2" },
+  "task-critique": { critical: "Day 2–10", other: "Day 2–10" },
+  "rc-capa-critique": { critical: "Day 10–13", other: "Day 10-13" },
+  "rci-report": { critical: "Day 13–15", other: "Day 13-15" },
 };
 
 // Shows only the tier that actually applies to this investigation when
