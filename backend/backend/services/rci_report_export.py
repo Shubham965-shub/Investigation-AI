@@ -152,22 +152,78 @@ def _set_paragraph_text(doc, index: int, text: str, clear_italic: bool = False) 
     _apply_font(run)
 
 
-def _set_paragraph_lines(doc, index: int, lines: List[str], clear_italic: bool = False) -> None:
+def _set_paragraph_lines(doc, index: int, lines: List, clear_italic: bool = False, bulleted: bool = False) -> None:
     """Like _set_paragraph_text, but joins multiple lines with real line
     breaks (not just a delimiter) so multi-item narrative content (findings,
-    history rows, checklists) actually reads as a list in the document."""
-    lines = [line for line in lines if line]
+    history rows, checklists) actually reads as a list in the document.
+
+    A line is normally a plain string, but may instead be a `(text, bold)`
+    tuple — e.g. the Investigation Task checklist's "N. <6M factor>" group
+    headings (2026-08-26, per the user: "bold the 6M parameters so it is
+    clear where each of those sections starts"). Bold is a run-level
+    property, not something that can vary within one run's own text, so
+    each line beyond the first gets its own new run instead of all sharing
+    the paragraph's original single run via add_break()/add_text().
+
+    `bulleted` is for `_bullet_lines()`'s two callers specifically (each line
+    already carries its own "•\t" prefix) — everywhere else (history rows,
+    the Investigation Task checklist, etc.) already builds its own "" blank
+    entries into `lines` where a gap is actually wanted, so unconditionally
+    changing this function's spacing/indent behavior for every caller would
+    double up those already-placed gaps and misalign content, like the
+    Investigation Task's numbered checklist, that was never bulleted or
+    hanging-indented in the first place.
+
+    When `bulleted`: this template's own blank answer slots (e.g. the ones
+    this fills at index 64/71) carry a `w:ind hanging` value meant for a
+    genuine multi-line paragraph of prose — Word applies that hanging offset
+    to every line EXCEPT the paragraph's true first line, so a manual line
+    break (used here to fit >1 bullet into one fixed slot, since the
+    template only ever provisions a fixed number of blank paragraphs and
+    inserting new ones would shift every hardcoded index after it throughout
+    the rest of this file) pushed every bullet after the first one further
+    right than it, reading as inconsistently indented (2026-08-26, per the
+    user — traced by diffing an actual exported .docx against this
+    template). Neutralizing the hanging offset means every line — first or
+    not — starts at the same left position, so the leading "•\t" is what
+    actually lines the bullets up, not Word's own paragraph indent math. A
+    second break between bullets leaves a blank line between them (also
+    2026-08-26, per the user, matching a reference export) — still a soft
+    break, not a new paragraph, so no index shifts."""
+    def _split(line):
+        return line if isinstance(line, tuple) else (line, False)
+
+    lines = [line for line in lines if _split(line)[0]]
     para = _body_paragraph(doc, index)
-    run = para.runs[0] if para.runs else para.add_run()
-    run.text = lines[0] if lines else ""
-    if clear_italic:
-        run.italic = False
-    for line in lines[1:]:
-        run.add_break()
-        run.add_text(line)
-    _apply_font(run)
-    for extra in para.runs[1:]:
+    if bulleted and len(lines) > 1:
+        para.paragraph_format.first_line_indent = 0
+
+    first_run = para.runs[0] if para.runs else para.add_run()
+    # Clear any other pre-existing template runs (leftover guidance
+    # fragments) before adding our own new runs below — otherwise the loop
+    # below would end up appending to a paragraph whose later cleanup would
+    # need to skip over its own freshly-added runs.
+    for extra in list(para.runs[1:]):
         extra.text = ""
+
+    text0, bold0 = _split(lines[0]) if lines else ("", False)
+    first_run.text = text0
+    first_run.bold = bold0
+    if clear_italic:
+        first_run.italic = False
+    _apply_font(first_run)
+
+    for line in lines[1:]:
+        text, bold = _split(line)
+        run = para.add_run()
+        run.add_break()
+        if bulleted:
+            run.add_break()
+        run.add_text(text)
+        run.bold = bold
+        if clear_italic:
+            run.italic = False
+        _apply_font(run)
 
 
 def _strip_guidance_runs(doc) -> None:
@@ -239,6 +295,35 @@ def _bullet_lines(text: str) -> List[str]:
     return [f"•\t{s}" for s in sentences]
 
 
+# OOS/OOT's own real reports render this same sentence-per-idea narrative
+# WITHOUT a bullet character at all — each sentence its own plain paragraph,
+# separated by blank spacing, confirmed across 3 real OOS reports at the raw
+# XML level (2026-08-28, per the user: formatting only, sourced from the "50
+# Historical Report" samples). Deviation/Market Complaint's own real reports
+# use literal "•" bullets for this same narrative, so this is a genuine
+# per-type formatting split, not a single shared convention.
+def _plain_lines(text: str) -> List[str]:
+    if not text:
+        return []
+    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s.strip()]
+
+
+# Initial Impact Assessment's Immediate Actions and Correction/Remedial
+# Action both already arrive as a list of distinct action strings (not one
+# blob needing sentence-splitting) — unlike the two Executive Summary
+# fields above, so this just prefixes each existing item rather than
+# reusing _bullet_lines/_plain_lines. Real reports show Deviation
+# consistently bulleting both of these sections (2/2 samples each);
+# OOS/OOT/Market Complaint stay plain (2026-08-28, per the user, sourced
+# from the "50 Historical Report" samples — OOT's own 2 samples were split
+# 1 bulleted/1 plain on each section, so it defaults to plain here rather
+# than being forced either way on weak evidence).
+def _maybe_bullet(lines: List[str], event_type: str) -> List[str]:
+    if event_type != "Deviation":
+        return lines
+    return [f"•\t{line}" for line in lines]
+
+
 def _sourced(item) -> str:
     return item.value if item else ""
 
@@ -249,14 +334,35 @@ def _yesno(value: bool) -> str:
 
 # ── 1. Executive Summary ────────────────────────────────────────────────
 
-def _fill_executive_summary(doc, section, errors: dict) -> None:
+def _fill_executive_summary(doc, section, event_type: str, errors: dict) -> None:
     if section is None:
         _set_paragraph_text(doc, 55, _missing_note(errors, "executive_summary"))
         return
+    # OOS specifically renders this narrative as plain unbulleted sentences
+    # (0 real bullets across 3 real OOS reports checked at the raw-XML
+    # level) — every other event type uses some form of bulleted formatting:
+    # Deviation and OOT both use genuine Word numPr bullets extensively (2
+    # samples each), Market Complaint uses literal "•" characters (1 sample
+    # checked). Real numPr (a separate paragraph per bullet) isn't
+    # achievable here — this template's blank answer slots are a fixed
+    # count, and inserting new paragraphs would shift every hardcoded index
+    # after it throughout the rest of this file (see _set_paragraph_lines'
+    # own docstring) — so Deviation/OOT/MC all get the same "•\t" +
+    # blank-line-spaced approximation via _bullet_lines, the closest
+    # achievable visual match. "OOS/OOT" (the combined literal) is grouped
+    # with plain OOS here since OOS is the one confirmed exception among
+    # four types and the combined value doesn't disambiguate which one a
+    # given record actually is. Both branches still need the same
+    # blank-line spacing + hanging-indent neutralization (`bulleted` here
+    # really means "apply that spacing/indent treatment", not "has a bullet
+    # character" — the bullet glyph itself, when present, is already baked
+    # into each line by _bullet_lines before this ever runs).
+    is_plain = event_type in ("OOS", "OOS/OOT")
+    lines_fn = _plain_lines if is_plain else _bullet_lines
     _set_paragraph_text(doc, 55, section.summary)
     _set_paragraph_text(doc, 59, section.problem_description)
-    _set_paragraph_lines(doc, 64, _bullet_lines(section.immediate_containment_action))
-    _set_paragraph_lines(doc, 71, _bullet_lines(section.determination_of_root_cause))
+    _set_paragraph_lines(doc, 64, lines_fn(section.immediate_containment_action), bulleted=True)
+    _set_paragraph_lines(doc, 71, lines_fn(section.determination_of_root_cause), bulleted=True)
     _set_paragraph_text(doc, 74, section.root_cause_probable_cause_statement, clear_italic=True)
     _set_paragraph_text(doc, 80, section.impact_assessment)
     _set_paragraph_text(doc, 86, section.correction_conclusion_preventive_actions)
@@ -280,7 +386,7 @@ def _fill_description_of_event(doc, section, errors: dict) -> None:
 
 # ── 3. Initial Impact Assessment & Immediate Actions ────────────────────
 
-def _fill_initial_impact_assessment(doc, section, errors: dict) -> None:
+def _fill_initial_impact_assessment(doc, section, event_type: str, errors: dict) -> None:
     material_table = doc.tables[2]
     equipment_table = doc.tables[3]
     if section is None:
@@ -328,7 +434,7 @@ def _fill_initial_impact_assessment(doc, section, errors: dict) -> None:
             lines.append(f"Other action taken{spec}.")
         _set_cell_text(row.cells[3], " ".join(lines) or "None")
 
-    _set_paragraph_lines(doc, 107, section.immediate_actions)
+    _set_paragraph_lines(doc, 107, _maybe_bullet(section.immediate_actions, event_type), bulleted=event_type == "Deviation")
 
 
 # ── 4. Summary of Historical Review ─────────────────────────────────────
@@ -385,8 +491,22 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
         _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
         return
 
-    lines = [section.task_summary.overview]
+    # Grouped under a numbered "N. <6M factor>" heading (per the reference
+    # export, 2026-08-26) whenever `task.six_m_factor` changes — every
+    # task's own `tick` is already "<group>.<item>" (e.g. "1.1", "1.2",
+    # "2.1"), so the group number is read straight off it rather than
+    # tracked separately, guaranteeing they can't drift apart. A blank line
+    # precedes every task line (including the first one under a new
+    # heading) but not the heading itself, which follows the previous
+    # group's last task directly — matches the reference exactly.
+    lines = [section.task_summary.overview, ""]
+    last_group: Optional[str] = None
     for task in section.task_summary.tasks:
+        group = task.tick.split(".", 1)[0]
+        if group != last_group:
+            lines.append((f"{group}.\t{task.six_m_factor}", True))
+            last_group = group
+        lines.append("")
         lines.append(f"{task.tick}\t{task.title} ({task.six_m_factor}): {task.outcome}")
 
     lines.append("")
@@ -495,14 +615,15 @@ def _fill_impact_assessment_batch_disposition(doc, section, risk_section, errors
 
 # ── 8. Correction and/or Remedial Action ────────────────────────────────
 
-def _fill_correction_remedial_action(doc, section, errors: dict) -> None:
+def _fill_correction_remedial_action(doc, section, event_type: str, errors: dict) -> None:
     if section is None:
         _set_paragraph_text(doc, 174, _missing_note(errors, "correction_remedial_action"))
         _set_paragraph_text(doc, 175, "")
         return
     lines = [f"{item.observation} — Status: {item.status}" + (f" [Ref: {item.reference_number}]" if item.reference_number else "") for item in section.items]
-    _set_paragraph_lines(doc, 174, lines or ["N/A"])
-    _set_paragraph_lines(doc, 175, section.additional_notes)
+    is_deviation = event_type == "Deviation"
+    _set_paragraph_lines(doc, 174, _maybe_bullet(lines or ["N/A"], event_type), bulleted=is_deviation)
+    _set_paragraph_lines(doc, 175, _maybe_bullet(section.additional_notes, event_type), bulleted=is_deviation)
 
 
 # ── 9/10/11. CAPA (actions / interim controls / extrapolation) ─────────
@@ -661,20 +782,20 @@ def _fill_header_table(doc, record_id: str, trackwise_fields: Dict[str, Any]) ->
     _set_cell_text(table.rows[3].cells[3], _tw_text(trackwise_fields, "Date Opened", "Date Complaint Received"))
 
 
-def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], report: RciReportSections) -> bytes:
+def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], report: RciReportSections, event_type: str) -> bytes:
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
 
     _add_page_breaks(doc)
     _fill_header_table(doc, record_id, trackwise_fields)
-    _fill_executive_summary(doc, report.executive_summary, errors)
+    _fill_executive_summary(doc, report.executive_summary, event_type, errors)
     _fill_description_of_event(doc, report.description_of_event, errors)
-    _fill_initial_impact_assessment(doc, report.initial_impact_assessment, errors)
+    _fill_initial_impact_assessment(doc, report.initial_impact_assessment, event_type, errors)
     _fill_history_review(doc, report.history_review, errors)
     _fill_investigation_task(doc, report.investigation_task, errors)
     _fill_root_cause_conclusion(doc, report.root_cause_conclusion, errors)
     _fill_impact_assessment_batch_disposition(doc, report.impact_assessment_batch_disposition, report.risk_assessment, errors)
-    _fill_correction_remedial_action(doc, report.correction_remedial_action, errors)
+    _fill_correction_remedial_action(doc, report.correction_remedial_action, event_type, errors)
     _fill_capa(doc, report.capa, errors)
     _fill_capa_effectiveness_check_plan(doc, report.capa_effectiveness_check_plan, errors)
     _fill_annexures(doc, report.annexures)
