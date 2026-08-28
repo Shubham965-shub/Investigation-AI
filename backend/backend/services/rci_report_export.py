@@ -32,14 +32,15 @@ throughout:
   - Table 4: History Review's prior-events rows.
   - Table 5 (3x1): Root Cause conclusion — row 1 is the narrative, row 2 is
     "Category: / Subcategory:".
-  - Table 6 (2x1): Correction/Remedial — these two rows are just the
-    template's own definitions of the two terms, not fillable; the actual
-    `items`/`additional_notes` go in the blank paragraphs right after the
-    table (no per-item table exists here).
-  - Table 7/8/9: CAPA actions / interim controls / extrapolation.
-  - Table 10: CAPA effectiveness check plan.
-  - Table 11 (8x2): Annexures — always present (pass-through, never None).
-  - Table 12 (6x5): Approval — fixed role rows (Prepared by/Investigator,
+  - Correction/Remedial Action: `items`/`additional_notes` go in the blank
+    paragraphs right after the heading (no table here — the template
+    originally had a 2x1 table with grey-italic definitions of the two
+    terms; removed entirely per the user, 2026-08-28, since it wasn't
+    fillable and left dead space above the actual content).
+  - Table 6/7/8: CAPA actions / interim controls / extrapolation.
+  - Table 9: CAPA effectiveness check plan.
+  - Table 10 (8x2): Annexures — always present (pass-through, never None).
+  - Table 11 (6x5): Approval — fixed role rows (Prepared by/Investigator,
     Reviewed by/HOD, /QA, /SIT, Approved by/Head-QA); always present
     (pass-through, never None) — filled by matching `role` to these labels.
 
@@ -79,7 +80,8 @@ from typing import Any, Dict, List, Optional
 
 import docx
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.text.paragraph import Paragraph
 
 from backend.schemas.rci_report import RciReportSections
@@ -123,11 +125,48 @@ def _set_cell_text(cell, text: str) -> None:
             _apply_font(run, TABLE_FONT_SIZE)
 
 
-def _body_paragraph(doc, index: int) -> Paragraph:
-    return Paragraph(doc.element.body[index], doc)
+class _Cursor:
+    """Wraps `doc` with a running paragraph-index offset.
+
+    Every hardcoded body-paragraph index in this file (55, 59, 64, ...) is
+    the position in the RAW TEMPLATE, before any content is filled in. That
+    was always exactly right as long as every fill only ever REPLACED a
+    paragraph's text in place — but bulleted multi-item content (Executive
+    Summary's two fields, Initial Impact Assessment/Correction & Remedial's
+    action lists) now expands one template slot into several real
+    paragraphs (`_set_bulleted_paragraphs`), so that every bullet gets its
+    own genuine hanging indent — the only way to have both a bullet's own
+    line start flush AND its wrapped continuation line indent under the
+    text at once (2026-08-28, per the user — Word's hanging indent only
+    recognizes one "first line" per paragraph, so multiple bullets sharing
+    one paragraph via soft breaks can never get this right for all of them
+    simultaneously). Once a slot grows from 1 paragraph to N, every
+    subsequent lookup in the ORIGINAL template's numbering is off by
+    (N - 1) real paragraphs now sitting in the document ahead of it. This
+    cursor is threaded through every _fill_* function instead of the bare
+    `doc`, so `.paragraph(index)` always resolves against the template
+    index PLUS whatever's been inserted so far, and `.doc` is still
+    available for `.tables[N]` (tables aren't affected — inserting body
+    paragraphs never shifts a table's own position in `doc.tables`)."""
+
+    def __init__(self, doc):
+        self.doc = doc
+        self.offset = 0
+
+    def paragraph(self, index: int) -> Paragraph:
+        return Paragraph(self.doc.element.body[index + self.offset], self.doc)
 
 
-def _set_paragraph_text(doc, index: int, text: str, clear_italic: bool = False) -> None:
+# Left/hanging indent + matching custom tab stop used by every REAL
+# multi-paragraph bulleted list this file builds (_set_bulleted_paragraphs)
+# — the same value for all three, so a bullet's own "•" sits flush at the
+# paragraph's un-hung position, the tab after it lands EXACTLY where the
+# hanging indent pulls wrapped/continuation lines to, and every bulleted
+# section in the document uses one consistent indent depth.
+_BULLET_HANG = Pt(18)
+
+
+def _set_paragraph_text(cursor: _Cursor, index: int, text: str, clear_italic: bool = False) -> None:
     """Reuses the first run's formatting (list-level, any other non-font
     properties) so this paragraph's existing style carries over, clearing
     any other runs so no template guidance text lingers alongside the real
@@ -136,26 +175,50 @@ def _set_paragraph_text(doc, index: int, text: str, clear_italic: bool = False) 
     neither set. `clear_italic` is for the couple of slots where the real
     answer replaces a paragraph that WAS the guidance text itself (e.g. Root
     Cause/Probable Cause statement) — per the user, 2026-08-25, the answer
-    must read as real content, not still look like an italicized instruction."""
-    para = _body_paragraph(doc, index)
+    must read as real content, not still look like an italicized instruction.
+    Also blackens the run's color — that same guidance styling is grey as
+    well as italic, and clearing only italic left the real answer still
+    grey (2026-08-28, per the user).
+
+    left_indent/first_line_indent are normalized to 0 the same way
+    _set_paragraph_lines already does — this template's blank slots for
+    single-text answers carry the same kind of ad hoc, inconsistent indent
+    values (e.g. left=709 on one slot, left=11 hanging=295 on another) that
+    caused the earlier bulleted-content indentation bug, and it recurs here
+    too: real generated text long enough to WORD-WRAP across multiple lines
+    (not just multi-item lists joined by soft breaks) hits the exact same
+    hanging-indent mismatch between a paragraph's first line and its wrapped
+    continuation lines (2026-08-28, per the user: "it still indents
+    improperly" — found in Problem Description's own wrapped text)."""
+    para = cursor.paragraph(index)
+    para.paragraph_format.left_indent = 0
+    para.paragraph_format.first_line_indent = 0
     if para.runs:
         run = para.runs[0]
         run.text = text
         if clear_italic:
             run.italic = False
+            run.font.color.rgb = RGBColor(0, 0, 0)
         for extra in para.runs[1:]:
             extra.text = ""
     else:
         run = para.add_run(text)
         if clear_italic:
             run.italic = False
+            run.font.color.rgb = RGBColor(0, 0, 0)
     _apply_font(run)
 
 
-def _set_paragraph_lines(doc, index: int, lines: List, clear_italic: bool = False, bulleted: bool = False) -> None:
+def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic: bool = False) -> None:
     """Like _set_paragraph_text, but joins multiple lines with real line
     breaks (not just a delimiter) so multi-item narrative content (findings,
     history rows, checklists) actually reads as a list in the document.
+    NOT used for real "•" bulleted lists any more — those need their own
+    real paragraph per item so hanging indent works (_set_bulleted_paragraphs)
+    — this stays for content that was never bulleted in any real report
+    (History Review, Investigation Task, Impact Assessment, Risk Assessment;
+    see each field's own call site) and already builds its own "" blank
+    entries where a gap is wanted.
 
     A line is normally a plain string, but may instead be a `(text, bold)`
     tuple — e.g. the Investigation Task checklist's "N. <6M factor>" group
@@ -165,37 +228,20 @@ def _set_paragraph_lines(doc, index: int, lines: List, clear_italic: bool = Fals
     each line beyond the first gets its own new run instead of all sharing
     the paragraph's original single run via add_break()/add_text().
 
-    `bulleted` is for `_bullet_lines()`'s two callers specifically (each line
-    already carries its own "•\t" prefix) — everywhere else (history rows,
-    the Investigation Task checklist, etc.) already builds its own "" blank
-    entries into `lines` where a gap is actually wanted, so unconditionally
-    changing this function's spacing/indent behavior for every caller would
-    double up those already-placed gaps and misalign content, like the
-    Investigation Task's numbered checklist, that was never bulleted or
-    hanging-indented in the first place.
-
-    When `bulleted`: this template's own blank answer slots (e.g. the ones
-    this fills at index 64/71) carry a `w:ind hanging` value meant for a
-    genuine multi-line paragraph of prose — Word applies that hanging offset
-    to every line EXCEPT the paragraph's true first line, so a manual line
-    break (used here to fit >1 bullet into one fixed slot, since the
-    template only ever provisions a fixed number of blank paragraphs and
-    inserting new ones would shift every hardcoded index after it throughout
-    the rest of this file) pushed every bullet after the first one further
-    right than it, reading as inconsistently indented (2026-08-26, per the
-    user — traced by diffing an actual exported .docx against this
-    template). Neutralizing the hanging offset means every line — first or
-    not — starts at the same left position, so the leading "•\t" is what
-    actually lines the bullets up, not Word's own paragraph indent math. A
-    second break between bullets leaves a blank line between them (also
-    2026-08-26, per the user, matching a reference export) — still a soft
-    break, not a new paragraph, so no index shifts."""
+    left_indent/first_line_indent are normalized to 0 (2026-08-28, per the
+    user) — this template's blank slots each carry their own unrelated ad
+    hoc indent value (e.g. a 578-twip hanging indent here, a 142-twip left
+    indent there), which caused the same hanging-indent-vs-wrapped-line
+    mismatch _set_paragraph_text already documents, for content that was
+    never bulleted in the first place — there's no caller here for whom
+    leaving that stray indentation in place is correct."""
     def _split(line):
         return line if isinstance(line, tuple) else (line, False)
 
     lines = [line for line in lines if _split(line)[0]]
-    para = _body_paragraph(doc, index)
-    if bulleted and len(lines) > 1:
+    para = cursor.paragraph(index)
+    para.paragraph_format.left_indent = 0
+    if len(lines) > 1:
         para.paragraph_format.first_line_indent = 0
 
     first_run = para.runs[0] if para.runs else para.add_run()
@@ -217,13 +263,103 @@ def _set_paragraph_lines(doc, index: int, lines: List, clear_italic: bool = Fals
         text, bold = _split(line)
         run = para.add_run()
         run.add_break()
-        if bulleted:
-            run.add_break()
-        run.add_text(text)
+        # NOT run.add_text(text) — see _set_bulleted_paragraphs' own comment
+        # on the same issue: an embedded "\t" inserted this way is a literal
+        # tab CHARACTER inside the <w:t> text node (a small fixed-width
+        # space when Word renders it), not a real <w:tab/> tab-stop jump.
+        # None of this function's own callers currently emit "\t" inside a
+        # line, but splitting on it here anyway costs nothing and keeps this
+        # function safe if one ever does.
+        for i, part in enumerate(text.split("\t")):
+            if i > 0:
+                run.add_tab()
+            if part:
+                run.add_text(part)
         run.bold = bold
         if clear_italic:
             run.italic = False
         _apply_font(run)
+
+
+def _set_bulleted_paragraphs(cursor: _Cursor, index: int, lines: List[str], clear_italic: bool = False, hanging: bool = True) -> None:
+    """One genuine paragraph per item, not one paragraph with soft-broken
+    lines (2026-08-28, per the user: "for bullet point next line, should be
+    indented like the first point/sentence"). Word's hanging indent only
+    recognizes one "first line" per PARAGRAPH — with multiple items sharing
+    one paragraph, every item after the first one is itself just "another
+    line" of that same paragraph, so it either (a) gets pulled back to the
+    bullet position too (misaligning it from the wrapped continuation of its
+    own text — the bug fixed 2026-08-26 by flattening indent to 0), or (b)
+    gets indented to the text position (fixing the wrap-alignment but
+    re-breaking (a)). A real separate paragraph per item sidesteps the
+    conflict entirely: EVERY item gets its own fresh "first line" and its
+    own genuine wrapped-continuation lines, correctly indented — exactly
+    like a real Word list, because this now IS one.
+
+    `hanging=True` (the "•\t"-prefixed callers, from `_bullet_lines`/
+    `_maybe_bullet`'s Deviation branch) applies the hanging indent + a
+    matching tab stop, so the bullet sits pulled back and both its own text
+    and any wrapped continuation land at the same indented position.
+    `hanging=False` (the plain, unbulleted callers — OOS's own real reports
+    render these sentences with no bullet AND no indent at all, confirmed at
+    the raw-XML level, still as separate paragraphs) keeps everything flush
+    left instead — this function is still the right one to call for that
+    case too, since real OOS reports use separate paragraphs per sentence,
+    not one paragraph with soft breaks.
+
+    Clones the anchor paragraph's own XML per extra item (so template
+    run/paragraph properties like font size carry over identically to every
+    clone, then get overridden the same way _set_paragraph_text/_lines
+    already do) and inserts each clone directly after the previous one —
+    increments `cursor.offset` by (item count - 1) so every subsequent
+    _fill_* call still resolves against the template's original numbering
+    correctly (see _Cursor's own docstring)."""
+    lines = [line for line in lines if line]
+    para = cursor.paragraph(index)
+    if hanging:
+        para.paragraph_format.left_indent = _BULLET_HANG
+        para.paragraph_format.first_line_indent = -_BULLET_HANG
+        para.paragraph_format.tab_stops.clear_all()
+        para.paragraph_format.tab_stops.add_tab_stop(_BULLET_HANG, WD_TAB_ALIGNMENT.LEFT)
+    else:
+        para.paragraph_format.left_indent = 0
+        para.paragraph_format.first_line_indent = 0
+    # Word's own default paragraph-to-paragraph spacing already reads as a
+    # blank line between items once each is a real paragraph (no manual
+    # double-break needed the way the shared-paragraph approach required).
+    para.paragraph_format.space_after = Pt(10)
+
+    def _fill_one(target_para: Paragraph, text: str) -> None:
+        run = target_para.runs[0] if target_para.runs else target_para.add_run()
+        for extra in list(target_para.runs[1:]):
+            extra.text = ""
+        # Splitting on "\t" and calling add_tab() explicitly, same reasoning
+        # as _set_paragraph_lines — run.text=/add_run(text) do NOT translate
+        # an embedded tab character into a real <w:tab/> element, only the
+        # oxml-level run-content APIs used here do.
+        run.text = ""
+        for i, part in enumerate(text.split("\t")):
+            if i > 0:
+                run.add_tab()
+            if part:
+                run.add_text(part)
+        if clear_italic:
+            run.italic = False
+            run.font.color.rgb = RGBColor(0, 0, 0)
+        _apply_font(run)
+
+    if not lines:
+        _fill_one(para, "")
+        return
+
+    _fill_one(para, lines[0])
+    prev_p = para._p
+    for line in lines[1:]:
+        new_p = copy.deepcopy(para._p)
+        prev_p.addnext(new_p)
+        prev_p = new_p
+        _fill_one(Paragraph(new_p, cursor.doc), line)
+    cursor.offset += len(lines) - 1
 
 
 def _strip_guidance_runs(doc) -> None:
@@ -334,45 +470,41 @@ def _yesno(value: bool) -> str:
 
 # ── 1. Executive Summary ────────────────────────────────────────────────
 
-def _fill_executive_summary(doc, section, event_type: str, errors: dict) -> None:
+def _fill_executive_summary(cursor: _Cursor, section, event_type: str, errors: dict) -> None:
     if section is None:
-        _set_paragraph_text(doc, 55, _missing_note(errors, "executive_summary"))
+        _set_paragraph_text(cursor, 55, _missing_note(errors, "executive_summary"))
         return
     # OOS specifically renders this narrative as plain unbulleted sentences
     # (0 real bullets across 3 real OOS reports checked at the raw-XML
     # level) — every other event type uses some form of bulleted formatting:
-    # Deviation and OOT both use genuine Word numPr bullets extensively (2
-    # samples each), Market Complaint uses literal "•" characters (1 sample
-    # checked). Real numPr (a separate paragraph per bullet) isn't
-    # achievable here — this template's blank answer slots are a fixed
-    # count, and inserting new paragraphs would shift every hardcoded index
-    # after it throughout the rest of this file (see _set_paragraph_lines'
-    # own docstring) — so Deviation/OOT/MC all get the same "•\t" +
-    # blank-line-spaced approximation via _bullet_lines, the closest
-    # achievable visual match. "OOS/OOT" (the combined literal) is grouped
-    # with plain OOS here since OOS is the one confirmed exception among
-    # four types and the combined value doesn't disambiguate which one a
-    # given record actually is. Both branches still need the same
-    # blank-line spacing + hanging-indent neutralization (`bulleted` here
-    # really means "apply that spacing/indent treatment", not "has a bullet
-    # character" — the bullet glyph itself, when present, is already baked
-    # into each line by _bullet_lines before this ever runs).
+    # Deviation and OOT both use genuine Word bullets extensively (2 samples
+    # each), Market Complaint uses literal "•" characters (1 sample
+    # checked) — now rendered as a real bulleted paragraph list either way
+    # (_set_bulleted_paragraphs). "OOS/OOT" (the combined literal) is
+    # grouped with plain OOS here since OOS is the one confirmed exception
+    # among four types and the combined value doesn't disambiguate which one
+    # a given record actually is.
     is_plain = event_type in ("OOS", "OOS/OOT")
     lines_fn = _plain_lines if is_plain else _bullet_lines
-    _set_paragraph_text(doc, 55, section.summary)
-    _set_paragraph_text(doc, 59, section.problem_description)
-    _set_paragraph_lines(doc, 64, lines_fn(section.immediate_containment_action), bulleted=True)
-    _set_paragraph_lines(doc, 71, lines_fn(section.determination_of_root_cause), bulleted=True)
-    _set_paragraph_text(doc, 74, section.root_cause_probable_cause_statement, clear_italic=True)
-    _set_paragraph_text(doc, 80, section.impact_assessment)
-    _set_paragraph_text(doc, 86, section.correction_conclusion_preventive_actions)
-    _set_paragraph_text(doc, 87, f"Conclusion Statement: {section.conclusion_statement}")
+    # Paragraph 55 (section.summary — the short lead-in blurb before the
+    # "Problem Description" heading) is deliberately left unpopulated
+    # (2026-08-28, per the user) — it's a blank slot in the raw template
+    # with no runs of its own, so leaving it blank means
+    # _strip_guidance_runs removes it entirely rather than leaving a stray
+    # empty line.
+    _set_paragraph_text(cursor, 59, section.problem_description)
+    _set_bulleted_paragraphs(cursor, 64, lines_fn(section.immediate_containment_action), hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 71, lines_fn(section.determination_of_root_cause), hanging=not is_plain)
+    _set_paragraph_text(cursor, 74, section.root_cause_probable_cause_statement, clear_italic=True)
+    _set_paragraph_text(cursor, 80, section.impact_assessment)
+    _set_paragraph_text(cursor, 86, section.correction_conclusion_preventive_actions)
+    _set_paragraph_text(cursor, 87, f"Conclusion Statement: {section.conclusion_statement}")
 
 
 # ── 2. Description of Event ─────────────────────────────────────────────
 
-def _fill_description_of_event(doc, section, errors: dict) -> None:
-    table = doc.tables[1]
+def _fill_description_of_event(cursor: _Cursor, section, errors: dict) -> None:
+    table = cursor.doc.tables[1]
     if section is None:
         _set_cell_text(table.rows[1].cells[1], _missing_note(errors, "description_of_event"))
         return
@@ -386,14 +518,14 @@ def _fill_description_of_event(doc, section, errors: dict) -> None:
 
 # ── 3. Initial Impact Assessment & Immediate Actions ────────────────────
 
-def _fill_initial_impact_assessment(doc, section, event_type: str, errors: dict) -> None:
-    material_table = doc.tables[2]
-    equipment_table = doc.tables[3]
+def _fill_initial_impact_assessment(cursor: _Cursor, section, event_type: str, errors: dict) -> None:
+    material_table = cursor.doc.tables[2]
+    equipment_table = cursor.doc.tables[3]
     if section is None:
         rows = _ensure_row_count(material_table, 1, 1)
         _set_cell_text(rows[0].cells[1], _missing_note(errors, "initial_impact_assessment"))
         _ensure_row_count(equipment_table, 1, 1)
-        _set_paragraph_text(doc, 107, "")
+        _set_paragraph_text(cursor, 107, "")
         return
 
     impacts = section.material_product_impacts
@@ -434,17 +566,18 @@ def _fill_initial_impact_assessment(doc, section, event_type: str, errors: dict)
             lines.append(f"Other action taken{spec}.")
         _set_cell_text(row.cells[3], " ".join(lines) or "None")
 
-    _set_paragraph_lines(doc, 107, _maybe_bullet(section.immediate_actions, event_type), bulleted=event_type == "Deviation")
+    is_deviation = event_type == "Deviation"
+    _set_bulleted_paragraphs(cursor, 107, _maybe_bullet(section.immediate_actions, event_type), hanging=is_deviation)
 
 
 # ── 4. Summary of Historical Review ─────────────────────────────────────
 
-def _fill_history_review(doc, section, errors: dict) -> None:
-    table = doc.tables[4]
+def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
+    table = cursor.doc.tables[4]
     if section is None:
         rows = _ensure_row_count(table, 1, 1)
         _set_cell_text(rows[0].cells[2], _missing_note(errors, "history_review"))
-        _set_paragraph_text(doc, 117, "")
+        _set_paragraph_text(cursor, 117, "")
         return
 
     rows = _ensure_row_count(table, 1, len(section.rows))
@@ -464,12 +597,12 @@ def _fill_history_review(doc, section, errors: dict) -> None:
         section.closing_narrative,
         f"Batches manufactured: {section.batches_manufactured_note}" if section.batches_manufactured_note else "",
     ]
-    _set_paragraph_lines(doc, 117, lines)
+    _set_paragraph_lines(cursor, 117, lines)
 
 
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
-def _fill_investigation_task(doc, section, errors: dict) -> None:
+def _fill_investigation_task(cursor: _Cursor, section, errors: dict) -> None:
     """Section 5 (Investigation Task) — rebuilt 2026-08-25 into 3 explicit parts
     (task_summary / root_cause_identification / rca_tool_demonstrations, see
     ds/src/agents/rci_report/api/schemas/measure_analyze.py). Rendered flat with
@@ -485,10 +618,10 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
     heading instead of body text — reset explicitly so this reads like the
     rest of the document.
     """
-    _body_paragraph(doc, 132).style = "Normal"
+    cursor.paragraph(132).style = "Normal"
 
     if section is None:
-        _set_paragraph_text(doc, 132, _missing_note(errors, "investigation_task"))
+        _set_paragraph_text(cursor, 132, _missing_note(errors, "investigation_task"))
         return
 
     # Grouped under a numbered "N. <6M factor>" heading (per the reference
@@ -513,7 +646,12 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
     lines.append("Root cause identification:")
     lines.append(section.root_cause_identification.grounding_evidence)
     for link in section.root_cause_identification.applicable_tasks:
-        lines.append(f"  {link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
+        # No leading spaces — Part 1's own task lines above have none, and a
+        # manual space-character "indent" here (unlike a real paragraph
+        # indent) doesn't actually align anything; it just visually offsets
+        # these ticks from Part 1's, reading as inconsistent/"misnumbered"
+        # (2026-08-28, per the user).
+        lines.append(f"{link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
 
     for demo in section.rca_tool_demonstrations:
         lines.append("")
@@ -533,13 +671,13 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
             decision = f" [Decision: {flow_step.decision_point}]" if flow_step.decision_point else ""
             lines.append(f"  Step {flow_step.step_number}: {flow_step.description}{decision}")
 
-    _set_paragraph_lines(doc, 132, lines)
+    _set_paragraph_lines(cursor, 132, lines)
 
 
 # ── 6. Root Cause conclusion ─────────────────────────────────────────────
 
-def _fill_root_cause_conclusion(doc, section, errors: dict) -> None:
-    table = doc.tables[5]
+def _fill_root_cause_conclusion(cursor: _Cursor, section, errors: dict) -> None:
+    table = cursor.doc.tables[5]
     if section is None:
         _set_cell_text(table.rows[1].cells[0], _missing_note(errors, "root_cause_conclusion"))
         return
@@ -569,9 +707,9 @@ _IMPACT_SUBSECTION_LABELS = [
 ]
 
 
-def _fill_impact_assessment_batch_disposition(doc, section, risk_section, errors: dict) -> None:
+def _fill_impact_assessment_batch_disposition(cursor: _Cursor, section, risk_section, errors: dict) -> None:
     if section is None:
-        _set_paragraph_text(doc, 165, _missing_note(errors, "impact_assessment_batch_disposition"))
+        _set_paragraph_text(cursor, 165, _missing_note(errors, "impact_assessment_batch_disposition"))
     else:
         lines = []
         for field_name, label in _IMPACT_SUBSECTION_LABELS:
@@ -584,8 +722,8 @@ def _fill_impact_assessment_batch_disposition(doc, section, risk_section, errors
                     lines.append(f"  - Batch {row.batch_number}: {row.number_of_shippers} shipper(s), defects: {row.defects}")
         if not lines:
             lines = ["Not applicable."]
-        _set_paragraph_lines(doc, 165, lines)
-        _set_paragraph_text(doc, 170, f"Conclusion Statement: {section.conclusion}", clear_italic=True)
+        _set_paragraph_lines(cursor, 165, lines)
+        _set_paragraph_text(cursor, 170, f"Conclusion Statement: {section.conclusion}", clear_italic=True)
 
     extra_lines = []
     if section is not None:
@@ -610,38 +748,38 @@ def _fill_impact_assessment_batch_disposition(doc, section, risk_section, errors
                 f"Detectability {c.factors.detectability.tier} ({c.detectability_score}), "
                 f"RPN {c.rpn}, Risk level {c.risk_level}"
             )
-    _set_paragraph_lines(doc, 171, extra_lines)
+    _set_paragraph_lines(cursor, 171, extra_lines)
 
 
 # ── 8. Correction and/or Remedial Action ────────────────────────────────
 
-def _fill_correction_remedial_action(doc, section, event_type: str, errors: dict) -> None:
+def _fill_correction_remedial_action(cursor: _Cursor, section, event_type: str, errors: dict) -> None:
     if section is None:
-        _set_paragraph_text(doc, 174, _missing_note(errors, "correction_remedial_action"))
-        _set_paragraph_text(doc, 175, "")
+        _set_paragraph_text(cursor, 173, _missing_note(errors, "correction_remedial_action"))
+        _set_paragraph_text(cursor, 174, "")
         return
     lines = [f"{item.observation} — Status: {item.status}" + (f" [Ref: {item.reference_number}]" if item.reference_number else "") for item in section.items]
     is_deviation = event_type == "Deviation"
-    _set_paragraph_lines(doc, 174, _maybe_bullet(lines or ["N/A"], event_type), bulleted=is_deviation)
-    _set_paragraph_lines(doc, 175, _maybe_bullet(section.additional_notes, event_type), bulleted=is_deviation)
+    _set_bulleted_paragraphs(cursor, 173, _maybe_bullet(lines or ["N/A"], event_type), hanging=is_deviation)
+    _set_bulleted_paragraphs(cursor, 174, _maybe_bullet(section.additional_notes, event_type), hanging=is_deviation)
 
 
 # ── 9/10/11. CAPA (actions / interim controls / extrapolation) ─────────
 
-def _fill_capa(doc, section, errors: dict) -> None:
-    actions_table = doc.tables[7]
-    interim_table = doc.tables[8]
-    extrapolation_table = doc.tables[9]
+def _fill_capa(cursor: _Cursor, section, errors: dict) -> None:
+    actions_table = cursor.doc.tables[6]
+    interim_table = cursor.doc.tables[7]
+    extrapolation_table = cursor.doc.tables[8]
 
     if section is None:
-        _set_paragraph_text(doc, 181, _missing_note(errors, "capa"))
+        _set_paragraph_text(cursor, 180, _missing_note(errors, "capa"))
         rows = _ensure_row_count(actions_table, 1, 1)
         _set_cell_text(rows[0].cells[1], _missing_note(errors, "capa"))
         _ensure_row_count(interim_table, 1, 1)
         _ensure_row_count(extrapolation_table, 1, 1)
         return
 
-    _set_paragraph_text(doc, 181, section.capa_not_applicable_justification or "")
+    _set_paragraph_text(cursor, 180, section.capa_not_applicable_justification or "")
 
     rows = _ensure_row_count(actions_table, 1, len(section.capa_actions))
     if not section.capa_actions:
@@ -683,14 +821,14 @@ def _fill_capa(doc, section, errors: dict) -> None:
 
 # ── 12. CAPA Effectiveness Check Plan ────────────────────────────────────
 
-def _fill_capa_effectiveness_check_plan(doc, section, errors: dict) -> None:
-    table = doc.tables[10]
+def _fill_capa_effectiveness_check_plan(cursor: _Cursor, section, errors: dict) -> None:
+    table = cursor.doc.tables[9]
     if section is None:
-        _set_paragraph_text(doc, 189, _missing_note(errors, "capa_effectiveness_check_plan"), clear_italic=True)
+        _set_paragraph_text(cursor, 188, _missing_note(errors, "capa_effectiveness_check_plan"), clear_italic=True)
         _ensure_row_count(table, 1, 1)
         return
 
-    _set_paragraph_text(doc, 189, section.capa_not_applicable_justification or "", clear_italic=True)
+    _set_paragraph_text(cursor, 188, section.capa_not_applicable_justification or "", clear_italic=True)
 
     plans = section.generated_plans
     rows = _ensure_row_count(table, 1, len(plans))
@@ -718,18 +856,22 @@ def _fill_capa_effectiveness_check_plan(doc, section, errors: dict) -> None:
 # (see module docstring) so it isn't included. Indices are fixed at the
 # TEMPLATE's own layout, not affected by _strip_guidance_runs (which only
 # ever removes pure-guidance paragraphs, never a heading).
-_SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 177, 186, 193, 196]
+_SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 176, 185, 192, 195]
 
 
-def _add_page_breaks(doc) -> None:
+def _add_page_breaks(cursor: _Cursor) -> None:
+    # Always called first, before any bulleted-paragraph expansion, so
+    # cursor.offset is still 0 here — kept cursor-based anyway (rather than
+    # taking `doc` directly) purely for signature consistency with every
+    # other function in this file.
     for index in _SECTION_HEADING_INDICES:
-        _body_paragraph(doc, index).paragraph_format.page_break_before = True
+        cursor.paragraph(index).paragraph_format.page_break_before = True
 
 
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
 
-def _fill_annexures(doc, section) -> None:
-    table = doc.tables[11]
+def _fill_annexures(cursor: _Cursor, section) -> None:
+    table = cursor.doc.tables[10]
     rows = _ensure_row_count(table, 1, len(section.items))
     for row, item in zip(rows, section.items):
         _set_cell_text(row.cells[0], item.annexure_no)
@@ -746,8 +888,8 @@ _APPROVAL_ROLE_LABELS = {
 }
 
 
-def _fill_approval(doc, section) -> None:
-    table = doc.tables[12]
+def _fill_approval(cursor: _Cursor, section) -> None:
+    table = cursor.doc.tables[11]
     for row in section.rows:
         row_idx = _APPROVAL_ROLE_LABELS.get(row.role.strip().lower())
         if row_idx is None:
@@ -785,25 +927,35 @@ def _fill_header_table(doc, record_id: str, trackwise_fields: Dict[str, Any]) ->
 def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], report: RciReportSections, event_type: str) -> bytes:
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
+    # Threaded through every _fill_* call below instead of the bare `doc` —
+    # see _Cursor's own docstring. Sections run in the SAME top-to-bottom
+    # order they appear in the document, which is required: each section
+    # that expands a bulleted list into several real paragraphs
+    # (_set_bulleted_paragraphs) grows cursor.offset immediately, so every
+    # later call already sees the correct shift; a call running out of
+    # order would resolve against the wrong paragraph.
+    cursor = _Cursor(doc)
 
-    _add_page_breaks(doc)
+    _add_page_breaks(cursor)
     _fill_header_table(doc, record_id, trackwise_fields)
-    _fill_executive_summary(doc, report.executive_summary, event_type, errors)
-    _fill_description_of_event(doc, report.description_of_event, errors)
-    _fill_initial_impact_assessment(doc, report.initial_impact_assessment, event_type, errors)
-    _fill_history_review(doc, report.history_review, errors)
-    _fill_investigation_task(doc, report.investigation_task, errors)
-    _fill_root_cause_conclusion(doc, report.root_cause_conclusion, errors)
-    _fill_impact_assessment_batch_disposition(doc, report.impact_assessment_batch_disposition, report.risk_assessment, errors)
-    _fill_correction_remedial_action(doc, report.correction_remedial_action, event_type, errors)
-    _fill_capa(doc, report.capa, errors)
-    _fill_capa_effectiveness_check_plan(doc, report.capa_effectiveness_check_plan, errors)
-    _fill_annexures(doc, report.annexures)
-    _fill_approval(doc, report.approval)
+    _fill_executive_summary(cursor, report.executive_summary, event_type, errors)
+    _fill_description_of_event(cursor, report.description_of_event, errors)
+    _fill_initial_impact_assessment(cursor, report.initial_impact_assessment, event_type, errors)
+    _fill_history_review(cursor, report.history_review, errors)
+    _fill_investigation_task(cursor, report.investigation_task, errors)
+    _fill_root_cause_conclusion(cursor, report.root_cause_conclusion, errors)
+    _fill_impact_assessment_batch_disposition(cursor, report.impact_assessment_batch_disposition, report.risk_assessment, errors)
+    _fill_correction_remedial_action(cursor, report.correction_remedial_action, event_type, errors)
+    _fill_capa(cursor, report.capa, errors)
+    _fill_capa_effectiveness_check_plan(cursor, report.capa_effectiveness_check_plan, errors)
+    _fill_annexures(cursor, report.annexures)
+    _fill_approval(cursor, report.approval)
 
-    # Must run last — every _fill_* call above still relies on this
-    # template's original body-paragraph indices, which shift as soon as
-    # any of these are deleted.
+    # Must run last — reads the document's final paragraph structure
+    # directly (not by index), so it's unaffected by however much
+    # cursor.offset grew, but every _fill_* call above still needs its own
+    # target paragraph to exist with its original guidance runs intact
+    # until it's actually written.
     _strip_guidance_runs(doc)
 
     buffer = io.BytesIO()
