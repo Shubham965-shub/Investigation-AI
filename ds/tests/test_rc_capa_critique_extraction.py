@@ -10,14 +10,20 @@ label living in adjacent runs, not the same run) — none of these had a
 dedicated test before this file.
 """
 
+import io
+import json
 import tempfile
 from pathlib import Path
 
 import pytest
 from docx import Document
 from docx.oxml.ns import qn
+from fastapi.testclient import TestClient
 from lxml import etree
 
+from src.agents.app import create_app
+from src.agents.critique.api.schemas import CAPACritiqueResponse, RCConclusionCritiqueResponse
+from src.agents.critique.api.services.relevance_validation import DocumentRelevanceResult
 from src.agents.critique.api.services.rci_report_extraction import (
     _detect_repeat_occurrence,
     _is_capa_action_table,
@@ -301,3 +307,284 @@ def test_extract_sections_inline_remedial_action_heading_content_captured():
         path.unlink()
 
     assert result["correction_remedial_text"].strip() == "Not Applicable."
+
+
+# ---------------------------------------------------------------------------
+# Endpoint-level tests — POST /critique/critique-rc-conclusion and
+# POST /critique/critique-capa. extract_full_document_text/
+# extract_rci_report_sections are imported directly into critique_route.py's
+# own namespace (already covered by the unit tests above against the real
+# functions), so they're monkeypatched here at the route-module level —
+# same pattern test_capa_depth_effectiveness.py uses for its own save/extract
+# helpers — to isolate this from real docx parsing and focus on the route's
+# own orchestration (relevance gate, previous_recommendations grounding, the
+# recurrence-without-citation guardrail, capa_status=="missing" handling).
+# ---------------------------------------------------------------------------
+
+
+ROUTE_MODULE = "src.agents.critique.api.routes.critique_route"
+client = TestClient(create_app())
+
+_FAKE_SECTIONS = {
+    "problem_statement": "Foreign object found embedded in a tablet during packing.",
+    "rc_conclusion_text": "Root cause: a deficient line-clearance checkpoint allowed a foreign object to enter the packing line.",
+    "is_repeat_occurrence": False,
+    "investigation_summary": "No similar prior events were found.",
+    "impact_assessment_text": "No patient safety impact identified.",
+    "correction_remedial_text": "The affected batch was placed on hold and line clearance was re-verified.",
+    "capa_overall_text": "Revise line-clearance SOP F1/PR/003.",
+    "capa_items": [{"description": "Revise SOP F1/PR/003 and retrain operators.", "responsibility": "QA", "due_date": "30/09/2026"}],
+}
+
+
+def _docx_bytes():
+    doc = Document()
+    doc.add_paragraph("Investigation report body text.")
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def _patch_extraction(monkeypatch, sections=None):
+    monkeypatch.setattr(f"{ROUTE_MODULE}.extract_full_document_text", lambda temp_path: "Full report text body.")
+    monkeypatch.setattr(f"{ROUTE_MODULE}.extract_rci_report_sections", lambda temp_path: dict(sections or _FAKE_SECTIONS))
+
+
+def _patch_llm(monkeypatch, *, is_relevant=True, structured_response=None, chat_return="Condensed summary."):
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        if structure is DocumentRelevanceResult:
+            return DocumentRelevanceResult(is_relevant=is_relevant, reason="Matches the problem statement." if is_relevant else "Unrelated document.")
+        return structured_response
+
+    async def fake_chat(self, prompt, system=None):
+        return chat_return
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr("src.llm.client.LLMClient.chat", fake_chat)
+
+
+def test_critique_rc_conclusion_returns_grounded_result(monkeypatch):
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=RCConclusionCritiqueResponse(
+            rc_conclusion_text="placeholder",
+            rc_recommendations=["Cite the specific line-clearance checkpoint that failed."],
+            impact_recommendations=["Confirm no other batches share the same root cause."],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rc_conclusion_text_raw"] == _FAKE_SECTIONS["rc_conclusion_text"]
+    assert data["is_repeat_occurrence"] is False
+    assert data["impact_assessment_text"] == _FAKE_SECTIONS["impact_assessment_text"]
+    assert data["rc_recommendations"] == ["Cite the specific line-clearance checkpoint that failed."]
+
+
+def test_critique_rc_conclusion_suppresses_uncited_recurrence_claims(monkeypatch):
+    """The _suppress_recurrence_claims_without_citation guardrail (route.py:110)
+    firing for real: a recommendation asserting a "previous event" was ignored,
+    with no concrete deviation/event reference, must be dropped — even though
+    the LLM itself returned it."""
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=RCConclusionCritiqueResponse(
+            rc_conclusion_text="placeholder",
+            rc_recommendations=[
+                "A previous deviation with the same root cause was not addressed by this investigation.",
+                "Cite the specific line-clearance checkpoint that failed.",
+            ],
+            impact_recommendations=[],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    recommendations = response.json()["rc_recommendations"]
+    # The uncited recurrence claim must be dropped entirely, not just
+    # "not present verbatim under different wording" — assert the surviving
+    # list is exactly the one recommendation the guardrail has no reason to
+    # touch (confirmed against the real regexes: "previous deviation" with no
+    # ODF/DR-style reference matches _RECURRENCE_CLAIM_RE and fails
+    # _DEVIATION_REF_RE, so it is dropped).
+    assert recommendations == ["Cite the specific line-clearance checkpoint that failed."]
+
+
+def test_critique_rc_conclusion_with_citation_survives_the_recurrence_guardrail(monkeypatch):
+    """The guardrail only drops UNCITED recurrence claims — one naming a real
+    deviation/event reference (e.g. a DR number) must survive. The wording
+    must actually match _RECURRENCE_CLAIM_RE's "previous <noun>" adjacency
+    (confirmed directly against the regex) — inserting a word between
+    "previous" and "deviation" (e.g. "previous similar deviation") breaks
+    that match entirely, which would make this test pass for the wrong
+    reason (the claim was never flagged as recurrence-like in the first
+    place, so the citation-exemption path is never exercised)."""
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=RCConclusionCritiqueResponse(
+            rc_conclusion_text="placeholder",
+            rc_recommendations=["A previous deviation (ODF/DR/2025/1123) was not addressed by this investigation."],
+            impact_recommendations=[],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rc_recommendations"] == [
+        "A previous deviation (ODF/DR/2025/1123) was not addressed by this investigation."
+    ]
+
+
+def test_critique_rc_conclusion_grounds_prompt_with_previous_recommendations(monkeypatch):
+    """previous_recommendations (a JSON-encoded list) must reach the system
+    prompt via _with_previous_recommendations — verified by inspecting the
+    actual system_prompt the mocked LLM call received."""
+    _patch_extraction(monkeypatch)
+    captured = {}
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        if structure is DocumentRelevanceResult:
+            return DocumentRelevanceResult(is_relevant=True, reason="Matches.")
+        captured["system_prompt"] = system_prompt
+        return RCConclusionCritiqueResponse(rc_conclusion_text="x", rc_recommendations=[], impact_recommendations=[])
+
+    async def fake_chat(self, prompt, system=None):
+        return "Condensed."
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr("src.llm.client.LLMClient.chat", fake_chat)
+
+    previous = ["Attach the batch record for the affected lot."]
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={
+            "event_type": "Deviation",
+            "problem_statement": "Foreign object found in tablet.",
+            "previous_recommendations": json.dumps(previous),
+        },
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    assert "Attach the batch record for the affected lot." in captured["system_prompt"]
+
+
+def test_critique_rc_conclusion_rejects_irrelevant_document(monkeypatch):
+    _patch_extraction(monkeypatch)
+    _patch_llm(monkeypatch, is_relevant=False)
+
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 422
+
+
+def test_critique_rc_conclusion_rejects_non_docx_file():
+    response = client.post(
+        "/critique/critique-rc-conclusion",
+        params={"event_type": "Deviation", "problem_statement": "Test"},
+        files={"file": ("report.txt", b"not a docx", "text/plain")},
+    )
+    assert response.status_code == 415
+
+
+def test_critique_capa_returns_grounded_result(monkeypatch):
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=CAPACritiqueResponse(
+            capa_status="evaluated",
+            recommendations=["State a concrete effectiveness-check monitoring window."],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-capa",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["capa_text_raw"] == _FAKE_SECTIONS["capa_overall_text"]
+    assert data["capa_items"][0]["description"] == "Revise SOP F1/PR/003 and retrain operators."
+    assert data["correction_remedial_text"] == _FAKE_SECTIONS["correction_remedial_text"]
+    assert data["recommendations"] == ["State a concrete effectiveness-check monitoring window."]
+
+
+def test_critique_capa_missing_returns_422_and_clears_recommendations(monkeypatch):
+    """capa_status == "missing" is a hard 422 (route.py:422-429) — the code-side
+    backstop that empties recommendations for missing/not_required CAPA
+    (_cap_recommendations) is never even reached in this case since the route
+    raises before calling it, confirmed by asserting the 422 itself fires."""
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=CAPACritiqueResponse(
+            capa_status="missing",
+            recommendations=["This recommendation must never reach the response."],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-capa",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 422
+    assert "No CAPA" in response.json()["detail"]
+
+
+def test_critique_capa_not_required_clears_recommendations(monkeypatch):
+    """_cap_recommendations (route.py:122-134) forces recommendations empty
+    for capa_status == "not_required" even if the LLM returned some anyway."""
+    _patch_extraction(monkeypatch)
+    _patch_llm(
+        monkeypatch,
+        structured_response=CAPACritiqueResponse(
+            capa_status="not_required",
+            recommendations=["This should be cleared by the code-side backstop."],
+        ),
+    )
+
+    response = client.post(
+        "/critique/critique-capa",
+        params={"event_type": "Deviation", "problem_statement": "Foreign object found in tablet."},
+        files={"file": ("report.docx", _docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommendations"] == []
+
+
+def test_critique_capa_rejects_non_docx_file():
+    response = client.post(
+        "/critique/critique-capa",
+        params={"event_type": "Deviation", "problem_statement": "Test"},
+        files={"file": ("report.txt", b"not a docx", "text/plain")},
+    )
+    assert response.status_code == 415

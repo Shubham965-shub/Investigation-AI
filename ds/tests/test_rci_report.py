@@ -654,3 +654,342 @@ def test_rows_from_search_results_hydrates_capa_columns_by_id(monkeypatch):
 def test_rows_from_search_results_empty_candidates_returns_empty_list():
     rows = _rows_from_search_results([], {})
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Endpoint-level test — POST /rci-report/generate, the real route end to end.
+#
+# 9 concurrent Wave-1 LLM calls (description_of_event, initial_impact_assessment,
+# history_review, investigation_task, root_cause_conclusion,
+# impact_assessment_batch_disposition, correction_remedial_action, capa,
+# capa_effectiveness_check_plan) feed 2 Wave-2 calls (risk_assessment,
+# executive_summary) that consume Wave-1's own output. LLMClient.get_structured_response
+# is a single class method dispatched on its `structure=` kwarg (same pattern as
+# test_capa_depth_effectiveness.py); History Review additionally routes through
+# search_agent's build_search_graph, mocked separately so no real DB/search
+# infra is needed. The request payload below was verified empirically (see
+# build_report_context/_section_missing_deps) to leave every gated section
+# (description_of_event, initial_impact_assessment, root_cause_conclusion,
+# impact_assessment_batch_disposition, correction_remedial_action, capa)
+# un-skipped, so all 11 response sections actually attempt generation.
+# ---------------------------------------------------------------------------
+
+
+from unittest.mock import AsyncMock, MagicMock
+
+from fastapi.testclient import TestClient
+
+from src.agents.app import create_app
+from src.agents.critique.api.schemas import CAPAItemDetail
+from src.agents.rci_report.api.schemas.define import (
+    DescriptionOfEventSection,
+    EquipmentActionChecklist as _EquipmentActionChecklist,
+    EquipmentImpactItem,
+    ExecutiveSummarySection,
+    InitialImpactAssessmentSection,
+    MaterialProductImpactItem,
+)
+from src.agents.rci_report.api.schemas.measure_analyze import RootCauseConclusionSection, RootCauseTaxonomy
+from src.agents.rci_report.api.schemas.request import (
+    AcceptedCAPAProposal,
+    AcceptedRCConclusion,
+    RciReportGenerationRequest,
+)
+from src.agents.rci_report.api.services.history_review_service import HistoryReviewNarrative
+from src.utils import deps
+
+rci_report_client = TestClient(create_app())
+
+
+def _rci_report_request_payload():
+    return {
+        "event_type": "Deviation",
+        "deviation_id": "DEV-2026-001",
+        "trackwise_fields": {
+            "title": "Blender speed deviation",
+            "Batch Number / AR Number": "B-001",
+            "Product / Material Code": "PMC-1",
+            "Product Name / Material Name": "Product X",
+            "Deviation To": "Process",
+            "Equipment Name": "Blender",
+            "description": "Blender ran outside the validated speed range during granulation.",
+            "Instrument ID Number": "INS-1",
+            "Name of the Instrument": "Blender A",
+            "Observed By": "J Doe",
+            "Deviation Number": "DEV-2026-001",
+            "Date Opened": "2026-08-01",
+            "Observation Date": "2026-08-01",
+            "Observation Time": "10:00",
+            "Failure Duration": "1 hour",
+            "Equipment ID": "EQ-1",
+            "Equipment Number": "EQN-1",
+            "Deviation Owner": "J Doe",
+            "Originator": "J Doe",
+            "Impact on Deviation Batches": "None",
+            "Immediate Cause Known": "Yes",
+            "Cause Detail": "Operator error",
+            "Impact Details": "No significant impact identified.",
+        },
+        "accepted_rc_conclusion": {
+            "rc_conclusion_text": "Root cause was operator error in setting blender speed; SOP step was skipped.",
+        },
+        "accepted_capa": {
+            "capa_items": [
+                {"description": "Revise SOP F1/PR/003 and retrain operators.", "responsibility": "QA", "due_date": "30/09/2026"}
+            ],
+        },
+        "uploaded_correction_remedial_text": "Cable was replaced with a scratch-proof alternative; line clearance performed.",
+    }
+
+
+def _fake_description_of_event():
+    return DescriptionOfEventSection(
+        what_happened="Blender exceeded the validated speed range during granulation.",
+        when_happened="On 01/08/2026 at 10:00 hrs.",
+        who_identified="J Doe (Observed By)",
+        where_it_happened="Granulation area, Blender A.",
+        nonconforming_reference=SourcedText(value="Process deviation from validated range.", source="trackwise"),
+        how_detected=SourcedText(value="In-process monitoring alarm.", source="trackwise"),
+    )
+
+
+def _fake_initial_impact_assessment():
+    return InitialImpactAssessmentSection(
+        material_product_impacts=[
+            MaterialProductImpactItem(
+                material_product_batch="Product X, batch B-001",
+                stage="Granulation",
+                quantity_involved="1 batch",
+                quantity_on_hold=SourcedText(value="1 batch", source="trackwise"),
+                type_of_impact="Direct",
+            )
+        ],
+        equipment_impacts=[
+            EquipmentImpactItem(
+                equipment_instrument=SourcedText(value="Blender A", source="trackwise"),
+                identification_number=SourcedText(value="EQ-1", source="trackwise"),
+                actions_initiated=_EquipmentActionChecklist(
+                    operation_suspended=True, on_hold_label_affixed=True, other_action_taken=False, other_action_specify=""
+                ),
+            )
+        ],
+        immediate_actions=["Batch placed on hold pending investigation."],
+    )
+
+
+def _fake_investigation_task():
+    return InvestigationTaskSection(
+        task_summary=InvestigationTaskSummarySection(
+            overview="One task verified the blender speed control settings.",
+            tasks=[
+                TaskSummaryItem(
+                    tick="1.1", title="Verify blender speed control settings", six_m_factor="Machine",
+                    outcome="Speed control setpoint was found incorrectly configured.",
+                )
+            ],
+        ),
+        root_cause_identification=RootCauseIdentificationSection(
+            grounding_evidence="Task 1.1 directly supports the accepted conclusion.",
+            applicable_tasks=[
+                RootCauseTaskLink(
+                    tick="1.1", title="Verify blender speed control settings", six_m_factor="Machine",
+                    explanation="Confirms the speed setpoint error described in the accepted conclusion.",
+                )
+            ],
+        ),
+        rca_tool_demonstrations=[
+            RCAToolDemonstration(
+                method="Why-Why Analysis",
+                method_rationale="The conclusion describes a single linear causal chain.",
+                why_why_chain=[WhyWhyStep(question="Why did the blender exceed speed range?", answer="The setpoint was misconfigured.")],
+            )
+        ],
+    )
+
+
+def _fake_root_cause_conclusion():
+    return RootCauseConclusionSection(
+        conclusion="Blender speed setpoint was misconfigured, causing an out-of-range run.",
+        taxonomy=RootCauseTaxonomy(category="Machine", sub_category="Incorrect equipment setpoint"),
+        repeat_occurrence_evidence="No prior similar events found in History Review.",
+        is_repeat_occurrence=False,
+    )
+
+
+def _fake_impact_assessment_batch_disposition():
+    na = ImpactSubsection(applicable=False, narrative="NA")
+    return ImpactAssessmentBatchDispositionSection(
+        impact_on_affected_batches=ImpactOnAffectedBatchSubsection(applicable=True, narrative="Batch B-001 placed on hold."),
+        impact_on_marketed_released_batches=na,
+        impact_on_other_product_material_area_process=na,
+        impact_on_regulatory_filing=na,
+        impact_on_facility_equipment_instrument=na,
+        impact_on_manufacturing_process_analytical_method=na,
+        business_continuity=na,
+        impact_on_data_integrity=na,
+        stability_repackaging_requirement=na,
+        patient_safety=na,
+        others_as_applicable=na,
+        conclusion="No further impact identified beyond the affected batch.",
+    )
+
+
+def _fake_correction_remedial_action():
+    return CorrectionRemedialActionSection(
+        items=[ObservationStatusItem(observation="Speed control cable replaced.", status="Replaced with new cable.")],
+    )
+
+
+def _fake_capa():
+    return CAPASection(
+        capa_actions=[CAPAActionItem(description="Revise SOP F1/PR/003 and retrain operators.", responsibility="QA", due_date="30/09/2026")],
+        extrapolation=CAPAExtrapolationItem(
+            applicable=False, justification="Single isolated event.", scope_description="", responsibility="", due_date="",
+        ),
+    )
+
+
+def _fake_capa_effectiveness_plan_item():
+    return CAPAEffectivenessPlanItem(
+        grounding_evidence="Procedural fix tied to an operator training gap.",
+        capa_mechanism="Procedural / training-based",
+        capa_description="Revise SOP F1/PR/003 and retrain operators.",
+        effectiveness_check=["Verify training completion.", "Observe blender startup procedure for 5 batches."],
+        effectiveness_criteria=["Zero speed-range deviations across the monitoring window."],
+        responsibility="J Doe",
+        duration_rationale="Procedural fix — standard monitoring window.",
+        duration_tier="standard",
+        monitoring_duration="10 batches or 90 days, whichever is earlier",
+    )
+
+
+def _fake_risk_factors():
+    return GeneratedRiskFactors(
+        applicability_reason="Not a Market Complaint — risk assessment applies normally.",
+        applicable="no — unconfirmed market complaint",
+        candidate_labels=[],
+        candidates=[],
+    )
+
+
+def _fake_executive_summary():
+    return ExecutiveSummarySection(
+        summary="Blender speed setpoint error caused an out-of-range granulation run.",
+        problem_description="Blender exceeded its validated speed range during granulation.",
+        immediate_containment_action="Batch B-001 was placed on hold.",
+        determination_of_root_cause="Investigation traced the deviation to a misconfigured speed setpoint.",
+        root_cause_probable_cause_statement="Incorrect blender speed setpoint.",
+        impact_assessment="Limited to the one affected batch, which was placed on hold.",
+        correction_conclusion_preventive_actions="SOP revised and operators retrained; cable replaced.",
+        conclusion_statement="Batch B-001 disposition pending CAPA closure.",
+    )
+
+
+def _fake_get_structured_response(structure):
+    if structure is DescriptionOfEventSection:
+        return _fake_description_of_event()
+    if structure is InitialImpactAssessmentSection:
+        return _fake_initial_impact_assessment()
+    if structure is InvestigationTaskSection:
+        return _fake_investigation_task()
+    if structure is RootCauseConclusionSection:
+        return _fake_root_cause_conclusion()
+    if structure is ImpactAssessmentBatchDispositionSection:
+        return _fake_impact_assessment_batch_disposition()
+    if structure is CorrectionRemedialActionSection:
+        return _fake_correction_remedial_action()
+    if structure is CAPASection:
+        return _fake_capa()
+    if structure is CAPAEffectivenessPlanItem:
+        return _fake_capa_effectiveness_plan_item()
+    if structure is GeneratedRiskFactors:
+        return _fake_risk_factors()
+    if structure is ExecutiveSummarySection:
+        return _fake_executive_summary()
+    if structure is HistoryReviewNarrative:
+        return HistoryReviewNarrative(closing_narrative="No similar historical events found; no prior CAPA to assess.")
+    raise AssertionError(f"Unexpected structure requested: {structure}")
+
+
+@pytest.fixture(autouse=True)
+def _reset_rci_report_deps():
+    yield
+    deps._pool = None
+    deps._llm = None
+    deps._prompt_registry = None
+
+
+def test_generate_rci_report_all_sections_succeed(monkeypatch):
+    """End-to-end: real route, real graph-free orchestration (asyncio.gather
+    over the 9 Wave-1 + 2 Wave-2 generators), only the LLM boundary and
+    History Review's search-graph dependency mocked. Confirms none of the 6
+    TrackWise/API-gated sections are skipped and every response field is
+    populated — not just that the route returns 200."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    response = rci_report_client.post("/rci-report/generate", json=_rci_report_request_payload())
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["errors"] == {}
+    assert data["event_type"] == "Deviation"
+    for section in (
+        "executive_summary", "description_of_event", "initial_impact_assessment", "history_review",
+        "investigation_task", "root_cause_conclusion", "impact_assessment_batch_disposition",
+        "risk_assessment", "correction_remedial_action", "capa", "capa_effectiveness_check_plan",
+    ):
+        assert data[section] is not None, f"{section} unexpectedly None: errors={data['errors']}"
+
+    assert data["history_review"]["no_similar_events_found"] is True
+    assert data["history_review"]["closing_narrative"]
+    assert data["capa_effectiveness_check_plan"]["generated_plans"][0]["capa_description"] == (
+        "Revise SOP F1/PR/003 and retrain operators."
+    )
+    assert data["risk_assessment"]["applicable"] == "no — unconfirmed market complaint"
+    assert data["executive_summary"]["summary"]
+
+
+def test_generate_rci_report_blank_rc_conclusion_skips_dependent_sections(monkeypatch):
+    """A blank accepted_rc_conclusion.rc_conclusion_text must skip
+    root_cause_conclusion AND impact_assessment_batch_disposition (both
+    sole-sourced from it — see _section_missing_deps), which in turn skips
+    risk_assessment (depends on both) by dependency — without crashing the
+    rest of the report."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    payload = _rci_report_request_payload()
+    payload["accepted_rc_conclusion"] = {"rc_conclusion_text": ""}
+
+    response = rci_report_client.post("/rci-report/generate", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["root_cause_conclusion"] is None
+    assert data["impact_assessment_batch_disposition"] is None
+    assert data["risk_assessment"] is None
+    assert "skipped" in data["errors"]["root_cause_conclusion"].lower()
+    assert "skipped" in data["errors"]["impact_assessment_batch_disposition"].lower()
+    assert "root cause" in data["errors"]["risk_assessment"].lower() or "impact assessment" in data["errors"]["risk_assessment"].lower()
+    # Unrelated sections must still succeed — one section's gate must not sink the report.
+    assert data["description_of_event"] is not None
+    assert data["capa"] is not None

@@ -1,17 +1,24 @@
 """
-Regression tests for interview_questionnaire's request validation and
-node-level aggregation logic (zero coverage before this file, and no GAPS.md
-exists yet for this module — see also shared/nodes.py's parse_input, reused by
-every archetype-mapping workflow).
+Regression tests for interview_questionnaire's request validation,
+node-level aggregation logic, and (below) full endpoint-level tests driving
+the real graph through TestClient with the LLM/DB mocked at their actual
+boundaries — zero coverage of any kind existed before this session, and no
+GAPS.md exists yet for this module (see also shared/nodes.py's parse_input,
+reused by every archetype-mapping workflow).
 """
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from src.agents.app import create_app
 from src.agents.interview_questionnaire.nodes import format_result
 from src.agents.interview_questionnaire.schemas import QuestionCollectionRequest
 from src.agents.interview_questionnaire.state import InterviewQuestionCollectionState
 from src.agents.shared.nodes import parse_input
+from src.utils import deps
 
 
 # ---------------------------------------------------------------------------
@@ -196,3 +203,136 @@ async def test_format_result_blank_description_stays_a_string_not_the_whole_dict
     )
     result_state = await format_result(state)
     assert result_state.final_result["questions"][0]["description"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Endpoint-level tests — POST /interview/questionnaire, real graph, mocked LLM/DB
+# ---------------------------------------------------------------------------
+
+
+client = TestClient(create_app())
+
+
+def _fake_connect(conn):
+    async def connect(*args, **kwargs):
+        return conn
+
+    return connect
+
+
+def _fake_conn(fetch_side_effect):
+    conn = MagicMock()
+    conn.fetch = AsyncMock(side_effect=fetch_side_effect)
+    conn.close = AsyncMock()
+    return conn
+
+
+def _fake_registry_and_llm(chat_responses):
+    class _Template:
+        def __init__(self, name):
+            self._name = name
+
+        def format(self, **kwargs):
+            return f"PROMPT::{self._name}"
+
+    registry = MagicMock()
+    registry.get.side_effect = lambda name: _Template(name)
+
+    async def fake_chat(prompt, *args, **kwargs):
+        name = prompt.split("PROMPT::", 1)[1]
+        return chat_responses[name]
+
+    llm = AsyncMock()
+    llm.chat = AsyncMock(side_effect=fake_chat)
+    return registry, llm
+
+
+def _fake_search_graph(final_results):
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"final_results": final_results})
+    return graph
+
+
+@pytest.fixture(autouse=True)
+def _reset_deps():
+    yield
+    deps._llm = None
+    deps._pool = None
+    deps._prompt_registry = None
+
+
+def test_generate_questionnaire_high_confidence_returns_library_questions(monkeypatch):
+    """UT-005-style scenario: a high-confidence archetype match (>= 0.7) takes
+    fetch_questions -> rephrase_questions and returns the archetype's own
+    (rephrased) question bank."""
+    archetype_rows = [{"id": 7, "name": "Equipment Failure", "definition": "Cold chain excursion", "archetype_type_id": 1}]
+    question_rows = [{"id": 20, "description": "What was the storage temperature at the time of excursion?"}]
+    conn = _fake_conn(fetch_side_effect=[archetype_rows, question_rows])
+    monkeypatch.setattr("asyncpg.connect", _fake_connect(conn))
+
+    registry, llm = _fake_registry_and_llm({
+        "shared/map_to_archetype": '{"archetype_name": "Equipment Failure", "confidence_score": 0.85, "reasoning": "Matches cold storage equipment failure pattern."}',
+        "interview_questionnaire/rephrase_questions": (
+            '[{"id": 20, "description": "What was the recorded temperature in Cold Storage Unit 2 during the excursion?"}]'
+        ),
+    })
+    deps.set_llm(llm)
+    deps.set_prompt_registry(registry)
+
+    response = client.post(
+        "/interview/questionnaire",
+        json={"event_type": "Deviation", "trackwise_fields": _valid_deviation_fields()},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["archetype"]["name"] == "Equipment Failure"
+    assert data["total_questions_count"] == 1
+    assert data["questions"] == [
+        {"description": "What was the recorded temperature in Cold Storage Unit 2 during the excursion?", "is_new": False}
+    ]
+
+
+def test_generate_questionnaire_low_confidence_returns_llm_inferred_questions(monkeypatch):
+    """Low-confidence match (< 0.7) takes build_search_query ->
+    fetch_historical_data -> infer_questions_from_historical_data, returning
+    LLM-inferred questions flagged is_new: true."""
+    conn = _fake_conn(fetch_side_effect=[[]])
+    monkeypatch.setattr("asyncpg.connect", _fake_connect(conn))
+    monkeypatch.setattr(
+        "src.agents.search_agent.graph.builder.build_search_graph",
+        lambda **kwargs: _fake_search_graph(
+            [{"title": "Similar cold storage excursion", "relevance_score": 0.6, "root_cause_summary": "Door seal failure"}]
+        ),
+    )
+
+    registry, llm = _fake_registry_and_llm({
+        "shared/map_to_archetype": '{"archetype_name": "Unclassified Cold Chain Event", "confidence_score": 0.25, "reasoning": "No confident archetype match found."}',
+        "shared/build_search_query": "cold storage temperature excursion",
+        "interview_questionnaire/infer_questions": (
+            '["Was the door seal inspected prior to the excursion?", '
+            '"What is the calibration status of the temperature data logger?"]'
+        ),
+    })
+    deps.set_llm(llm)
+    deps.set_prompt_registry(registry)
+    deps.set_pool(MagicMock())
+
+    response = client.post(
+        "/interview/questionnaire",
+        json={"event_type": "Deviation", "trackwise_fields": _valid_deviation_fields()},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["archetype"]["name"] == "Unclassified Cold Chain Event"
+    assert data["total_questions_count"] == 2
+    assert all(item["is_new"] is True for item in data["questions"])
+
+
+def test_generate_questionnaire_invalid_trackwise_fields_returns_422_without_touching_graph():
+    response = client.post(
+        "/interview/questionnaire",
+        json={"event_type": "Deviation", "trackwise_fields": {}},
+    )
+    assert response.status_code == 422
