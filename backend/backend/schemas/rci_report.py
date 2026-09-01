@@ -139,13 +139,6 @@ class HistoryReviewSection(BaseModel):
 
 SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
 
-RCADemonstrableMethod = Literal[
-    "Why-Why Analysis",
-    "Fishbone / Ishikawa",
-    "Fault Tree Analysis",
-    "Flowchart / Process Mapping",
-]
-
 
 class TaskSummaryItem(BaseModel):
     tick: str
@@ -176,35 +169,16 @@ class WhyWhyStep(BaseModel):
     answer: str
 
 
-class FishboneBranch(BaseModel):
+class WhyWhyAnalysisSection(BaseModel):
     six_m_factor: SixMFactor
-    causes: List[str] = Field(default_factory=list)
-
-
-class FaultTreeNode(BaseModel):
-    event: str
-    contributing_causes: List[str] = Field(default_factory=list)
-
-
-class FlowchartStep(BaseModel):
-    step_number: int
-    description: str
-    decision_point: Optional[str] = None
-
-
-class RCAToolDemonstration(BaseModel):
-    method: RCADemonstrableMethod
     method_rationale: str
     why_why_chain: List[WhyWhyStep] = Field(default_factory=list)
-    fishbone_branches: List[FishboneBranch] = Field(default_factory=list)
-    fault_tree: List[FaultTreeNode] = Field(default_factory=list)
-    flowchart_steps: List[FlowchartStep] = Field(default_factory=list)
 
 
 class InvestigationTaskSection(BaseModel):
     task_summary: InvestigationTaskSummarySection
+    why_why_analysis: WhyWhyAnalysisSection
     root_cause_identification: RootCauseIdentificationSection
-    rca_tool_demonstrations: List[RCAToolDemonstration] = Field(default_factory=list)
 
 
 class RootCauseTaxonomy(BaseModel):

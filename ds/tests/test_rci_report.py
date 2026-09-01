@@ -27,7 +27,6 @@ from src.agents.rci_report.api.schemas.improve_control import (
     ObservationStatusItem,
 )
 from src.agents.rci_report.api.schemas.measure_analyze import (
-    FishboneBranch,
     HistoryReviewRow,
     HistoryReviewSection,
     ImpactAssessmentBatchDispositionSection,
@@ -35,10 +34,10 @@ from src.agents.rci_report.api.schemas.measure_analyze import (
     ImpactSubsection,
     InvestigationTaskSection,
     InvestigationTaskSummarySection,
-    RCAToolDemonstration,
     RootCauseIdentificationSection,
     RootCauseTaskLink,
     TaskSummaryItem,
+    WhyWhyAnalysisSection,
     WhyWhyStep,
 )
 from src.agents.rci_report.api.services.history_review_service import (
@@ -196,38 +195,31 @@ def test_history_review_rows_present_and_flag_false_is_allowed():
 
 
 # ---------------------------------------------------------------------------
-# measure_analyze.py — RCAToolDemonstration (exactly-one-structured-field rule)
+# measure_analyze.py — WhyWhyAnalysisSection (the only RCA method rendered)
 # ---------------------------------------------------------------------------
 
 
-def test_rca_demonstration_method_without_matching_field_is_rejected():
+def test_why_why_analysis_requires_non_empty_chain():
+    """Fishbone/Fault Tree/Flowchart were dropped entirely (2026-09-01, per
+    the user) — Why-Why Analysis is the only RCA demonstration this section
+    ever produces, so an empty chain is rejected outright rather than
+    allowed as one of several possible methods."""
     with pytest.raises(ValidationError):
-        RCAToolDemonstration(
-            method="Why-Why Analysis",
+        WhyWhyAnalysisSection(
+            six_m_factor="Method",
             method_rationale="The conclusion's own reasoning is a causal chain.",
             why_why_chain=[],
         )
 
 
-def test_rca_demonstration_stray_populated_field_is_rejected():
-    """The bug this validator fixes: a demonstration must populate exactly the
-    field matching its own `method`, not also leave an unrelated field set."""
-    with pytest.raises(ValidationError):
-        RCAToolDemonstration(
-            method="Why-Why Analysis",
-            method_rationale="Causal chain reasoning.",
-            why_why_chain=[WhyWhyStep(question="Why did X happen?", answer="Because Y.")],
-            fishbone_branches=[FishboneBranch(six_m_factor="Method", causes=["stray cause"])],
-        )
-
-
-def test_rca_demonstration_matching_field_only_is_allowed():
-    demo = RCAToolDemonstration(
-        method="Fishbone / Ishikawa",
-        method_rationale="RCI Plan sections are themselves organized by 6M factor.",
-        fishbone_branches=[FishboneBranch(six_m_factor="Material", causes=["vendor lot variance"])],
+def test_why_why_analysis_round_trips():
+    demo = WhyWhyAnalysisSection(
+        six_m_factor="Method",
+        method_rationale="The accepted conclusion traces a single causal chain.",
+        why_why_chain=[WhyWhyStep(question="Why did the deviation occur?", answer="SOP step was skipped.")],
     )
-    assert demo.fishbone_branches[0].six_m_factor == "Material"
+    assert demo.six_m_factor == "Method"
+    assert demo.why_why_chain[0].question == "Why did the deviation occur?"
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +237,11 @@ def _investigation_task_section(overview: str) -> InvestigationTaskSection:
                 )
             ],
         ),
+        why_why_analysis=WhyWhyAnalysisSection(
+            six_m_factor="Method",
+            method_rationale="Linear causal chain in the conclusion.",
+            why_why_chain=[WhyWhyStep(question="Why did the deviation occur?", answer="SOP step was skipped.")],
+        ),
         root_cause_identification=RootCauseIdentificationSection(
             grounding_evidence="Task 1.1 supports the accepted conclusion.",
             applicable_tasks=[
@@ -253,13 +250,6 @@ def _investigation_task_section(overview: str) -> InvestigationTaskSection:
                 )
             ],
         ),
-        rca_tool_demonstrations=[
-            RCAToolDemonstration(
-                method="Why-Why Analysis",
-                method_rationale="Linear causal chain in the conclusion.",
-                why_why_chain=[WhyWhyStep(question="Why did the deviation occur?", answer="SOP step was skipped.")],
-            )
-        ],
     )
 
 
@@ -739,6 +729,7 @@ def _rci_report_request_payload():
             ],
         },
         "uploaded_correction_remedial_text": "Cable was replaced with a scratch-proof alternative; line clearance performed.",
+        "uploaded_impact_assessment_text": "No adverse impact on product quality was identified. Batch B-001 is released.",
     }
 
 
@@ -788,6 +779,11 @@ def _fake_investigation_task():
                 )
             ],
         ),
+        why_why_analysis=WhyWhyAnalysisSection(
+            six_m_factor="Machine",
+            method_rationale="The conclusion describes a single linear causal chain.",
+            why_why_chain=[WhyWhyStep(question="Why did the blender exceed speed range?", answer="The setpoint was misconfigured.")],
+        ),
         root_cause_identification=RootCauseIdentificationSection(
             grounding_evidence="Task 1.1 directly supports the accepted conclusion.",
             applicable_tasks=[
@@ -797,13 +793,6 @@ def _fake_investigation_task():
                 )
             ],
         ),
-        rca_tool_demonstrations=[
-            RCAToolDemonstration(
-                method="Why-Why Analysis",
-                method_rationale="The conclusion describes a single linear causal chain.",
-                why_why_chain=[WhyWhyStep(question="Why did the blender exceed speed range?", answer="The setpoint was misconfigured.")],
-            )
-        ],
     )
 
 
@@ -959,6 +948,108 @@ def test_generate_rci_report_all_sections_succeed(monkeypatch):
     assert data["executive_summary"]["summary"]
 
 
+def test_generate_rci_report_investigation_task_no_evidence_marker(monkeypatch):
+    """2026-09-01, per the user: a task with no Task Critique evidence at all (critique
+    is null/blank) must have its outcome overridden with an explicit "no evidence"
+    marker, regardless of whatever outcome _fake_investigation_task() (the mocked LLM
+    response) wrote for that tick — the override in _generate_investigation_task is
+    deterministic, not dependent on the LLM having followed the prompt's instruction."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    payload = _rci_report_request_payload()
+    # tick "1.1" matches _fake_investigation_task()'s own single task, whose fake
+    # outcome ("Speed control setpoint was found incorrectly configured.") must be
+    # discarded and replaced since this task's critique is blank here.
+    payload["task_critique"] = [
+        {
+            "tick": "1.1", "task": "Verify blender speed control settings",
+            "responsible_person": "QA", "selected": True, "critique": None, "mandatory": True,
+        }
+    ]
+
+    response = rci_report_client.post("/rci-report/generate", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    task = data["investigation_task"]["task_summary"]["tasks"][0]
+    assert task["tick"] == "1.1"
+    assert task["outcome"] == (
+        "No Task Critique evidence was available for this task — outcome could not be established."
+    )
+    assert task["outcome"] != "Speed control setpoint was found incorrectly configured."
+
+
+def test_generate_rci_report_impact_conclusion_sourced_verbatim_from_upload(monkeypatch):
+    """2026-09-01, per the user: when the uploaded RC & CAPA document states its own
+    batch-disposition conclusion, Section 7's `conclusion` is that verbatim text, not
+    the LLM-drafted one _fake_impact_assessment_batch_disposition() returns for every
+    other field in this section."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    payload = _rci_report_request_payload()
+    payload["uploaded_impact_conclusion_text"] = "Batch B-001 is released; no further action required."
+
+    response = rci_report_client.post("/rci-report/generate", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["impact_assessment_batch_disposition"]["conclusion"] == (
+        "Batch B-001 is released; no further action required."
+    )
+    # The other 11 subsections are untouched — still the LLM-drafted fake.
+    assert data["impact_assessment_batch_disposition"]["impact_on_affected_batches"]["narrative"] == (
+        "Batch B-001 placed on hold."
+    )
+
+
+def test_generate_rci_report_impact_conclusion_never_llm_synthesized_when_not_uploaded(monkeypatch):
+    """2026-09-01, per the user: no uploaded_impact_conclusion_text (e.g. no RC & CAPA
+    document uploaded yet, or no explicit conclusion line found in it) must NEVER fall
+    back to the LLM's own drafted conclusion — that field is always overridden with an
+    explicit "not stated" note instead, even though _fake_impact_assessment_batch_
+    disposition() (the mocked LLM response) still returns its own conclusion text for
+    this field, confirming the route discards it unconditionally."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    response = rci_report_client.post("/rci-report/generate", json=_rci_report_request_payload())
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["impact_assessment_batch_disposition"]["conclusion"] == (
+        "Not stated in the uploaded RC & CAPA document."
+    )
+    assert data["impact_assessment_batch_disposition"]["conclusion"] != (
+        "No further impact identified beyond the affected batch."
+    )
+
+
 def test_generate_rci_report_blank_rc_conclusion_skips_dependent_sections(monkeypatch):
     """A blank accepted_rc_conclusion.rc_conclusion_text must skip
     root_cause_conclusion AND impact_assessment_batch_disposition (both
@@ -993,3 +1084,36 @@ def test_generate_rci_report_blank_rc_conclusion_skips_dependent_sections(monkey
     # Unrelated sections must still succeed — one section's gate must not sink the report.
     assert data["description_of_event"] is not None
     assert data["capa"] is not None
+
+
+def test_generate_rci_report_blank_impact_assessment_text_skips_section(monkeypatch):
+    """2026-09-01, per the user: Impact Assessment & Batch Disposition no longer
+    falls back to TrackWise fields at all — it's sole-sourced from the uploaded
+    RC & CAPA document's own Impact Assessment text, same pattern as
+    Correction/Remedial Action. A blank uploaded_impact_assessment_text must
+    skip it (and risk_assessment by dependency) even when accepted_rc_conclusion
+    is populated."""
+
+    async def fake_get_structured_response(self, user_prompt, structure, system_prompt=None, temperature=None):
+        return _fake_get_structured_response(structure)
+
+    monkeypatch.setattr("src.llm.client.LLMClient.get_structured_response", fake_get_structured_response)
+    monkeypatch.setattr(
+        "src.agents.rci_report.api.services.history_review_service.build_search_graph",
+        lambda **kwargs: MagicMock(ainvoke=AsyncMock(return_value={"final_results": []})),
+    )
+    deps.set_pool(MagicMock())
+
+    payload = _rci_report_request_payload()
+    payload["uploaded_impact_assessment_text"] = None
+
+    response = rci_report_client.post("/rci-report/generate", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["impact_assessment_batch_disposition"] is None
+    assert data["risk_assessment"] is None
+    assert "skipped" in data["errors"]["impact_assessment_batch_disposition"].lower()
+    # root_cause_conclusion is independent of uploaded_impact_assessment_text — must still succeed.
+    assert data["root_cause_conclusion"] is not None

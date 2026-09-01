@@ -309,6 +309,48 @@ def test_extract_sections_inline_remedial_action_heading_content_captured():
     assert result["correction_remedial_text"].strip() == "Not Applicable."
 
 
+def test_extract_sections_impact_conclusion_captured_additively():
+    """2026-09-01: the 'Conclusion Statement:' line onward within Impact
+    Assessment is captured into its own field, additively — it must still
+    also appear in impact_assessment_text (not removed from the broader
+    blob), same principle as reference_number alongside status in the
+    correction/remedial prompt."""
+    doc = Document()
+    _add_heading(doc, "Impact Assessment & Conclusion (Batch disposition)")
+    doc.add_paragraph("Impact on affected batches: Batch#7263940 was verified with no defects.")
+    doc.add_paragraph("Conclusion Statement: Batch#7263940 is released. No further action required.")
+    _add_heading(doc, "Correction and or Remedial action")
+    doc.add_paragraph("Not Applicable.")
+
+    path = _save_docx(doc)
+    try:
+        result = extract_rci_report_sections(path)
+    finally:
+        path.unlink()
+
+    assert result["impact_conclusion_text"].strip() == (
+        "Batch#7263940 is released. No further action required."
+    )
+    assert "batch#7263940 was verified" in result["impact_assessment_text"].lower()
+    assert "released" in result["impact_assessment_text"].lower()
+
+
+def test_extract_sections_impact_conclusion_absent_when_no_label_present():
+    doc = Document()
+    _add_heading(doc, "Impact Assessment & Conclusion (Batch disposition)")
+    doc.add_paragraph("No patient safety impact identified.")
+    _add_heading(doc, "Correction and or Remedial action")
+    doc.add_paragraph("Not Applicable.")
+
+    path = _save_docx(doc)
+    try:
+        result = extract_rci_report_sections(path)
+    finally:
+        path.unlink()
+
+    assert result["impact_conclusion_text"] == ""
+
+
 # ---------------------------------------------------------------------------
 # Endpoint-level tests — POST /critique/critique-rc-conclusion and
 # POST /critique/critique-capa. extract_full_document_text/
@@ -331,6 +373,7 @@ _FAKE_SECTIONS = {
     "is_repeat_occurrence": False,
     "investigation_summary": "No similar prior events were found.",
     "impact_assessment_text": "No patient safety impact identified.",
+    "impact_conclusion_text": "Batch released — no patient safety impact identified.",
     "correction_remedial_text": "The affected batch was placed on hold and line clearance was re-verified.",
     "capa_overall_text": "Revise line-clearance SOP F1/PR/003.",
     "capa_items": [{"description": "Revise SOP F1/PR/003 and retrain operators.", "responsibility": "QA", "due_date": "30/09/2026"}],
@@ -386,6 +429,7 @@ def test_critique_rc_conclusion_returns_grounded_result(monkeypatch):
     assert data["rc_conclusion_text_raw"] == _FAKE_SECTIONS["rc_conclusion_text"]
     assert data["is_repeat_occurrence"] is False
     assert data["impact_assessment_text"] == _FAKE_SECTIONS["impact_assessment_text"]
+    assert data["impact_conclusion_text"] == _FAKE_SECTIONS["impact_conclusion_text"]
     assert data["rc_recommendations"] == ["Cite the specific line-clearance checkpoint that failed."]
 
 

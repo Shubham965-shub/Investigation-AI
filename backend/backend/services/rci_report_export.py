@@ -114,10 +114,28 @@ def _missing_note(errors: dict, key: str) -> str:
     return f"[{errors.get(key) or MISSING_NOTE_FALLBACK}]"
 
 
+# C0/C1 control characters (except tab/LF/CR, which are legal XML text) — not
+# legal in XML 1.0 text content.
+# Found live (2026-09-01, record 505542): a generated CAPA action description
+# contained a raw 0x13 control character sitting exactly where the source
+# text's own en-dash ("33 – 64 Amps") was clearly intended, which python-docx/
+# lxml raises ValueError on instead of silently dropping. This is a defensive
+# backstop at the point text is actually written into the document — not a
+# fix for wherever the stray character came from (LLM output has been
+# observed to occasionally emit one; a copy-pasted source document could just
+# as easily carry one) — so any current or future source of an invalid
+# character degrades to "silently stripped" rather than crashing the export.
+_INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]")
+
+
+def _xml_safe(text: str) -> str:
+    return _INVALID_XML_CHARS_RE.sub("", text) if text else text
+
+
 def _set_cell_text(cell, text: str) -> None:
     """Always inside a table — locked to TABLE_FONT_SIZE (10pt), one step
     down from body content's 11pt."""
-    cell.text = text or ""
+    cell.text = _xml_safe(text) or ""
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
             _apply_font(run, TABLE_FONT_SIZE)
@@ -137,6 +155,7 @@ def _set_paragraph_text(doc, index: int, text: str, clear_italic: bool = False) 
     answer replaces a paragraph that WAS the guidance text itself (e.g. Root
     Cause/Probable Cause statement) — per the user, 2026-08-25, the answer
     must read as real content, not still look like an italicized instruction."""
+    text = _xml_safe(text)
     para = _body_paragraph(doc, index)
     if para.runs:
         run = para.runs[0]
@@ -156,7 +175,7 @@ def _set_paragraph_lines(doc, index: int, lines: List[str], clear_italic: bool =
     """Like _set_paragraph_text, but joins multiple lines with real line
     breaks (not just a delimiter) so multi-item narrative content (findings,
     history rows, checklists) actually reads as a list in the document."""
-    lines = [line for line in lines if line]
+    lines = [_xml_safe(line) for line in lines if line]
     para = _body_paragraph(doc, index)
     run = para.runs[0] if para.runs else para.add_run()
     run.text = lines[0] if lines else ""
@@ -364,12 +383,18 @@ def _fill_history_review(doc, section, errors: dict) -> None:
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
 def _fill_investigation_task(doc, section, errors: dict) -> None:
-    """Section 5 (Investigation Task) — rebuilt 2026-08-25 into 3 explicit parts
-    (task_summary / root_cause_identification / rca_tool_demonstrations, see
-    ds/src/agents/rci_report/api/schemas/measure_analyze.py). Rendered flat with
-    indentation, matching this file's existing line-based convention for every
-    other multi-item section (no real Word list-numbering anywhere in this
-    template — see _set_paragraph_lines).
+    """Section 5 (Investigation Task) — 3 explicit parts, in display order
+    (2026-09-01, per the user): task_summary, why_why_analysis, then
+    root_cause_identification (see
+    ds/src/agents/rci_report/api/schemas/measure_analyze.py). Fishbone/Fault
+    Tree/Flowchart were dropped entirely this same date — Why-Why Analysis is
+    now the only RCA method this section ever demonstrates.
+
+    Only task_summary is written into paragraph 132 here; why_why_analysis
+    (a real Word table) and root_cause_identification (a new trailing
+    paragraph) are appended by _insert_why_why_table_and_grounding, which
+    must run after every other _fill_* call since it inserts new top-level
+    body elements (see that function's own docstring for why).
 
     Paragraph 132's own style in the template is "Heading 1" — inherited
     from the "Investigation tasks:" heading and its italic guidance
@@ -390,30 +415,68 @@ def _fill_investigation_task(doc, section, errors: dict) -> None:
         lines.append(f"{task.tick}\t{task.title} ({task.six_m_factor}): {task.outcome}")
 
     lines.append("")
-    lines.append("Root cause identification:")
-    lines.append(section.root_cause_identification.grounding_evidence)
-    for link in section.root_cause_identification.applicable_tasks:
-        lines.append(f"  {link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
-
-    for demo in section.rca_tool_demonstrations:
-        lines.append("")
-        lines.append(f"{demo.method}: {demo.method_rationale}")
-        for step in demo.why_why_chain:
-            lines.append(f"  Q: {step.question}")
-            lines.append(f"  A: {step.answer}")
-        for branch in demo.fishbone_branches:
-            lines.append(f"  {branch.six_m_factor}:")
-            for cause in branch.causes:
-                lines.append(f"    - {cause}")
-        for node in demo.fault_tree:
-            lines.append(f"  Event: {node.event}")
-            for cause in node.contributing_causes:
-                lines.append(f"    - {cause}")
-        for flow_step in demo.flowchart_steps:
-            decision = f" [Decision: {flow_step.decision_point}]" if flow_step.decision_point else ""
-            lines.append(f"  Step {flow_step.step_number}: {flow_step.description}{decision}")
+    demo = section.why_why_analysis
+    lines.append(f"Why-Why Analysis (6M Factor: {demo.six_m_factor}): {demo.method_rationale}")
+    lines.append("  See table below.")
 
     _set_paragraph_lines(doc, 132, lines)
+
+
+def _insert_why_why_table_and_grounding(doc, section) -> None:
+    """Inserts the Why-Why Analysis table right after paragraph 132, then a
+    new paragraph holding root_cause_identification's grounding evidence
+    right after that table (2026-09-01, per the user — root_cause_
+    identification now comes AFTER the why-why analysis, not before it).
+
+    MUST run after every other _fill_* call in build_rci_report_docx: this is
+    the first place in this file that inserts a brand-new top-level element
+    into doc.element.body rather than mutating an existing paragraph/table/row
+    in place. Every other _fill_* function locates its target via a fixed
+    body-paragraph index (_body_paragraph) or a fixed doc.tables[N] index —
+    both of which are just positions in doc.element.body, and inserting new
+    elements at position 133 would shift every later fixed index (paragraph
+    165, 170, 171, 174, 175; doc.tables[5] through doc.tables[12]) by one per
+    element inserted, corrupting every section after this one. Calling this
+    only once all of those have already run (see build_rci_report_docx) means
+    nothing downstream ever re-reads a now-shifted index — same principle as
+    _strip_guidance_runs already documents for its own deletions.
+    """
+    if section is None:
+        return
+    anchor = _body_paragraph(doc, 132)._p
+    reference_style = doc.tables[1].style  # Description of Event — a plain 2-column table
+
+    demo = section.why_why_analysis
+    table = doc.add_table(rows=1 + len(demo.why_why_chain), cols=2)
+    table.style = reference_style
+    header_cells = table.rows[0].cells
+    _set_cell_text(header_cells[0], "Question")
+    _set_cell_text(header_cells[1], "Answer")
+    for cell in header_cells:
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+    for row, step in zip(table.rows[1:], demo.why_why_chain):
+        _set_cell_text(row.cells[0], step.question)
+        _set_cell_text(row.cells[1], step.answer)
+    anchor.addnext(table._tbl)
+    anchor = table._tbl
+
+    grounding_lines = [
+        "Root cause identification:",
+        section.root_cause_identification.grounding_evidence,
+    ]
+    for link in section.root_cause_identification.applicable_tasks:
+        grounding_lines.append(f"  {link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
+    grounding_lines = [_xml_safe(line) for line in grounding_lines]
+
+    new_para = doc.add_paragraph()
+    run = new_para.add_run(grounding_lines[0])
+    for line in grounding_lines[1:]:
+        run.add_break()
+        run.add_text(line)
+    _apply_font(run)
+    anchor.addnext(new_para._p)
 
 
 # ── 6. Root Cause conclusion ─────────────────────────────────────────────
@@ -425,7 +488,7 @@ def _fill_root_cause_conclusion(doc, section, errors: dict) -> None:
         return
     _set_cell_text(table.rows[1].cells[0], section.conclusion)
     repeat_para = table.rows[1].cells[0].add_paragraph(
-        f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}"
+        _xml_safe(f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}")
     )
     for run in repeat_para.runs:
         _apply_font(run, TABLE_FONT_SIZE)
@@ -456,14 +519,14 @@ def _fill_impact_assessment_batch_disposition(doc, section, risk_section, errors
         lines = []
         for field_name, label in _IMPACT_SUBSECTION_LABELS:
             sub = getattr(section, field_name)
-            if not sub.applicable:
-                continue
+            # Every subsection renders, applicable or not (2026-09-01, per the user) — a
+            # subsection marked not applicable was still considered and ruled out, with
+            # its own narrative saying why; silently omitting it left a reader unable to
+            # tell "considered, ruled out" apart from "never considered at all."
             lines.append(f"{label}: {sub.narrative}")
             if field_name == "impact_on_affected_batches" and sub.batch_shipper_table:
                 for row in sub.batch_shipper_table:
                     lines.append(f"  - Batch {row.batch_number}: {row.number_of_shippers} shipper(s), defects: {row.defects}")
-        if not lines:
-            lines = ["Not applicable."]
         _set_paragraph_lines(doc, 165, lines)
         _set_paragraph_text(doc, 170, f"Conclusion Statement: {section.conclusion}", clear_italic=True)
 
@@ -679,6 +742,12 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     _fill_capa_effectiveness_check_plan(doc, report.capa_effectiveness_check_plan, errors)
     _fill_annexures(doc, report.annexures)
     _fill_approval(doc, report.approval)
+
+    # Must run after every _fill_* call above — see
+    # _insert_why_why_table_and_grounding's own docstring: it inserts new
+    # body elements, which would shift every later fixed body-paragraph/
+    # table index still relied on above.
+    _insert_why_why_table_and_grounding(doc, report.investigation_task)
 
     # Must run last — every _fill_* call above still relies on this
     # template's original body-paragraph indices, which shift as soon as

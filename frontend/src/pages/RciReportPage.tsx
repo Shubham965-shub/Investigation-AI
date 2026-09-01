@@ -6,7 +6,6 @@ import {
   generateRciReport,
   updateRciReportSections,
   exportRciReportDocx,
-  RCA_DEMONSTRABLE_METHOD_OPTIONS,
   SIX_M_FACTOR_OPTIONS,
   DURATION_TIER_OPTIONS,
   CAPA_MECHANISM_OPTIONS,
@@ -18,11 +17,7 @@ import {
   type HistoryReviewRow,
   type TaskSummaryItem,
   type RootCauseTaskLink,
-  type RCAToolDemonstration,
   type WhyWhyStep,
-  type FishboneBranch,
-  type FaultTreeNode,
-  type FlowchartStep,
   type ImpactSubsectionItem,
   type BatchShipperImpact,
   type RiskAssessmentCandidate,
@@ -1356,7 +1351,71 @@ export function RciReportPage() {
                   })()}
                 </Field>
 
-                {/* Root Cause Identification */}
+                {/* Why-Why Analysis — the only RCA method this section demonstrates */}
+                <Field label="Why-Why Analysis — 6M Factor">
+                  {editSections["investigation-task"] ? (
+                    <SelectInput
+                      value={report.investigation_task.why_why_analysis.six_m_factor}
+                      onChange={(v) => setNestedField("investigation_task", "why_why_analysis", { six_m_factor: v })}
+                      options={SIX_M_FACTOR_OPTIONS}
+                    />
+                  ) : (
+                    <ReadOnlyValue value={report.investigation_task.why_why_analysis.six_m_factor} />
+                  )}
+                </Field>
+                <Field label="Why-Why Analysis — Method Rationale">
+                  <TextArea
+                    value={report.investigation_task.why_why_analysis.method_rationale}
+                    onChange={(v) => setNestedField("investigation_task", "why_why_analysis", { method_rationale: v })}
+                  />
+                </Field>
+                <Field label="Why-Why Chain">
+                  {(() => {
+                    const analysis = report.investigation_task!.why_why_analysis;
+                    const chain = analysis.why_why_chain;
+                    const editing = editSections["investigation-task"];
+                    const wh = {
+                      add: (item: WhyWhyStep) => setNestedField("investigation_task", "why_why_analysis", { why_why_chain: [...chain, item] }),
+                      remove: (i: number) => setNestedField("investigation_task", "why_why_analysis", { why_why_chain: chain.filter((_, j) => j !== i) }),
+                      update: (i: number, patch: Partial<WhyWhyStep>) =>
+                        setNestedField("investigation_task", "why_why_analysis", { why_why_chain: chain.map((s, j) => (j === i ? { ...s, ...patch } : s)) }),
+                    };
+                    if (!editing) {
+                      if (!chain.length) return <ReadOnlyValue value="" />;
+                      return (
+                        <DataTable
+                          columns={[
+                            { key: "question", label: "Question" },
+                            { key: "answer", label: "Answer" },
+                          ]}
+                          rows={chain}
+                        />
+                      );
+                    }
+                    return (
+                      <>
+                        {chain.map((step, si) => (
+                          <div key={si} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <TextInput placeholder="Question" value={step.question} onChange={(v) => wh.update(si, { question: v })} style={{ flex: 1 }} />
+                            <TextInput placeholder="Answer" value={step.answer} onChange={(v) => wh.update(si, { answer: v })} style={{ flex: 1 }} />
+                            <EditOnly>
+                              <button type="button" className="btn-outline" onClick={() => wh.remove(si)}>
+                                Remove
+                              </button>
+                            </EditOnly>
+                          </div>
+                        ))}
+                        <EditOnly>
+                          <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => wh.add({ question: "", answer: "" })}>
+                            + Add Why-Why Step
+                          </button>
+                        </EditOnly>
+                      </>
+                    );
+                  })()}
+                </Field>
+
+                {/* Root Cause Identification — the evidence trail behind the why-why chain above */}
                 <Field label="Root Cause Identification — Grounding Evidence">
                   <TextArea
                     value={report.investigation_task.root_cause_identification.grounding_evidence}
@@ -1410,220 +1469,6 @@ export function RciReportPage() {
                           onClick={() => updateLinks([...links, { tick: "", title: "", six_m_factor: "Man", explanation: "" }])}
                         >
                           + Add Applicable Task
-                        </button>
-                      </>
-                    );
-                  })()}
-                </Field>
-
-                {/* RCA Tool Demonstrations */}
-                <Field label="RCA Tool Demonstrations">
-                  {(() => {
-                    const demos = report.investigation_task!.rca_tool_demonstrations;
-                    const dh = listHelpers<RCAToolDemonstration>("investigation_task", "rca_tool_demonstrations", demos);
-                    const editing = editSections["investigation-task"];
-                    if (!editing) {
-                      if (!demos.length) return <ReadOnlyValue value="" />;
-                      return (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                          {demos.map((demo, di) => (
-                            <div key={di} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                              <p style={{ margin: 0, fontWeight: 700 }}>{demo.method}</p>
-                              <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "var(--font-size-base)" }}>{demo.method_rationale}</p>
-                              {demo.why_why_chain.length > 0 && (
-                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  {demo.why_why_chain.map((step, si) => (
-                                    <li key={si} style={{ fontSize: "var(--font-size-base)" }}>
-                                      <strong>Q:</strong> {step.question} <strong>A:</strong> {step.answer}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {demo.fishbone_branches.length > 0 && (
-                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  {demo.fishbone_branches.map((branch, bi) => (
-                                    <li key={bi} style={{ fontSize: "var(--font-size-base)" }}>
-                                      <strong>{branch.six_m_factor}:</strong> {branch.causes.join(", ") || "—"}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {demo.fault_tree.length > 0 && (
-                                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  {demo.fault_tree.map((node, ni) => (
-                                    <li key={ni} style={{ fontSize: "var(--font-size-base)" }}>
-                                      <strong>{node.event}:</strong> {node.contributing_causes.join(", ") || "—"}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {demo.flowchart_steps.length > 0 && (
-                                <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  {demo.flowchart_steps.map((step, fi) => (
-                                    <li key={fi} style={{ fontSize: "var(--font-size-base)" }}>
-                                      {step.description}
-                                      {step.decision_point && <span style={{ color: "var(--color-text-muted)" }}> [Decision: {step.decision_point}]</span>}
-                                    </li>
-                                  ))}
-                                </ol>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    }
-                    return (
-                      <>
-                        {demos.map((demo, di) => {
-                          const wh = {
-                            add: (item: WhyWhyStep) => dh.update(di, { why_why_chain: [...demo.why_why_chain, item] }),
-                            remove: (i: number) => dh.update(di, { why_why_chain: demo.why_why_chain.filter((_, j) => j !== i) }),
-                            update: (i: number, patch: Partial<WhyWhyStep>) =>
-                              dh.update(di, { why_why_chain: demo.why_why_chain.map((s, j) => (j === i ? { ...s, ...patch } : s)) }),
-                          };
-                          const bh = {
-                            add: (item: FishboneBranch) => dh.update(di, { fishbone_branches: [...demo.fishbone_branches, item] }),
-                            remove: (i: number) => dh.update(di, { fishbone_branches: demo.fishbone_branches.filter((_, j) => j !== i) }),
-                            update: (i: number, patch: Partial<FishboneBranch>) =>
-                              dh.update(di, { fishbone_branches: demo.fishbone_branches.map((b, j) => (j === i ? { ...b, ...patch } : b)) }),
-                          };
-                          const th = {
-                            add: (item: FaultTreeNode) => dh.update(di, { fault_tree: [...demo.fault_tree, item] }),
-                            remove: (i: number) => dh.update(di, { fault_tree: demo.fault_tree.filter((_, j) => j !== i) }),
-                            update: (i: number, patch: Partial<FaultTreeNode>) =>
-                              dh.update(di, { fault_tree: demo.fault_tree.map((n, j) => (j === i ? { ...n, ...patch } : n)) }),
-                          };
-                          const fh = {
-                            add: (item: FlowchartStep) => dh.update(di, { flowchart_steps: [...demo.flowchart_steps, item] }),
-                            remove: (i: number) => dh.update(di, { flowchart_steps: demo.flowchart_steps.filter((_, j) => j !== i) }),
-                            update: (i: number, patch: Partial<FlowchartStep>) =>
-                              dh.update(di, { flowchart_steps: demo.flowchart_steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }),
-                          };
-                          return (
-                            <div key={di} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                              <Field label="Method">
-                                <SelectInput value={demo.method} onChange={(v) => dh.update(di, { method: v })} options={RCA_DEMONSTRABLE_METHOD_OPTIONS} />
-                              </Field>
-                              <Field label="Method Rationale">
-                                <TextArea value={demo.method_rationale} onChange={(v) => dh.update(di, { method_rationale: v })} />
-                              </Field>
-
-                              <Field label="Why-Why Chain">
-                                {demo.why_why_chain.map((step, si) => (
-                                  <div key={si} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                                    <TextInput placeholder="Question" value={step.question} onChange={(v) => wh.update(si, { question: v })} style={{ flex: 1 }} />
-                                    <TextInput placeholder="Answer" value={step.answer} onChange={(v) => wh.update(si, { answer: v })} style={{ flex: 1 }} />
-                                    <EditOnly>
-                                      <button type="button" className="btn-outline" onClick={() => wh.remove(si)}>
-                                        Remove
-                                      </button>
-                                    </EditOnly>
-                                  </div>
-                                ))}
-                                <EditOnly>
-                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => wh.add({ question: "", answer: "" })}>
-                                    + Add Why-Why Step
-                                  </button>
-                                </EditOnly>
-                              </Field>
-
-                              <Field label="Fishbone Branches">
-                                {demo.fishbone_branches.map((branch, bi) => (
-                                  <div key={bi} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "var(--color-bg)" }}>
-                                    <Field label="6M Factor">
-                                      <SelectInput value={branch.six_m_factor} onChange={(v) => bh.update(bi, { six_m_factor: v })} options={SIX_M_FACTOR_OPTIONS} />
-                                    </Field>
-                                    <Field label="Causes">
-                                      <StringListEditor items={branch.causes} onChange={(v) => bh.update(bi, { causes: v })} />
-                                    </Field>
-                                    <EditOnly>
-                                      <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => bh.remove(bi)}>
-                                        Remove Branch
-                                      </button>
-                                    </EditOnly>
-                                  </div>
-                                ))}
-                                <EditOnly>
-                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => bh.add({ six_m_factor: "Man", causes: [] })}>
-                                    + Add Fishbone Branch
-                                  </button>
-                                </EditOnly>
-                              </Field>
-
-                              <Field label="Fault Tree">
-                                {demo.fault_tree.map((node, ni) => (
-                                  <div key={ni} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "var(--color-bg)" }}>
-                                    <Field label="Event">
-                                      <TextInput value={node.event} onChange={(v) => th.update(ni, { event: v })} />
-                                    </Field>
-                                    <Field label="Contributing Causes">
-                                      <StringListEditor items={node.contributing_causes} onChange={(v) => th.update(ni, { contributing_causes: v })} />
-                                    </Field>
-                                    <EditOnly>
-                                      <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => th.remove(ni)}>
-                                        Remove Node
-                                      </button>
-                                    </EditOnly>
-                                  </div>
-                                ))}
-                                <EditOnly>
-                                  <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => th.add({ event: "", contributing_causes: [] })}>
-                                    + Add Fault Tree Node
-                                  </button>
-                                </EditOnly>
-                              </Field>
-
-                              <Field label="Flowchart Steps">
-                                {demo.flowchart_steps.map((step, fi) => (
-                                  <div key={fi} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                                    <TextInput
-                                      type="number"
-                                      placeholder="#"
-                                      value={String(step.step_number)}
-                                      onChange={(v) => fh.update(fi, { step_number: Number(v) || 0 })}
-                                      style={{ flex: "0 0 60px" }}
-                                    />
-                                    <TextArea placeholder="Description" value={step.description} rows={1} onChange={(v) => fh.update(fi, { description: v })} style={{ flex: 1 }} />
-                                    <TextInput
-                                      placeholder="Decision point (optional)"
-                                      value={step.decision_point ?? ""}
-                                      onChange={(v) => fh.update(fi, { decision_point: v || null })}
-                                      style={{ flex: 1 }}
-                                    />
-                                    <EditOnly>
-                                      <button type="button" className="btn-outline" onClick={() => fh.remove(fi)}>
-                                        Remove
-                                      </button>
-                                    </EditOnly>
-                                  </div>
-                                ))}
-                                <EditOnly>
-                                  <button
-                                    type="button"
-                                    className="btn-outline"
-                                    style={{ alignSelf: "flex-start" }}
-                                    onClick={() => fh.add({ step_number: demo.flowchart_steps.length + 1, description: "", decision_point: null })}
-                                  >
-                                    + Add Flowchart Step
-                                  </button>
-                                </EditOnly>
-                              </Field>
-
-                              <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => dh.remove(di)}>
-                                Remove Demonstration
-                              </button>
-                            </div>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          className="btn-outline"
-                          style={{ alignSelf: "flex-start" }}
-                          onClick={() =>
-                            dh.add({ method: "Why-Why Analysis", method_rationale: "", why_why_chain: [], fishbone_branches: [], fault_tree: [], flowchart_steps: [] })
-                          }
-                        >
-                          + Add RCA Tool Demonstration
                         </button>
                       </>
                     );

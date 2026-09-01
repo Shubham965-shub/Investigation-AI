@@ -709,20 +709,8 @@ export interface HistoryReviewSection {
   batches_manufactured_note?: string | null;
 }
 
-// Methods ds can actually demonstrate step-by-step (RCAToolDemonstration.method)
-// — a narrower set than the RCA methods an investigation might merely name;
-// GEMBA Walk/FMEA/"Not explicitly stated" have no structured demonstration
-// shape below, so they're not offered here (matches backend's
-// RCADemonstrableMethod literal exactly, schemas/rci_report.py).
-export type RCADemonstrableMethod = "Why-Why Analysis" | "Fishbone / Ishikawa" | "Fault Tree Analysis" | "Flowchart / Process Mapping";
 export type SixMFactor = "Man" | "Machine" | "Material" | "Method" | "Measurement" | "Mother Nature";
 
-export const RCA_DEMONSTRABLE_METHOD_OPTIONS: RCADemonstrableMethod[] = [
-  "Why-Why Analysis",
-  "Fishbone / Ishikawa",
-  "Fault Tree Analysis",
-  "Flowchart / Process Mapping",
-];
 export const SIX_M_FACTOR_OPTIONS: SixMFactor[] = ["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"];
 
 export interface TaskSummaryItem {
@@ -754,35 +742,16 @@ export interface WhyWhyStep {
   answer: string;
 }
 
-export interface FishboneBranch {
+export interface WhyWhyAnalysisSection {
   six_m_factor: SixMFactor;
-  causes: string[];
-}
-
-export interface FaultTreeNode {
-  event: string;
-  contributing_causes: string[];
-}
-
-export interface FlowchartStep {
-  step_number: number;
-  description: string;
-  decision_point?: string | null;
-}
-
-export interface RCAToolDemonstration {
-  method: RCADemonstrableMethod;
   method_rationale: string;
   why_why_chain: WhyWhyStep[];
-  fishbone_branches: FishboneBranch[];
-  fault_tree: FaultTreeNode[];
-  flowchart_steps: FlowchartStep[];
 }
 
 export interface InvestigationTaskSection {
   task_summary: InvestigationTaskSummarySection;
+  why_why_analysis: WhyWhyAnalysisSection;
   root_cause_identification: RootCauseIdentificationSection;
-  rca_tool_demonstrations: RCAToolDemonstration[];
 }
 
 export interface RootCauseTaxonomy {

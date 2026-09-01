@@ -60,6 +60,12 @@ class RciReportGenerationRequest(BaseModel):
     # been uploaded yet — always optional, never required for generation to succeed.
     uploaded_impact_assessment_text: Optional[str] = None
     uploaded_correction_remedial_text: Optional[str] = None
+    # The "Conclusion:"/"Disposition:" line onward within the uploaded document's own
+    # Impact Assessment text above — added 2026-09-01 so Impact Assessment's `conclusion`
+    # field can be sourced verbatim from it instead of LLM-synthesized (mirrors
+    # uploaded_correction_remedial_text's sole-sourcing pattern). None when no such line
+    # was found in the uploaded document, or none was uploaded — always optional.
+    uploaded_impact_conclusion_text: Optional[str] = None
     # Gates Risk Assessment; None -> module defaults to "applicable" (the safer
     # default for a compliance report — see GAPS.md).
     mc_confirmed: Optional[bool] = None

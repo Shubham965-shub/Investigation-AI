@@ -47,13 +47,6 @@ class HistoryReviewSection(BaseModel):
 
 SixMFactor = Literal["Man", "Machine", "Material", "Method", "Measurement", "Mother Nature"]
 
-RCADemonstrableMethod = Literal[
-    "Why-Why Analysis",
-    "Fishbone / Ishikawa",
-    "Fault Tree Analysis",
-    "Flowchart / Process Mapping",
-]
-
 
 class TaskSummaryItem(BaseModel):
     tick: str  # matches TaskAssignmentItem.tick, e.g. "1.2"
@@ -90,54 +83,21 @@ class WhyWhyStep(BaseModel):
     answer: str
 
 
-class FishboneBranch(BaseModel):
-    six_m_factor: SixMFactor
-    causes: List[str] = Field(..., min_length=1)
-
-
-class FaultTreeNode(BaseModel):
-    event: str
-    contributing_causes: List[str] = Field(..., min_length=1)
-
-
-class FlowchartStep(BaseModel):
-    step_number: int
-    description: str
-    decision_point: Optional[str] = None
-
-
-class RCAToolDemonstration(BaseModel):
-    """Part 3: a structured demonstration of the actual path to the root cause
-    for one genuinely-used RCA method -- not just naming the method. Exactly
-    the structured field matching `method` may be populated; the rest stay
-    empty, enforced below rather than left to prompt wording alone."""
-    method: RCADemonstrableMethod
-    method_rationale: str  # reasoning first: why the evidence supports this method being genuinely used
-    why_why_chain: List[WhyWhyStep] = Field(default_factory=list)
-    fishbone_branches: List[FishboneBranch] = Field(default_factory=list)
-    fault_tree: List[FaultTreeNode] = Field(default_factory=list)
-    flowchart_steps: List[FlowchartStep] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _method_matches_populated_structure(self):
-        populated = {
-            "Why-Why Analysis": bool(self.why_why_chain),
-            "Fishbone / Ishikawa": bool(self.fishbone_branches),
-            "Fault Tree Analysis": bool(self.fault_tree),
-            "Flowchart / Process Mapping": bool(self.flowchart_steps),
-        }
-        if not populated[self.method]:
-            raise ValueError(f"method={self.method!r} but its matching structured field is empty")
-        stray = [name for name, is_set in populated.items() if is_set and name != self.method]
-        if stray:
-            raise ValueError(f"method={self.method!r} but unrelated structured field(s) also populated: {stray}")
-        return self
+class WhyWhyAnalysisSection(BaseModel):
+    """Part 2: the Why-Why chain tracing the accepted root cause -- the only
+    RCA demonstration this report ever renders (2026-09-01, per the user;
+    Fishbone/Ishikawa, Fault Tree, and Flowchart/Process Mapping dropped
+    entirely, along with the "pick whichever method fits" logic they used
+    to require)."""
+    six_m_factor: SixMFactor  # the single dominant 6M factor this chain traces
+    method_rationale: str  # reasoning first: why the evidence supports this chain
+    why_why_chain: List[WhyWhyStep] = Field(..., min_length=1)
 
 
 class InvestigationTaskSection(BaseModel):
     task_summary: InvestigationTaskSummarySection
+    why_why_analysis: WhyWhyAnalysisSection
     root_cause_identification: RootCauseIdentificationSection
-    rca_tool_demonstrations: List[RCAToolDemonstration] = Field(..., min_length=1)
 
     @model_validator(mode="after")
     def _no_stray_non_latin_characters(self):
@@ -150,18 +110,10 @@ class InvestigationTaskSection(BaseModel):
             texts += [t.title, t.outcome]
         for link in self.root_cause_identification.applicable_tasks:
             texts += [link.title, link.explanation]
-        for demo in self.rca_tool_demonstrations:
-            texts.append(demo.method_rationale)
-            texts += [s.question for s in demo.why_why_chain] + [s.answer for s in demo.why_why_chain]
-            for b in demo.fishbone_branches:
-                texts += b.causes
-            for n in demo.fault_tree:
-                texts.append(n.event)
-                texts += n.contributing_causes
-            for s in demo.flowchart_steps:
-                texts.append(s.description)
-                if s.decision_point:
-                    texts.append(s.decision_point)
+        texts.append(self.why_why_analysis.method_rationale)
+        texts += [s.question for s in self.why_why_analysis.why_why_chain] + [
+            s.answer for s in self.why_why_analysis.why_why_chain
+        ]
         for text in texts:
             if _NON_LATIN_SCRIPT_RE.search(text):
                 raise ValueError(f"contains stray non-Latin characters: {text!r}")
@@ -219,7 +171,11 @@ class ImpactAssessmentBatchDispositionSection(BaseModel):
     stability_repackaging_requirement: ImpactSubsection
     patient_safety: ImpactSubsection
     others_as_applicable: ImpactSubsection
-    conclusion: str  # synthesizes the 11 subsections above into the final disposition
+    # Never LLM-drafted (2026-09-01, per the user) -- the route always overrides this
+    # with either the uploaded document's own verbatim conclusion or an explicit "not
+    # stated" note; the LLM is instructed to always return "" here (see
+    # impact_batch_disposition_system.txt item 12).
+    conclusion: str
     medical_investigation_summary: Optional[str] = None  # MC only
     health_hazard_evaluation: Optional[str] = None  # MC only
     impact_justification: Optional[str] = None  # OOS/OOT only
