@@ -169,7 +169,7 @@ async def export_rci_report(record_id: str, username: str = Depends(get_current_
 
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=event_type == "Deviation", for_rci_report=True)
     report = RciReportSections(**stored["report"])
-    docx_bytes = build_rci_report_docx(record_id, trackwise_fields, report)
+    docx_bytes = build_rci_report_docx(record_id, trackwise_fields, report, event_type)
 
     try:
         approver = await fetch_user_by_username(username)

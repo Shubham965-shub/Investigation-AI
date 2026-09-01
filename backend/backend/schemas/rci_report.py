@@ -130,7 +130,13 @@ class HistoryReviewRow(BaseModel):
 
 class HistoryReviewSection(BaseModel):
     lookback_months: int
-    search_scope_note: str
+    # Optional (not required) — added after some RCI Reports were already
+    # generated and persisted without it; a required field here would 500 on
+    # GET for every one of those older stored reports, not just block new
+    # generation (2026-08-26, found via a live 500 on record_id=503442,
+    # whose report predates this field). ds still always populates a real
+    # value for freshly-generated reports.
+    search_scope_note: Optional[str] = None
     rows: List[HistoryReviewRow]
     no_similar_events_found: bool
     closing_narrative: str

@@ -72,7 +72,8 @@ SELECT
     di.investigator,
     r.rci_key AS rci_number,
     d.department,
-    f.due_date
+    f.due_date,
+    e.criticality
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key

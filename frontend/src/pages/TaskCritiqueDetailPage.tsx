@@ -14,7 +14,6 @@ import { FileDropzone } from "../components/FileDropzone";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
-import investigatorIcon from "../assets/icons/rci-person-investigator.svg";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
 
@@ -55,11 +54,12 @@ export function TaskCritiqueDetailPage() {
   // isRecChecked below), so this only needs writing to when something is
   // actually unchecked.
   const [uncheckedRecIds, setUncheckedRecIds] = useState<Set<number>>(new Set());
-  // Asks for ONE shared reason covering every deselected recommendation
-  // (2026-08-26, per the user: "a single reason", not one per recommendation)
-  // before the partial accept goes through.
+  // Asks for a SEPARATE reason per deselected recommendation (2026-08-26,
+  // per the user — previously one shared reason covered every deselected
+  // recommendation in the batch; now each gets its own labeled box in a
+  // table) before the partial accept goes through. Keyed by recommendation id.
   const [deselectPrompt, setDeselectPrompt] = useState(false);
-  const [deselectReason, setDeselectReason] = useState("");
+  const [deselectReasons, setDeselectReasons] = useState<Record<number, string>>({});
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
   const [history, setHistory] = useState<RecommendationHistoryAttempt[]>([]);
 
@@ -172,6 +172,14 @@ export function TaskCritiqueDetailPage() {
       for (const id of pendingIds) {
         updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "accepted");
       }
+      if (updated.locked) {
+        // Scored and closed out — nothing left to review here, so go back
+        // to the main list instead of showing this task's now-closed detail
+        // page (2026-08-26, per the user, same as handleUpload's gospel/
+        // 3rd-attempt redirect).
+        navigate(`/records/${recordId}/task-critique`);
+        return;
+      }
       setSection(updated);
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to accept recommendations");
@@ -196,12 +204,17 @@ export function TaskCritiqueDetailPage() {
   }
 
   async function handlePartialAccept() {
-    const reason = deselectReason.trim();
-    if (!reason) return;
     const pending = report!.recommendations.filter((r) => r.decision === "pending");
     const toAccept = pending.filter((r) => !uncheckedRecIds.has(r.id));
     const toReject = pending.filter((r) => uncheckedRecIds.has(r.id));
     if (toAccept.length === 0 && toReject.length === 0) return;
+    if (toReject.some((r) => !(deselectReasons[r.id] ?? "").trim())) return;
+    // Closed immediately, not just on success (2026-08-26, per the user) —
+    // ScoringDialog below renders at the same z-index the instant scoring
+    // is predicted, and this dialog previously stayed mounted for the whole
+    // (possibly long) scoring wait underneath/alongside it, looking like a
+    // broken white overlay.
+    setDeselectPrompt(false);
     setBusy(true);
     setActionError("");
     // Same all-rejected prediction as handleRejectAll — every deselected
@@ -216,11 +229,18 @@ export function TaskCritiqueDetailPage() {
         updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "accepted");
       }
       for (const rec of toReject) {
-        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "rejected", reason);
+        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "rejected", deselectReasons[rec.id].trim());
+      }
+      if (updated.locked) {
+        // Scored and closed out — nothing left to review here, so go back
+        // to the main list instead of showing this task's now-closed detail
+        // page (2026-08-26, per the user, same as handleUpload's gospel/
+        // 3rd-attempt redirect).
+        navigate(`/records/${recordId}/task-critique`);
+        return;
       }
       setSection(updated);
-      setDeselectPrompt(false);
-      setDeselectReason("");
+      setDeselectReasons({});
       setUncheckedRecIds(new Set());
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to record recommendation decisions");
@@ -269,8 +289,7 @@ export function TaskCritiqueDetailPage() {
               <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 160, boxSizing: "border-box" }}>
                 TCD: {section.due_date || "—"}
               </div>
-              <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, minWidth: 140, boxSizing: "border-box" }}>
-                <img src={investigatorIcon} alt="" width={16} height={16} />
+              <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", minWidth: 140, boxSizing: "border-box" }}>
                 <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
               </div>
             </>
@@ -434,7 +453,7 @@ export function TaskCritiqueDetailPage() {
               transform: "translate(-50%, -50%)",
               background: "var(--color-surface)",
               borderRadius: 10,
-              width: "min(480px, 92vw)",
+              width: "min(560px, 92vw)",
               padding: 24,
               zIndex: 61,
               display: "flex",
@@ -442,31 +461,53 @@ export function TaskCritiqueDetailPage() {
               gap: 12,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>
-              {(() => {
-                const deselectedNumbers = report.recommendations
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>Why were these recommendations deselected?</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", width: "35%" }}>Recommendation</th>
+                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)" }}>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.recommendations
                   .map((r, i) => ({ r, num: i + 1 }))
                   .filter(({ r }) => r.decision === "pending" && uncheckedRecIds.has(r.id))
-                  .map(({ num }) => `#${num}`);
-                return deselectedNumbers.length === 1
-                  ? `Why was Recommendation ${deselectedNumbers[0]} deselected?`
-                  : `Why were Recommendations ${deselectedNumbers.join(", ")} deselected?`;
-              })()}
-            </p>
-            <input
-              type="text"
-              className="field-value"
-              placeholder="Reason"
-              value={deselectReason}
-              onChange={(e) => setDeselectReason(e.target.value)}
-              style={{ height: "auto" }}
-              autoFocus
-            />
+                  .map(({ r, num }, idx) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)", verticalAlign: "top" }}>
+                        #{num}. {r.description}
+                      </td>
+                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)" }}>
+                        <input
+                          type="text"
+                          className="field-value"
+                          placeholder="Reason"
+                          value={deselectReasons[r.id] ?? ""}
+                          onChange={(e) => setDeselectReasons((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          style={{ height: "auto", width: "100%", boxSizing: "border-box" }}
+                          autoFocus={idx === 0}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-              <button type="button" className="btn-outline" onClick={() => setDeselectPrompt(false)}>
+              <button type="button" className="btn-outline" onClick={() => { setDeselectPrompt(false); setDeselectReasons({}); }}>
                 Cancel
               </button>
-              <button type="button" className="btn-primary" disabled={busy || !deselectReason.trim()} onClick={handlePartialAccept}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={
+                  busy ||
+                  report.recommendations
+                    .filter((r) => r.decision === "pending" && uncheckedRecIds.has(r.id))
+                    .some((r) => !(deselectReasons[r.id] ?? "").trim())
+                }
+                onClick={handlePartialAccept}
+              >
                 Confirm
               </button>
             </div>

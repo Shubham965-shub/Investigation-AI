@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 _NOT_FOUND_DETAIL = "No investigation found for this record"
 
-router = APIRouter(prefix="/rc-capa-critique", tags=["RC & CAPA Critique"])
+router = APIRouter(prefix="/rc-capa-critique", tags=["RC, Impact & CAPA Critique"])
 
 
 async def _call_critique_endpoint(
@@ -328,7 +328,7 @@ async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get
     state = compute_rc_capa_state(reports)
 
     if state["status"] != "complete":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RC & CAPA Critique isn't complete yet")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RC, Impact & CAPA Critique isn't complete yet")
 
     latest = state["latest"]
     docx = await fetch_report_file_bytes(latest["id"])

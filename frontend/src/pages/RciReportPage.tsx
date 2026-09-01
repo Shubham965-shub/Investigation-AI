@@ -150,7 +150,11 @@ const DOC_PAPER_STYLE = {
   background: "#ffffff",
   color: "#1a1a1a",
   fontSize: "11pt",
-  fontFamily: 'Georgia, "Times New Roman", serif',
+  // The real exported .docx's Normal style resolves to Times New Roman (its
+  // docDefaults claims Calibri, but Normal overrides that) — matching it
+  // exactly rather than substituting Georgia (2026-08-26, per the user:
+  // "exactly how the docx is").
+  fontFamily: '"Times New Roman", Times, serif',
   maxWidth: 850,
   margin: "0 auto",
   padding: "56px 64px",
@@ -384,8 +388,106 @@ function SectionFooter({
   );
 }
 
+// The real exported .docx (backend/backend/assets/rci_report_template.docx)
+// uses genuine Word bulleted lists (w:numPr) for these narrative fields —
+// ds's generated text just embeds the bullet character ("•"/"-") as a plain
+// line prefix instead, so the on-screen version was rendering those as flat
+// wrapped text rather than a real indented list like the document itself
+// (2026-08-26, per the user: "that is how all reports must be formatted,
+// exactly how the docx is"). This reconstructs list structure from that
+// prefix + leading-whitespace nesting depth, the same way a lightweight
+// markdown-to-list parser would.
+interface NarrativeListNode {
+  text: string;
+  children: NarrativeListNode[];
+}
+type NarrativeBlock = { type: "p"; text: string } | { type: "list"; items: NarrativeListNode[] };
+
+function parseNarrativeBlocks(value: string): NarrativeBlock[] {
+  const blocks: NarrativeBlock[] = [];
+  let paragraphLines: string[] = [];
+  let listStack: { indent: number; node: NarrativeListNode }[] = [];
+  let rootList: NarrativeListNode[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length) {
+      blocks.push({ type: "p", text: paragraphLines.join("\n") });
+      paragraphLines = [];
+    }
+  };
+  const flushList = () => {
+    if (rootList.length) {
+      blocks.push({ type: "list", items: rootList });
+      rootList = [];
+      listStack = [];
+    }
+  };
+
+  for (const rawLine of value.split("\n")) {
+    const bulletMatch = rawLine.match(/^(\s*)[•*-]\s+(.*)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      const indent = bulletMatch[1].length;
+      const node: NarrativeListNode = { text: bulletMatch[2], children: [] };
+      while (listStack.length && indent <= listStack[listStack.length - 1].indent) {
+        listStack.pop();
+      }
+      if (listStack.length === 0) rootList.push(node);
+      else listStack[listStack.length - 1].node.children.push(node);
+      listStack.push({ indent, node });
+    } else if (rawLine.trim() === "") {
+      flushParagraph();
+      flushList();
+    } else {
+      flushList();
+      paragraphLines.push(rawLine);
+    }
+  }
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+function renderNarrativeList(nodes: NarrativeListNode[]) {
+  return (
+    <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+      {nodes.map((node, i) => (
+        <li key={i}>
+          {node.text}
+          {node.children.length > 0 && renderNarrativeList(node.children)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ReadOnlyValue({ value }: { value: string }) {
-  return <p className="field-value" style={{ margin: 0, whiteSpace: "pre-wrap", background: "none", border: "none", padding: "6px 0" }}>{value || "—"}</p>;
+  // height/overflowY override .field-value's dashboard-grid sizing (a fixed
+  // 3-line box with a scrollbar) — appropriate for the short dashboard
+  // fields that class was designed for, but this page's fields are full
+  // document paragraphs that need to show in full (2026-08-26, per the
+  // user).
+  const boxStyle: React.CSSProperties = { background: "none", border: "none", padding: "6px 0", height: "auto", overflow: "visible" };
+  if (!value) {
+    return (
+      <p className="field-value" style={{ margin: 0, ...boxStyle }}>
+        —
+      </p>
+    );
+  }
+  return (
+    <div className="field-value" style={{ ...boxStyle, display: "flex", flexDirection: "column", gap: 8 }}>
+      {parseNarrativeBlocks(value).map((block, i) =>
+        block.type === "p" ? (
+          <p key={i} style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+            {block.text}
+          </p>
+        ) : (
+          <div key={i}>{renderNarrativeList(block.items)}</div>
+        )
+      )}
+    </div>
+  );
 }
 
 function TextInput({
@@ -409,7 +511,7 @@ function TextInput({
 function TextArea({
   value,
   onChange,
-  rows = 3,
+  rows = 5,
   placeholder,
   style,
 }: {
@@ -803,10 +905,14 @@ export function RciReportPage() {
   // Real .docx download for "Download and View" (2026-08-25, per the user)
   // — the backend fills the company's actual RCI Report Word template with
   // this investigation's persisted report and returns the file directly,
-  // same convention as RCI Plan's own export. Also opens it in a new tab
-  // (best-effort "view" — most browsers still just re-download a .docx,
-  // since none render it natively, but this hands it off to whatever the
-  // OS/browser has registered for the file type instead of only saving it).
+  // same convention as RCI Plan's own export. Previously also called
+  // window.open(url, "_blank") to try to "view" it in a new tab, but since
+  // no browser renders .docx natively, that just triggered a second save of
+  // the same blob — without the <a> element's filename hint, so the
+  // browser assigned it a random blob-derived name, i.e. downloading the
+  // same file twice under two different names (2026-08-26, per the user).
+  // Dropped — a single correctly-named download is what this button
+  // actually achieves either way.
   async function handleDownloadAndView() {
     if (!recordId) return;
     setDownloading(true);
@@ -820,10 +926,9 @@ export function RciReportPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.open(url, "_blank");
-      // Revoking immediately can race the new tab's own load of the same
-      // blob URL — give it a moment first.
-      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+      // A short delay, not an instant revoke — some browsers haven't
+      // finished writing the download yet when .click() returns.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       setDownloadError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI report document");
     } finally {

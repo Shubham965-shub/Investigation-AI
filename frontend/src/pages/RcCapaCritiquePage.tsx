@@ -162,7 +162,11 @@ function RecommendationGroup({
 }) {
   const [uncheckedIds, setUncheckedIds] = useState<Set<number>>(new Set());
   const [deselectPrompt, setDeselectPrompt] = useState(false);
-  const [deselectReason, setDeselectReason] = useState("");
+  // A separate reason per deselected recommendation (2026-08-26, per the
+  // user — previously one shared reason covered every deselected
+  // recommendation; now each gets its own labeled box in a table). Keyed by
+  // recommendation id.
+  const [deselectReasons, setDeselectReasons] = useState<Record<number, string>>({});
 
   const pending = recs.filter((r) => r.decision === "pending");
 
@@ -210,10 +214,15 @@ function RecommendationGroup({
   }
 
   async function handlePartialAccept() {
-    const reason = deselectReason.trim();
-    if (!reason) return;
     const toAccept = pending.filter((r) => !uncheckedIds.has(r.id));
     const toReject = pending.filter((r) => uncheckedIds.has(r.id));
+    if (toReject.some((r) => !(deselectReasons[r.id] ?? "").trim())) return;
+    // Closed immediately, not just on success (2026-08-26, per the user) —
+    // ScoringDialog below renders at the same z-index the instant scoring
+    // is predicted, and this dialog previously stayed mounted for the whole
+    // (possibly long) scoring wait underneath/alongside it, looking like a
+    // broken white overlay.
+    setDeselectPrompt(false);
     setDecisionBusy(true);
     setDecisionError(null);
     if (toReject.length > 0 && wouldLockEverything(toReject.map((r) => r.id))) setScoring("all_decided");
@@ -223,11 +232,10 @@ function RecommendationGroup({
         updated = await decide(rec.id, "accepted");
       }
       for (const rec of toReject) {
-        updated = await decide(rec.id, "rejected", reason);
+        updated = await decide(rec.id, "rejected", deselectReasons[rec.id].trim());
       }
       if (updated) onDecided(updated);
-      setDeselectPrompt(false);
-      setDeselectReason("");
+      setDeselectReasons({});
       setUncheckedIds(new Set());
     } catch (err) {
       setDecisionError(err instanceof ApiError ? String(err.detail) : "Failed to record recommendation decisions");
@@ -283,7 +291,7 @@ function RecommendationGroup({
               transform: "translate(-50%, -50%)",
               background: "var(--color-surface)",
               borderRadius: 10,
-              width: "min(480px, 92vw)",
+              width: "min(560px, 92vw)",
               padding: 24,
               zIndex: 61,
               display: "flex",
@@ -291,31 +299,53 @@ function RecommendationGroup({
               gap: 12,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>
-              {(() => {
-                const deselectedNumbers = recs
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>Why were these recommendations deselected?</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", width: "35%" }}>Recommendation</th>
+                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)" }}>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recs
                   .map((r, i) => ({ r, num: i + 1 }))
                   .filter(({ r }) => r.decision === "pending" && uncheckedIds.has(r.id))
-                  .map(({ num }) => `#${num}`);
-                return deselectedNumbers.length === 1
-                  ? `Why was Recommendation ${deselectedNumbers[0]} deselected?`
-                  : `Why were Recommendations ${deselectedNumbers.join(", ")} deselected?`;
-              })()}
-            </p>
-            <input
-              type="text"
-              className="field-value"
-              placeholder="Reason"
-              value={deselectReason}
-              onChange={(e) => setDeselectReason(e.target.value)}
-              style={{ height: "auto" }}
-              autoFocus
-            />
+                  .map(({ r, num }, idx) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)", verticalAlign: "top" }}>
+                        #{num}. {r.description}
+                      </td>
+                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)" }}>
+                        <input
+                          type="text"
+                          className="field-value"
+                          placeholder="Reason"
+                          value={deselectReasons[r.id] ?? ""}
+                          onChange={(e) => setDeselectReasons((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          style={{ height: "auto", width: "100%", boxSizing: "border-box" }}
+                          autoFocus={idx === 0}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-              <button type="button" className="btn-outline" onClick={() => setDeselectPrompt(false)}>
+              <button type="button" className="btn-outline" onClick={() => { setDeselectPrompt(false); setDeselectReasons({}); }}>
                 Cancel
               </button>
-              <button type="button" className="btn-primary" disabled={decisionBusy || !deselectReason.trim()} onClick={handlePartialAccept}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={
+                  decisionBusy ||
+                  recs
+                    .filter((r) => r.decision === "pending" && uncheckedIds.has(r.id))
+                    .some((r) => !(deselectReasons[r.id] ?? "").trim())
+                }
+                onClick={handlePartialAccept}
+              >
                 Confirm
               </button>
             </div>
@@ -413,7 +443,7 @@ export function RcCapaCritiquePage() {
   if (!state) {
     return (
       <div className="empty-state">
-        <p>Complete the earlier steps first — RC & CAPA Critique needs this investigation's record to exist.</p>
+        <p>Complete the earlier steps first — RC, Impact & CAPA Critique needs this investigation's record to exist.</p>
         <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
           Go to Task Critique
         </button>
@@ -489,7 +519,7 @@ export function RcCapaCritiquePage() {
         </div>
       )}
       <div className="card-header">
-        <p className="card-title">RC & CAPA Critique</p>
+        <p className="card-title">RC, Impact & CAPA Critique</p>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button type="button" className="btn-outline" onClick={handleOpenHistory}>
             Recommendation History
@@ -535,7 +565,7 @@ export function RcCapaCritiquePage() {
           <div>
             <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Root Cause, Impact Assessment & CAPA Critique Complete!</p>
             <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-              All observations have been resolved and the RC & CAPA Critique is fully completed.
+              All observations have been resolved and the RC, Impact & CAPA Critique is fully completed.
               {waitingForSitReview ? " Waiting for SIT Review." : ""}
             </p>
           </div>
@@ -625,7 +655,7 @@ export function RcCapaCritiquePage() {
 
       {state.can_upload && (
         <div className="card" style={{ gap: 12 }}>
-          <p className="card-title">{state.upload_count === 0 ? "Upload Report" : "Upload Updated RC & CAPA Critique"}</p>
+          <p className="card-title">{state.upload_count === 0 ? "Upload Report" : "Upload Updated RC, Impact & CAPA Critique"}</p>
           <FileDropzone
             disabled={uploading}
             loading={uploading}
@@ -745,7 +775,7 @@ export function RcCapaCritiquePage() {
       {showConfirm && (
         <ConfirmDialog
           title="Accept RCI & CAPA Critique?"
-          message="Are you sure you want to accept and push the RC & CAPA Critique for SIT Review?"
+          message="Are you sure you want to accept and push the RC, Impact & CAPA Critique for SIT Review?"
           onCancel={() => setShowConfirm(false)}
           onConfirm={handlePushToSitReview}
         />

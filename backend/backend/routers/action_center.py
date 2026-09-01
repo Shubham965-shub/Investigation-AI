@@ -377,14 +377,14 @@ async def get_action_center_summary(
         delay = [i for i in items if i["bucket"] == "delay"]
         overdue = [i for i in items if i["bucket"] == "overdue"]
 
-        # Order: Overdue, Delay, Unassigned, Concluded in Phase 1, On Track
+        # Order: Overdue, Delay, Unassigned, Phase 1 OOS/OOT, On Track
         # (per the user, 2026-07-30 and 2026-08-25) — most urgent first, not
         # the original Unassigned/On Track/Delay/Overdue grouping.
         return [
             StatusCard(key="overdue", label="Overdue", count=len(overdue), rows=[]),
             StatusCard(key="delay", label="At Risk of Delay", count=len(delay), rows=[]),
             StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=[]),
-            StatusCard(key="unassigned_phase1", label="Concluded in Phase 1", count=len(unassigned_phase1), rows=[]),
+            StatusCard(key="unassigned_phase1", label="Phase 1 OOS/OOT", count=len(unassigned_phase1), rows=[]),
             StatusCard(key="on-track", label="On Track", count=len(on_track), rows=[]),
         ]
 
