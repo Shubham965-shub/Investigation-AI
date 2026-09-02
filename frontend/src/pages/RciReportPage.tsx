@@ -175,17 +175,20 @@ const DOC_PAPER_STYLE = {
 // (2026-09-02, per the user) — shares the paper's locked light-theme
 // tokens (via CSS custom-property inheritance from the shared row wrapper)
 // so it reads as part of the same document, just relocated out of the
-// paper's own scroll flow. `top` clears the app shell's own sticky
+// paper's own scroll flow. `top` clears BOTH the app shell's own sticky
 // Stepper (48px circle + 60px reserved label/SLA padding, see
-// Stepper.tsx) so the two stuck elements don't overlap.
+// Stepper.tsx — ~108px) AND this page's own sticky "Download and View"
+// button bar (~60px, see its `top: 108` sticky style below) stacked right
+// under it, so none of the three stuck elements overlap.
 const DOC_SIDEBAR_STYLE: React.CSSProperties = {
   padding: "20px 20px",
   position: "sticky",
-  top: 108,
+  top: 168,
+  zIndex: 4,
   width: 340,
   maxWidth: 340,
   flexShrink: 0,
-  maxHeight: "calc(100vh - 132px)",
+  maxHeight: "calc(100vh - 192px)",
   overflowY: "auto",
   overflowX: "hidden",
   margin: 0,
@@ -1009,7 +1012,17 @@ export function RciReportPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="card-header" style={{ justifyContent: "flex-end" }}>
+      <div
+        className="card-header"
+        style={{
+          justifyContent: "flex-end",
+          position: "sticky",
+          top: 108,
+          zIndex: 5,
+          background: "var(--color-bg)",
+          padding: "8px 0",
+        }}
+      >
         <button
           type="button"
           className="btn-primary"
