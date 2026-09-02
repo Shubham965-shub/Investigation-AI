@@ -37,6 +37,7 @@ import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkSingleIcon from "../assets/icons/rci-report-check-single.svg";
 import checkDoubleIcon from "../assets/icons/rci-report-check-double.svg";
+import stridesLogo from "../assets/icons/strides-logo-light-bg.jpeg";
 import "./RecordModulePage.css";
 
 const EditModeContext = createContext(false);
@@ -73,6 +74,8 @@ const SECTIONS: SectionMeta[] = [
   { key: "correction-remedial-action", number: 7, dmaic: "Improve", title: "Correction and/or Remedial Action" },
   { key: "capa", number: 8, dmaic: "Improve", title: "Corrective Action & Preventive Action (CAPA)" },
   { key: "capa-effectiveness-check-plan", number: 9, dmaic: "Control", title: "CAPA Effectiveness Check Plan" },
+  { key: "annexures", number: 10, dmaic: "", title: "List of Attachments" },
+  { key: "approval", number: 11, dmaic: "", title: "Approval" },
 ];
 
 const SOURCE_OPTIONS: SourcedTextItem["source"][] = ["trackwise", "manual_entry_required", "manual_entry_provided", "synthesized"];
@@ -118,15 +121,18 @@ const READ_LABEL_STYLE: React.CSSProperties = {
 // their light-theme values, see index.css) makes the whole existing
 // component tree render correctly on white with no per-component changes —
 // this cascades to every descendant exactly like a CSS class would.
-// Content font size is locked at 11pt, 10pt inside tables (2026-08-25, per
-// the user — matches the exported .docx exactly, see rci_report_export.py's
-// FONT_SIZE/TABLE_FONT_SIZE). Shadowing --font-size-base/-md (used by plain
-// body paragraphs and the .field-label/.field-value classes) and
-// --font-size-sm (used by every table in this file — DataTable,
-// KeyValueTable, DocHeaderTable, DocIndex) achieves this the same way the
-// color tokens above do, without hunting down every inline fontSize prop.
-// --font-size-xs (caption/label text, e.g. READ_LABEL_STYLE) is left alone —
-// a label isn't the content itself.
+// Content font size started locked at 11pt/10pt to match the exported
+// .docx exactly (2026-08-25, per the user, see rci_report_export.py's
+// FONT_SIZE/TABLE_FONT_SIZE) but read too small on screen, so it's bumped
+// up here for on-screen readability in both read and edit mode (2026-09-02,
+// per the user) — the export itself is untouched, still genuinely 11pt/10pt.
+// Shadowing --font-size-base/-md (used by plain body paragraphs and the
+// .field-label/.field-value classes, so this also sizes the edit-mode
+// inputs/textareas) and --font-size-sm (used by every table in this file —
+// DataTable, KeyValueTable, DocHeaderTable, DocIndex) achieves this the same
+// way the color tokens above do, without hunting down every inline
+// fontSize prop. --font-size-xs (caption/label text, e.g. READ_LABEL_STYLE)
+// is left alone — a label isn't the content itself.
 const DOC_PAPER_STYLE = {
   "--color-surface": "#ffffff",
   "--color-bg": "#f7f7f7",
@@ -144,12 +150,12 @@ const DOC_PAPER_STYLE = {
   "--color-danger-bg": "#fef2f2",
   "--color-danger-border": "#fca5a5",
   "--color-danger-text": "#dc2626",
-  "--font-size-base": "11pt",
-  "--font-size-md": "11pt",
-  "--font-size-sm": "10pt",
+  "--font-size-base": "13pt",
+  "--font-size-md": "13pt",
+  "--font-size-sm": "12pt",
   background: "#ffffff",
   color: "#1a1a1a",
-  fontSize: "11pt",
+  fontSize: "13pt",
   // The real exported .docx's Normal style resolves to Times New Roman (its
   // docDefaults claims Calibri, but Normal overrides that) — matching it
   // exactly rather than substituting Georgia (2026-08-26, per the user:
@@ -164,6 +170,26 @@ const DOC_PAPER_STYLE = {
   flexDirection: "column",
   gap: 28,
 } as React.CSSProperties;
+
+// The Index's own sidebar card, sticky alongside the document paper
+// (2026-09-02, per the user) — shares the paper's locked light-theme
+// tokens (via CSS custom-property inheritance from the shared row wrapper)
+// so it reads as part of the same document, just relocated out of the
+// paper's own scroll flow. `top` clears the app shell's own sticky
+// Stepper (48px circle + 60px reserved label/SLA padding, see
+// Stepper.tsx) so the two stuck elements don't overlap.
+const DOC_SIDEBAR_STYLE: React.CSSProperties = {
+  padding: "20px 20px",
+  position: "sticky",
+  top: 108,
+  width: 340,
+  maxWidth: 340,
+  flexShrink: 0,
+  maxHeight: "calc(100vh - 132px)",
+  overflowY: "auto",
+  overflowX: "hidden",
+  margin: 0,
+};
 
 const DOC_HEADING_STYLE: React.CSSProperties = {
   margin: 0,
@@ -287,7 +313,11 @@ function DocHeaderTable({ recordId, rciNumber, trackwiseFields }: { recordId: st
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
       <tbody>
         <tr>
-          <td colSpan={4} style={{ ...cellStyle, textAlign: "center", fontWeight: 700, fontSize: "var(--font-size-base)" }}>
+          <td style={{ ...cellStyle, textAlign: "center", width: "20%" }}>
+            <img src={stridesLogo} alt="Strides" style={{ maxWidth: "100%", height: "28px", objectFit: "contain", display: "block", margin: "0 auto 4px" }} />
+            KRSG
+          </td>
+          <td colSpan={3} style={{ ...cellStyle, textAlign: "center", fontWeight: 700, fontSize: "var(--font-size-base)" }}>
             Root Cause Investigation Report
           </td>
         </tr>
@@ -305,11 +335,46 @@ function DocHeaderTable({ recordId, rciNumber, trackwiseFields }: { recordId: st
 }
 
 // The document's INDEX/table-of-contents (DMAIC Elements | Sr. No. |
-// Description — the real table's own Page No. column is dropped, since
-// pagination isn't tracked here). Risk Assessment is excluded entirely,
+// Description | Page No.). Real page numbers only exist once Word actually
+// paginates the exported .docx (see rci_report_export.py's PAGEREF fields)
+// — this preview is a scrolling web page, not a paginated one, so the Page
+// No. column can't show a real value here and points to the export instead
+// (2026-09-02, per the user). Risk Assessment is excluded entirely,
 // matching its absence from the real INDEX table.
-function DocIndex({ onJump }: { onJump: (key: string) => void }) {
+//
+// `compact` (2026-09-02, per the user — the Index now lives in a narrow
+// sticky sidebar): the full 4-column table doesn't fit a ~300px-wide panel
+// without forcing horizontal scroll, so this drops the DMAIC/Page No.
+// columns and renders a plain clickable list instead — same sections, same
+// onJump behavior, just laid out to actually fit.
+function DocIndex({ onJump, compact = false }: { onJump: (key: string) => void; compact?: boolean }) {
   const cellStyle: React.CSSProperties = { border: "1px solid var(--color-card-border)", padding: "8px 12px" };
+  const sections = SECTIONS.filter((s) => s.key !== "risk-assessment");
+
+  if (compact) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {sections.map((s) => (
+          <div
+            key={s.key}
+            onClick={() => onJump(s.key)}
+            style={{ cursor: "pointer", padding: "6px 4px", borderRadius: 4, borderBottom: "1px solid var(--color-card-border)" }}
+          >
+            <p style={{ margin: 0, color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-sm)", wordBreak: "break-word" }}>
+              {s.number != null ? `${s.number}. ` : ""}
+              {s.title}
+            </p>
+            {s.dmaic && (
+              <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: "var(--font-size-xs)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                {s.dmaic}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
       <thead>
@@ -317,14 +382,16 @@ function DocIndex({ onJump }: { onJump: (key: string) => void }) {
           <th style={{ ...READ_LABEL_STYLE, ...cellStyle, background: "var(--color-bg)", textAlign: "left" }}>DMAIC Elements</th>
           <th style={{ ...READ_LABEL_STYLE, ...cellStyle, background: "var(--color-bg)", textAlign: "left" }}>Sr. No.</th>
           <th style={{ ...READ_LABEL_STYLE, ...cellStyle, background: "var(--color-bg)", textAlign: "left" }}>Description</th>
+          <th style={{ ...READ_LABEL_STYLE, ...cellStyle, background: "var(--color-bg)", textAlign: "left" }}>Page No.</th>
         </tr>
       </thead>
       <tbody>
-        {SECTIONS.filter((s) => s.key !== "risk-assessment").map((s) => (
+        {sections.map((s) => (
           <tr key={s.key} onClick={() => onJump(s.key)} style={{ cursor: "pointer" }}>
             <td style={cellStyle}>{s.dmaic}</td>
             <td style={cellStyle}>{s.number ?? ""}</td>
             <td style={{ ...cellStyle, color: "var(--color-primary)", fontWeight: 600 }}>{s.title}</td>
+            <td style={{ ...cellStyle, color: "var(--color-text-muted)", fontStyle: "italic" }}>See exported document</td>
           </tr>
         ))}
       </tbody>
@@ -979,35 +1046,36 @@ export function RciReportPage() {
       )}
 
       {report && (
-        <div style={DOC_PAPER_STYLE}>
-          <DocHeaderTable recordId={recordId} rciNumber={rciNumber} trackwiseFields={trackwiseFields} />
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span
-              style={{
-                fontSize: "var(--font-size-sm)",
-                fontWeight: 600,
-                background: "var(--color-rail-active-bg)",
-                color: "var(--color-primary)",
-                border: "1px solid var(--color-primary)",
-                borderRadius: 99,
-                padding: "4px 12px",
-              }}
-            >
-              {generatedAt ? `Generated ${new Date(generatedAt).toLocaleString()}` : "Not yet generated"}
-            </span>
-            <button type="button" className="btn-outline" onClick={handleGenerate} disabled={generating}>
-              {generating ? "Regenerating…" : "Regenerate"}
-            </button>
-          </div>
-          {generateError && <p className="error-banner">{generateError}</p>}
-
-          <div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, maxWidth: 850 + 24 + 340, margin: "0 auto" }}>
+          <div style={{ ...DOC_PAPER_STYLE, ...DOC_SIDEBAR_STYLE }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>INDEX</p>
-            <DocIndex onJump={jumpToSection} />
+            <DocIndex onJump={jumpToSection} compact />
           </div>
 
-          {/* Executive Summary */}
+          <div style={{ ...DOC_PAPER_STYLE, margin: 0, flex: 1, minWidth: 0 }}>
+            <DocHeaderTable recordId={recordId} rciNumber={rciNumber} trackwiseFields={trackwiseFields} />
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: 600,
+                  background: "var(--color-rail-active-bg)",
+                  color: "var(--color-primary)",
+                  border: "1px solid var(--color-primary)",
+                  borderRadius: 99,
+                  padding: "4px 12px",
+                }}
+              >
+                {generatedAt ? `Generated ${new Date(generatedAt).toLocaleString(undefined, { hour12: false })}` : "Not yet generated"}
+              </span>
+              <button type="button" className="btn-outline" onClick={handleGenerate} disabled={generating}>
+                {generating ? "Regenerating…" : "Regenerate"}
+              </button>
+            </div>
+            {generateError && <p className="error-banner">{generateError}</p>}
+
+            {/* Executive Summary */}
           <DocSection
             section={SECTIONS[0]}
             editing={!!editSections["executive-summary"]}
@@ -1020,22 +1088,32 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.executive_summary} />
             ) : (
               <>
-                <Field label="Summary">
-                  <TextArea value={report.executive_summary.summary} onChange={(v) => setSectionField("executive_summary", "summary", v)} />
-                </Field>
                 {([
                   ["problem_description", "Problem Description"],
                   ["immediate_containment_action", "Immediate Containment Action"],
                   ["determination_of_root_cause", "Determination of Root Cause"],
                   ["root_cause_probable_cause_statement", "Root Cause / Probable Cause Statement"],
                   ["impact_assessment", "Impact Assessment"],
-                  ["correction_conclusion_preventive_actions", "Correction, Conclusion & Preventive Actions"],
-                  ["conclusion_statement", "Conclusion Statement"],
                 ] as const).map(([field, label]) => (
                   <Field key={field} label={label}>
                     <TextArea value={report.executive_summary![field]} onChange={(v) => setSectionField("executive_summary", field, v)} />
                   </Field>
                 ))}
+                {/* conclusion_statement has no heading of its own in the
+                    exported document — it's a "Conclusion Statement: "
+                    -prefixed continuation paragraph appended right after
+                    correction_conclusion_preventive_actions, under that
+                    field's own heading (see rci_report_export.py's
+                    _fill_executive_summary, paragraphs 86/87). Not shown as
+                    its own field here; it's still written into the export
+                    (2026-09-02, per the user — not independently editable
+                    on this page). */}
+                <Field label="Correction, Corrective and Preventive Actions">
+                  <TextArea
+                    value={report.executive_summary.correction_conclusion_preventive_actions}
+                    onChange={(v) => setSectionField("executive_summary", "correction_conclusion_preventive_actions", v)}
+                  />
+                </Field>
               </>
             )}
           </DocSection>
@@ -1110,7 +1188,7 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.initial_impact_assessment} />
             ) : (
               <>
-                <Field label="Material / Product Impacts">
+                <Field label="2.1 Material / Product">
                   {(() => {
                     const list = report.initial_impact_assessment!.material_product_impacts;
                     const h = listHelpers<MaterialProductImpactItem>("initial_impact_assessment", "material_product_impacts", list);
@@ -1187,7 +1265,7 @@ export function RciReportPage() {
                   })()}
                 </Field>
 
-                <Field label="Equipment Impacts">
+                <Field label="2.2 Equipment / Instrument / Facility / Utility / Process / Data / Software">
                   {(() => {
                     const list = report.initial_impact_assessment!.equipment_impacts;
                     const h = listHelpers<EquipmentImpactItem>("initial_impact_assessment", "equipment_impacts", list);
@@ -1281,7 +1359,7 @@ export function RciReportPage() {
                   })()}
                 </Field>
 
-                <Field label="Immediate Actions">
+                <Field label="2.3 Immediate Actions">
                   <StringListEditor
                     items={report.initial_impact_assessment.immediate_actions}
                     onChange={(v) => setListField("initial_impact_assessment", "immediate_actions", v)}
@@ -2203,7 +2281,7 @@ export function RciReportPage() {
               here: annexures/approval are pure pass-through fields with no
               generation or sign-off workflow built for them anywhere in
               this app yet. */}
-          <div style={{ breakBefore: "page" }}>
+          <div style={{ breakBefore: "page" }} ref={(el) => { sectionRefs.current["annexures"] = el; }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>List of Annexures</p>
             {report.annexures.items.length > 0 ? (
               <DataTable
@@ -2218,7 +2296,7 @@ export function RciReportPage() {
             )}
           </div>
 
-          <div style={{ breakBefore: "page" }}>
+          <div style={{ breakBefore: "page" }} ref={(el) => { sectionRefs.current["approval"] = el; }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>Report Approval</p>
             <DataTable
               columns={[
@@ -2244,6 +2322,7 @@ export function RciReportPage() {
           <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)", textAlign: "center" }}>
             Annexures and Approval aren't editable here yet — they're empty pass-through fields with no generation or sign-off workflow built for them.
           </p>
+        </div>
         </div>
       )}
     </div>

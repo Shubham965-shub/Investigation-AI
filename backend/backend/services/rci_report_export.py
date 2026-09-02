@@ -79,10 +79,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import docx
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from backend.schemas.rci_report import RciReportSections
 
@@ -613,7 +615,12 @@ def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
     lines = [
         section.search_scope_note,
         f"Lookback period: {section.lookback_months} months.",
-        "No similar events found in the lookback window." if section.no_similar_events_found else "",
+        # Trust the table's own row data over ds's no_similar_events_found
+        # flag — the two have been observed to disagree (flag true while
+        # rows is non-empty), which would otherwise show this line right
+        # next to a table full of actual historical events (2026-09-02,
+        # per the user).
+        "No similar events found in the lookback window." if section.no_similar_events_found and not section.rows else "",
         section.closing_narrative,
         f"Batches manufactured: {section.batches_manufactured_note}" if section.batches_manufactured_note else "",
     ]
@@ -919,14 +926,111 @@ def _fill_capa_effectiveness_check_plan(cursor: _Cursor, section, errors: dict) 
 # ever removes pure-guidance paragraphs, never a heading).
 _SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 176, 185, 192, 195]
 
+# One bookmark name per heading above, same order — lets the Index table's
+# "Page No." column (table 0, rows 1-12) reference each section's real
+# on-page location via a PAGEREF field, rather than staying blank forever
+# (2026-09-02, per the user: page numbers "aren't tracked anywhere in this
+# app" was a known, deliberate gap until now — python-docx itself can't
+# compute a page number since it never paginates the document, but Word
+# can and does, once it opens the file and recalculates fields).
+_SECTION_BOOKMARK_NAMES = [
+    "sec_executive_summary",
+    "sec_description_of_event",
+    "sec_initial_impact_assessment",
+    "sec_historical_review",
+    "sec_investigation_tasks",
+    "sec_root_cause_conclusion",
+    "sec_impact_assessment_conclusion",
+    "sec_correction_remedial_action",
+    "sec_capa",
+    "sec_effectiveness_check_plan",
+    "sec_annexures",
+    "sec_approval",
+]
+
+
+def _insert_bookmark(paragraph: Paragraph, bookmark_id: int, name: str) -> None:
+    p = paragraph._p
+    pPr = p.find(qn("w:pPr"))
+    index = list(p).index(pPr) + 1 if pPr is not None else 0
+
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), str(bookmark_id))
+    start.set(qn("w:name"), name)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), str(bookmark_id))
+
+    p.insert(index, start)
+    p.insert(index + 1, end)
+
 
 def _add_page_breaks(cursor: _Cursor) -> None:
     # Always called first, before any bulleted-paragraph expansion, so
     # cursor.offset is still 0 here — kept cursor-based anyway (rather than
     # taking `doc` directly) purely for signature consistency with every
-    # other function in this file.
-    for index in _SECTION_HEADING_INDICES:
-        cursor.paragraph(index).paragraph_format.page_break_before = True
+    # other function in this file. Also plants each section's bookmark
+    # here, at the same paragraph, for the same reason (offset is still 0).
+    for bookmark_id, (index, name) in enumerate(zip(_SECTION_HEADING_INDICES, _SECTION_BOOKMARK_NAMES)):
+        heading = cursor.paragraph(index)
+        heading.paragraph_format.page_break_before = True
+        _insert_bookmark(heading, bookmark_id, name)
+
+
+def _set_cell_pageref(cell, bookmark_name: str) -> None:
+    """Replaces a table cell's content with a Word PAGEREF field pointing at
+    `bookmark_name`. Word (not python-docx, which never paginates a
+    document) computes and fills in the real page number the moment it
+    opens the file, since _enable_field_auto_update below forces every
+    field to recalculate on open — "1" here is only ever the unresolved
+    placeholder python-docx itself leaves behind."""
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    p = paragraph._p
+    for old_run in list(paragraph.runs):
+        p.remove(old_run._element)
+
+    def _field_char(fld_type: str, dirty: bool = False):
+        run_el = OxmlElement("w:r")
+        fld = OxmlElement("w:fldChar")
+        fld.set(qn("w:fldCharType"), fld_type)
+        if dirty:
+            fld.set(qn("w:dirty"), "true")
+        run_el.append(fld)
+        return run_el
+
+    begin_run = _field_char("begin", dirty=True)
+
+    instr_run = OxmlElement("w:r")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f" PAGEREF {bookmark_name} \\h "
+    instr_run.append(instr)
+
+    separate_run = _field_char("separate")
+
+    result_run = OxmlElement("w:r")
+    result_text = OxmlElement("w:t")
+    result_text.text = "1"
+    result_run.append(result_text)
+
+    end_run = _field_char("end")
+
+    for run_el in (begin_run, instr_run, separate_run, result_run, end_run):
+        p.append(run_el)
+        _apply_font(Run(run_el, paragraph), TABLE_FONT_SIZE)
+
+
+def _fill_index_page_numbers(cursor: _Cursor) -> None:
+    table = cursor.doc.tables[0]
+    for row_offset, name in enumerate(_SECTION_BOOKMARK_NAMES):
+        _set_cell_pageref(table.rows[row_offset + 1].cells[3], name)
+
+
+def _enable_field_auto_update(doc) -> None:
+    settings = doc.settings.element
+    update_fields = OxmlElement("w:updateFields")
+    update_fields.set(qn("w:val"), "true")
+    settings.append(update_fields)
 
 
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
@@ -998,6 +1102,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     cursor = _Cursor(doc)
 
     _add_page_breaks(cursor)
+    _fill_index_page_numbers(cursor)
     _fill_header_table(doc, record_id, trackwise_fields)
     _fill_executive_summary(cursor, report.executive_summary, event_type, errors)
     _fill_description_of_event(cursor, report.description_of_event, errors)
@@ -1024,6 +1129,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     # target paragraph to exist with its original guidance runs intact
     # until it's actually written.
     _strip_guidance_runs(doc)
+    _enable_field_auto_update(doc)
 
     buffer = io.BytesIO()
     doc.save(buffer)
