@@ -8,7 +8,6 @@ from src.agents.rci_report.api.schemas.request import (
     AcceptedRCConclusion,
     RciReportGenerationRequest,
 )
-from src.agents.rci_report.api.services.text_cleaning import strip_audit_log_prefix
 from src.agents.shared.schemas import missing_required_trackwise_fields, required_trackwise_fields
 
 
@@ -39,14 +38,12 @@ class RciReportContext:
     mc_confirmed: Optional[bool]
     history_lookback_months: int
     manual_entries: Dict[str, str]
-    # Pre-cleaned once here so no downstream prompt-builder re-derives this.
-    root_cause_conclusion_text_clean: str
-    impact_details_text_clean: str
     # The uploaded RC & CAPA document's own verbatim text (extract_rci_report_sections, no
     # LLM) — not a raw TrackWise audit-log field, so no strip_audit_log_prefix needed. Empty
     # string (not None) when no RC & CAPA document has been uploaded yet.
     uploaded_impact_assessment_text: str
     uploaded_correction_remedial_text: str
+    uploaded_impact_conclusion_text: str
 
     def tw(self, key: str, default: str = "") -> str:
         value = self.trackwise_fields.get(key)
@@ -109,12 +106,7 @@ def build_report_context(request: RciReportGenerationRequest) -> RciReportContex
         mc_confirmed=request.mc_confirmed,
         history_lookback_months=request.history_lookback_months,
         manual_entries=request.manual_entries,
-        root_cause_conclusion_text_clean=strip_audit_log_prefix(
-            request.trackwise_fields.get("root_cause_conclusion") or ""
-        ),
-        impact_details_text_clean=strip_audit_log_prefix(
-            request.trackwise_fields.get("impact_details") or ""
-        ),
         uploaded_impact_assessment_text=(request.uploaded_impact_assessment_text or "").strip(),
         uploaded_correction_remedial_text=(request.uploaded_correction_remedial_text or "").strip(),
+        uploaded_impact_conclusion_text=(request.uploaded_impact_conclusion_text or "").strip(),
     )

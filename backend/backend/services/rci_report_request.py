@@ -227,6 +227,7 @@ def build_rci_report_request(
         "accepted_rc_conclusion": _accepted_rc_conclusion(rc_capa_report),
         "accepted_capa": _accepted_capa(rc_capa_report),
         "uploaded_impact_assessment_text": _uploaded_section_text(rc_capa_report, "rc_impact", "impact_assessment_text"),
+        "uploaded_impact_conclusion_text": _uploaded_section_text(rc_capa_report, "rc_impact", "impact_conclusion_text"),
         "uploaded_correction_remedial_text": _uploaded_section_text(rc_capa_report, "capa", "correction_remedial_text"),
         "mc_confirmed": mc_confirmed,
         # 24 months ("last 2 years") — matches real reports' stated lookback;
