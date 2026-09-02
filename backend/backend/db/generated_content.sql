@@ -233,6 +233,12 @@ CREATE TABLE IF NOT EXISTS investigation_rc_capa_reports (
     rc_conclusion_text_raw TEXT,
     is_repeat_occurrence BOOLEAN,
     impact_assessment_text TEXT,
+    -- The "Conclusion:"/"Disposition:" line onward within impact_assessment_text above —
+    -- an additive subset of it (2026-09-01, per the user), not a replacement, so RCI
+    -- Report generation can source Impact Assessment's `conclusion` field verbatim from
+    -- it instead of LLM-synthesizing it (mirrors correction_remedial_text's sole-sourcing
+    -- pattern below).
+    impact_conclusion_text TEXT,
     correction_remedial_text TEXT,
     capa_text_raw TEXT,
     capa_items JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -244,6 +250,7 @@ CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_deviation_id ON inv
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS rc_conclusion_text_raw TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS is_repeat_occurrence BOOLEAN;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS impact_assessment_text TEXT;
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS impact_conclusion_text TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS correction_remedial_text TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_text_raw TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_items JSONB NOT NULL DEFAULT '[]'::jsonb;

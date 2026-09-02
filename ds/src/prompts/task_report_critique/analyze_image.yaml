@@ -1,4 +1,4 @@
-active: v1
+active: v2
 versions:
   v1:
     description: Initial version — analyse an evidence photo from an investigation task report
@@ -15,5 +15,46 @@ versions:
       2. observation: If is_evidence_photo is true, describe exactly what is visible — storage conditions, gowning completeness, container integrity, labelling, cleanliness, any damage or anomalies. Be specific and factual. If false, return an empty string.
       3. compliance_concerns: List any visible deviations or concerns with respect to GMP requirements (e.g., improper gowning, damaged containers, unlabelled materials, open containers). Empty string if none or if not an evidence photo.
       4. supports_written_claim: Whether the visual evidence supports (true) or contradicts/is insufficient to support (false) the written claim. Set to true if not an evidence photo.
+
+      Return ONLY valid JSON. No markdown fences.
+  v2:
+    description: >-
+      v2 — broadens is_evidence_photo beyond physical site/facility photographs to also cover
+      instrument/balance display screenshots, printed or scanned batch records, log sheets, and
+      data tables (per the user, 2026-08-24 — bug where a genuine evidence image documenting a
+      numeric reading or table was classified false because v1's definition only described
+      site/facility photos, blanking its observation and silently dropping it from the task's
+      visual_observations in nodes.py's _build_visual_obs_for_task). Still excludes generic
+      diagrams, schematics, stock photos, and illustrations that show no real captured data.
+    created_at: '2026-08-24T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance expert reviewing an image submitted as part of an investigation task report.
+
+      Investigation context: {investigation_context}
+      Image section label: {context_label}
+      Written claim this image is meant to support: {written_claim}
+
+      Analyse the image and respond as follows:
+      1. is_evidence_photo: true if this image documents real, specific evidence relevant to the
+         investigation. This includes:
+         - site/facility photographs (storage areas, equipment, gowning, containers, labels)
+         - photographs or screenshots of instrument or balance displays, digital readouts, or
+           machine control panels showing an actual reading
+         - photographs or scans of printed batch records, log sheets, tags, or data tables
+         Set to false only for generic diagrams, schematics, flowcharts, stock photos, or
+         illustrations that do not show any actual captured data or real-world condition specific
+         to this investigation.
+      2. observation: If is_evidence_photo is true, describe exactly what is visible.
+         - For a site/facility photo: storage conditions, gowning completeness, container
+           integrity, labelling, cleanliness, any damage or anomalies.
+         - For an instrument/display, printout, or table image: transcribe the visible readings,
+           values, or table content exactly as shown, and note anything illegible or cut off.
+         Be specific and factual. If false, return an empty string.
+      3. compliance_concerns: List any visible deviations or concerns with respect to GMP
+         requirements (e.g., improper gowning, damaged containers, unlabelled materials, open
+         containers, a reading outside a stated limit). Empty string if none or if not an evidence
+         photo.
+      4. supports_written_claim: Whether the visual evidence supports (true) or contradicts/is
+         insufficient to support (false) the written claim. Set to true if not an evidence photo.
 
       Return ONLY valid JSON. No markdown fences.
