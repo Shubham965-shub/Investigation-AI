@@ -79,10 +79,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import docx
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from backend.schemas.rci_report import RciReportSections
 
@@ -116,10 +118,28 @@ def _missing_note(errors: dict, key: str) -> str:
     return f"[{errors.get(key) or MISSING_NOTE_FALLBACK}]"
 
 
+# C0/C1 control characters (except tab/LF/CR, which are legal XML text) — not
+# legal in XML 1.0 text content. Found live (2026-09-01, record 505542): a
+# generated CAPA action description contained a raw 0x13 control character
+# sitting exactly where the source text's own en-dash ("33 – 64 Amps") was
+# clearly intended, which python-docx/lxml raises ValueError on instead of
+# silently dropping. This is a defensive backstop at the point text is
+# actually written into the document — not a fix for wherever the stray
+# character came from (LLM output has been observed to occasionally emit
+# one; a copy-pasted source document could just as easily carry one) — so
+# any current or future source of an invalid character degrades to
+# "silently stripped" rather than crashing the export.
+_INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]")
+
+
+def _xml_safe(text: str) -> str:
+    return _INVALID_XML_CHARS_RE.sub("", text) if text else text
+
+
 def _set_cell_text(cell, text: str) -> None:
     """Always inside a table — locked to TABLE_FONT_SIZE (10pt), one step
     down from body content's 11pt."""
-    cell.text = text or ""
+    cell.text = _xml_safe(text) or ""
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
             _apply_font(run, TABLE_FONT_SIZE)
@@ -190,6 +210,7 @@ def _set_paragraph_text(cursor: _Cursor, index: int, text: str, clear_italic: bo
     hanging-indent mismatch between a paragraph's first line and its wrapped
     continuation lines (2026-08-28, per the user: "it still indents
     improperly" — found in Problem Description's own wrapped text)."""
+    text = _xml_safe(text)
     para = cursor.paragraph(index)
     para.paragraph_format.left_indent = 0
     para.paragraph_format.first_line_indent = 0
@@ -236,7 +257,8 @@ def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic:
     never bulleted in the first place — there's no caller here for whom
     leaving that stray indentation in place is correct."""
     def _split(line):
-        return line if isinstance(line, tuple) else (line, False)
+        text, bold = line if isinstance(line, tuple) else (line, False)
+        return _xml_safe(text), bold
 
     lines = [line for line in lines if _split(line)[0]]
     para = cursor.paragraph(index)
@@ -314,7 +336,7 @@ def _set_bulleted_paragraphs(cursor: _Cursor, index: int, lines: List[str], clea
     increments `cursor.offset` by (item count - 1) so every subsequent
     _fill_* call still resolves against the template's original numbering
     correctly (see _Cursor's own docstring)."""
-    lines = [line for line in lines if line]
+    lines = [_xml_safe(line) for line in lines if line]
     para = cursor.paragraph(index)
     if hanging:
         para.paragraph_format.left_indent = _BULLET_HANG
@@ -593,7 +615,12 @@ def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
     lines = [
         section.search_scope_note,
         f"Lookback period: {section.lookback_months} months.",
-        "No similar events found in the lookback window." if section.no_similar_events_found else "",
+        # Trust the table's own row data over ds's no_similar_events_found
+        # flag — the two have been observed to disagree (flag true while
+        # rows is non-empty), which would otherwise show this line right
+        # next to a table full of actual historical events (2026-09-02,
+        # per the user).
+        "No similar events found in the lookback window." if section.no_similar_events_found and not section.rows else "",
         section.closing_narrative,
         f"Batches manufactured: {section.batches_manufactured_note}" if section.batches_manufactured_note else "",
     ]
@@ -602,13 +629,22 @@ def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
 
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
-def _fill_investigation_task(cursor: _Cursor, section, errors: dict) -> None:
-    """Section 5 (Investigation Task) — rebuilt 2026-08-25 into 3 explicit parts
-    (task_summary / root_cause_identification / rca_tool_demonstrations, see
-    ds/src/agents/rci_report/api/schemas/measure_analyze.py). Rendered flat with
-    indentation, matching this file's existing line-based convention for every
-    other multi-item section (no real Word list-numbering anywhere in this
-    template — see _set_paragraph_lines).
+def _fill_investigation_task(cursor: _Cursor, section, errors: dict):
+    """Section 5 (Investigation Task) — three explicit parts, in display
+    order (2026-09-01, per the user): task_summary, why_why_analysis, then
+    root_cause_identification. Fishbone/Fault Tree/Flowchart were dropped
+    entirely this same date — Why-Why Analysis is now the only RCA method
+    this section ever demonstrates.
+
+    Only task_summary and the why_why_analysis header line are written into
+    paragraph 132 here; the Why-Why chain itself (a real Word table) and
+    root_cause_identification (a new trailing paragraph) are appended by
+    _insert_why_why_table_and_grounding, which must run after every other
+    _fill_* call since it inserts new top-level body elements. Returns the
+    paragraph-132 element captured at THIS point in the pipeline (while
+    cursor.offset reflects only what earlier sections have already
+    inserted), so that later call can anchor off it correctly regardless of
+    how much cursor.offset grows from sections filled afterward.
 
     Paragraph 132's own style in the template is "Heading 1" — inherited
     from the "Investigation tasks:" heading and its italic guidance
@@ -622,7 +658,7 @@ def _fill_investigation_task(cursor: _Cursor, section, errors: dict) -> None:
 
     if section is None:
         _set_paragraph_text(cursor, 132, _missing_note(errors, "investigation_task"))
-        return
+        return None
 
     # Grouped under a numbered "N. <6M factor>" heading (per the reference
     # export, 2026-08-26) whenever `task.six_m_factor` changes — every
@@ -643,35 +679,66 @@ def _fill_investigation_task(cursor: _Cursor, section, errors: dict) -> None:
         lines.append(f"{task.tick}\t{task.title} ({task.six_m_factor}): {task.outcome}")
 
     lines.append("")
-    lines.append("Root cause identification:")
-    lines.append(section.root_cause_identification.grounding_evidence)
-    for link in section.root_cause_identification.applicable_tasks:
-        # No leading spaces — Part 1's own task lines above have none, and a
-        # manual space-character "indent" here (unlike a real paragraph
-        # indent) doesn't actually align anything; it just visually offsets
-        # these ticks from Part 1's, reading as inconsistent/"misnumbered"
-        # (2026-08-28, per the user).
-        lines.append(f"{link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
-
-    for demo in section.rca_tool_demonstrations:
-        lines.append("")
-        lines.append(f"{demo.method}: {demo.method_rationale}")
-        for step in demo.why_why_chain:
-            lines.append(f"  Q: {step.question}")
-            lines.append(f"  A: {step.answer}")
-        for branch in demo.fishbone_branches:
-            lines.append(f"  {branch.six_m_factor}:")
-            for cause in branch.causes:
-                lines.append(f"    - {cause}")
-        for node in demo.fault_tree:
-            lines.append(f"  Event: {node.event}")
-            for cause in node.contributing_causes:
-                lines.append(f"    - {cause}")
-        for flow_step in demo.flowchart_steps:
-            decision = f" [Decision: {flow_step.decision_point}]" if flow_step.decision_point else ""
-            lines.append(f"  Step {flow_step.step_number}: {flow_step.description}{decision}")
+    demo = section.why_why_analysis
+    lines.append(f"Why-Why Analysis (6M Factor: {demo.six_m_factor}): {demo.method_rationale}")
+    lines.append("  See table below.")
 
     _set_paragraph_lines(cursor, 132, lines)
+    return cursor.paragraph(132)._p
+
+
+def _insert_why_why_table_and_grounding(doc, section, anchor) -> None:
+    """Inserts the Why-Why Analysis table right after the Investigation Task
+    paragraph, then a new paragraph holding root_cause_identification's
+    grounding evidence right after that table (2026-09-01, per the user —
+    root_cause_identification now comes AFTER the why-why analysis, not
+    before it, and Fishbone/Fault Tree/Flowchart demonstrations are gone).
+
+    MUST run after every other _fill_* call in build_rci_report_docx: this is
+    the first place in this file that inserts a brand-new top-level element
+    into doc.element.body rather than mutating an existing paragraph/table/
+    row in place, or growing a table's own bulleted-paragraph run via
+    cursor.offset (which every later _fill_* call already accounts for).
+    `anchor` is the actual paragraph-132 element _fill_investigation_task
+    captured at the point that section ran, not re-derived from a fixed
+    index here, so it stays valid no matter how much cursor.offset grew from
+    sections filled afterward.
+    """
+    if section is None or anchor is None:
+        return
+    reference_style = doc.tables[1].style  # Description of Event — a plain 2-column table
+
+    demo = section.why_why_analysis
+    table = doc.add_table(rows=1 + len(demo.why_why_chain), cols=2)
+    table.style = reference_style
+    header_cells = table.rows[0].cells
+    _set_cell_text(header_cells[0], "Question")
+    _set_cell_text(header_cells[1], "Answer")
+    for cell in header_cells:
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+    for row, step in zip(table.rows[1:], demo.why_why_chain):
+        _set_cell_text(row.cells[0], step.question)
+        _set_cell_text(row.cells[1], step.answer)
+    anchor.addnext(table._tbl)
+    anchor = table._tbl
+
+    grounding_lines = [
+        "Root cause identification:",
+        section.root_cause_identification.grounding_evidence,
+    ]
+    for link in section.root_cause_identification.applicable_tasks:
+        grounding_lines.append(f"  {link.tick}\t{link.title} ({link.six_m_factor}): {link.explanation}")
+    grounding_lines = [_xml_safe(line) for line in grounding_lines]
+
+    new_para = doc.add_paragraph()
+    run = new_para.add_run(grounding_lines[0])
+    for line in grounding_lines[1:]:
+        run.add_break()
+        run.add_text(line)
+    _apply_font(run)
+    anchor.addnext(new_para._p)
 
 
 # ── 6. Root Cause conclusion ─────────────────────────────────────────────
@@ -683,7 +750,7 @@ def _fill_root_cause_conclusion(cursor: _Cursor, section, errors: dict) -> None:
         return
     _set_cell_text(table.rows[1].cells[0], section.conclusion)
     repeat_para = table.rows[1].cells[0].add_paragraph(
-        f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}"
+        _xml_safe(f"Repeat occurrence: {_yesno(section.is_repeat_occurrence)} — {section.repeat_occurrence_evidence}")
     )
     for run in repeat_para.runs:
         _apply_font(run, TABLE_FONT_SIZE)
@@ -714,14 +781,15 @@ def _fill_impact_assessment_batch_disposition(cursor: _Cursor, section, risk_sec
         lines = []
         for field_name, label in _IMPACT_SUBSECTION_LABELS:
             sub = getattr(section, field_name)
-            if not sub.applicable:
-                continue
+            # Every subsection renders, applicable or not (2026-09-01, per the
+            # user) — a subsection marked not applicable was still considered
+            # and ruled out, with its own narrative saying why; silently
+            # omitting it left a reader unable to tell "considered, ruled
+            # out" apart from "never considered at all."
             lines.append(f"{label}: {sub.narrative}")
             if field_name == "impact_on_affected_batches" and sub.batch_shipper_table:
                 for row in sub.batch_shipper_table:
                     lines.append(f"  - Batch {row.batch_number}: {row.number_of_shippers} shipper(s), defects: {row.defects}")
-        if not lines:
-            lines = ["Not applicable."]
         _set_paragraph_lines(cursor, 165, lines)
         _set_paragraph_text(cursor, 170, f"Conclusion Statement: {section.conclusion}", clear_italic=True)
 
@@ -858,14 +926,111 @@ def _fill_capa_effectiveness_check_plan(cursor: _Cursor, section, errors: dict) 
 # ever removes pure-guidance paragraphs, never a heading).
 _SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 176, 185, 192, 195]
 
+# One bookmark name per heading above, same order — lets the Index table's
+# "Page No." column (table 0, rows 1-12) reference each section's real
+# on-page location via a PAGEREF field, rather than staying blank forever
+# (2026-09-02, per the user: page numbers "aren't tracked anywhere in this
+# app" was a known, deliberate gap until now — python-docx itself can't
+# compute a page number since it never paginates the document, but Word
+# can and does, once it opens the file and recalculates fields).
+_SECTION_BOOKMARK_NAMES = [
+    "sec_executive_summary",
+    "sec_description_of_event",
+    "sec_initial_impact_assessment",
+    "sec_historical_review",
+    "sec_investigation_tasks",
+    "sec_root_cause_conclusion",
+    "sec_impact_assessment_conclusion",
+    "sec_correction_remedial_action",
+    "sec_capa",
+    "sec_effectiveness_check_plan",
+    "sec_annexures",
+    "sec_approval",
+]
+
+
+def _insert_bookmark(paragraph: Paragraph, bookmark_id: int, name: str) -> None:
+    p = paragraph._p
+    pPr = p.find(qn("w:pPr"))
+    index = list(p).index(pPr) + 1 if pPr is not None else 0
+
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), str(bookmark_id))
+    start.set(qn("w:name"), name)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), str(bookmark_id))
+
+    p.insert(index, start)
+    p.insert(index + 1, end)
+
 
 def _add_page_breaks(cursor: _Cursor) -> None:
     # Always called first, before any bulleted-paragraph expansion, so
     # cursor.offset is still 0 here — kept cursor-based anyway (rather than
     # taking `doc` directly) purely for signature consistency with every
-    # other function in this file.
-    for index in _SECTION_HEADING_INDICES:
-        cursor.paragraph(index).paragraph_format.page_break_before = True
+    # other function in this file. Also plants each section's bookmark
+    # here, at the same paragraph, for the same reason (offset is still 0).
+    for bookmark_id, (index, name) in enumerate(zip(_SECTION_HEADING_INDICES, _SECTION_BOOKMARK_NAMES)):
+        heading = cursor.paragraph(index)
+        heading.paragraph_format.page_break_before = True
+        _insert_bookmark(heading, bookmark_id, name)
+
+
+def _set_cell_pageref(cell, bookmark_name: str) -> None:
+    """Replaces a table cell's content with a Word PAGEREF field pointing at
+    `bookmark_name`. Word (not python-docx, which never paginates a
+    document) computes and fills in the real page number the moment it
+    opens the file, since _enable_field_auto_update below forces every
+    field to recalculate on open — "1" here is only ever the unresolved
+    placeholder python-docx itself leaves behind."""
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    p = paragraph._p
+    for old_run in list(paragraph.runs):
+        p.remove(old_run._element)
+
+    def _field_char(fld_type: str, dirty: bool = False):
+        run_el = OxmlElement("w:r")
+        fld = OxmlElement("w:fldChar")
+        fld.set(qn("w:fldCharType"), fld_type)
+        if dirty:
+            fld.set(qn("w:dirty"), "true")
+        run_el.append(fld)
+        return run_el
+
+    begin_run = _field_char("begin", dirty=True)
+
+    instr_run = OxmlElement("w:r")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f" PAGEREF {bookmark_name} \\h "
+    instr_run.append(instr)
+
+    separate_run = _field_char("separate")
+
+    result_run = OxmlElement("w:r")
+    result_text = OxmlElement("w:t")
+    result_text.text = "1"
+    result_run.append(result_text)
+
+    end_run = _field_char("end")
+
+    for run_el in (begin_run, instr_run, separate_run, result_run, end_run):
+        p.append(run_el)
+        _apply_font(Run(run_el, paragraph), TABLE_FONT_SIZE)
+
+
+def _fill_index_page_numbers(cursor: _Cursor) -> None:
+    table = cursor.doc.tables[0]
+    for row_offset, name in enumerate(_SECTION_BOOKMARK_NAMES):
+        _set_cell_pageref(table.rows[row_offset + 1].cells[3], name)
+
+
+def _enable_field_auto_update(doc) -> None:
+    settings = doc.settings.element
+    update_fields = OxmlElement("w:updateFields")
+    update_fields.set(qn("w:val"), "true")
+    settings.append(update_fields)
 
 
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
@@ -937,12 +1102,13 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     cursor = _Cursor(doc)
 
     _add_page_breaks(cursor)
+    _fill_index_page_numbers(cursor)
     _fill_header_table(doc, record_id, trackwise_fields)
     _fill_executive_summary(cursor, report.executive_summary, event_type, errors)
     _fill_description_of_event(cursor, report.description_of_event, errors)
     _fill_initial_impact_assessment(cursor, report.initial_impact_assessment, event_type, errors)
     _fill_history_review(cursor, report.history_review, errors)
-    _fill_investigation_task(cursor, report.investigation_task, errors)
+    investigation_task_anchor = _fill_investigation_task(cursor, report.investigation_task, errors)
     _fill_root_cause_conclusion(cursor, report.root_cause_conclusion, errors)
     _fill_impact_assessment_batch_disposition(cursor, report.impact_assessment_batch_disposition, report.risk_assessment, errors)
     _fill_correction_remedial_action(cursor, report.correction_remedial_action, event_type, errors)
@@ -951,12 +1117,19 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     _fill_annexures(cursor, report.annexures)
     _fill_approval(cursor, report.approval)
 
+    # Must run after every _fill_* call above — inserts new body elements,
+    # which would shift every later fixed body-paragraph/table index still
+    # relied on above (see _insert_why_why_table_and_grounding's own
+    # docstring).
+    _insert_why_why_table_and_grounding(doc, report.investigation_task, investigation_task_anchor)
+
     # Must run last — reads the document's final paragraph structure
     # directly (not by index), so it's unaffected by however much
     # cursor.offset grew, but every _fill_* call above still needs its own
     # target paragraph to exist with its original guidance runs intact
     # until it's actually written.
     _strip_guidance_runs(doc)
+    _enable_field_auto_update(doc)
 
     buffer = io.BytesIO()
     doc.save(buffer)

@@ -141,24 +141,21 @@ def _section_missing_deps(ctx: RciReportContext, section_key: str) -> List[str]:
             f"TrackWise field '{name}'" for name in sorted(ctx.missing_required_tw_fields & required_tw)
         ]
 
-    # Impact Details isn't in a "required" TW schema (it's Optional there —
-    # see shared/schemas.py), but it's still the sole/primary content that
-    # section is built from, so a blank value here is just as fatal to the
-    # section as every relevant field being blank is to Description of Event.
-    # Correction/Remedial Action is intentionally NOT grounded on the
-    # TrackWise field at all (2026-08-26, per the user) — TrackWise's
-    # 'correction_or_remedial_action' is often just an audit-log stub, not the
-    # real corrective/remedial action text, so this section is sourced solely
-    # from the uploaded RC & CAPA document's own Section 9/10 text.
+    # Correction/Remedial Action and Impact Assessment & Batch Disposition are
+    # intentionally NOT grounded on any TrackWise field (2026-08-26 for the
+    # former, 2026-09-01 for the latter, both per the user) — TrackWise's
+    # free-text fields here are often just audit-log stubs, not the real
+    # investigator-drafted content, so both sections are sourced solely from
+    # the uploaded RC & CAPA document's own text.
     if section_key == "correction_remedial_action" and _blank(ctx.uploaded_correction_remedial_text):
+        missing.append("no uploaded RC & CAPA document text")
+
+    if section_key == "impact_assessment_batch_disposition" and _blank(ctx.uploaded_impact_assessment_text):
         missing.append("no uploaded RC & CAPA document text")
 
     if section_key in ("root_cause_conclusion", "impact_assessment_batch_disposition"):
         if _blank(ctx.accepted_rc_conclusion.rc_conclusion_text):
             missing.append("API field 'accepted_rc_conclusion.rc_conclusion_text'")
-
-    if section_key == "impact_assessment_batch_disposition" and _blank(ctx.tw("impact_details")):
-        missing.append("TrackWise field 'impact_details'")
 
     # CAPA is a compile-what-was-already-decided task (see capa_system.txt),
     # not a generative one — it has nothing to compile when the accepted CAPA
@@ -192,20 +189,14 @@ def _section_should_skip(ctx: RciReportContext, section_key: str, missing: List[
     required field is blank, i.e. there's truly nothing to ground the section
     in.
 
-    Impact Assessment & Batch Disposition has two independent inputs, only
-    one of which is a genuine workflow gate: accepted_rc_conclusion.rc_conclusion_text
-    being blank means RC hasn't been accepted yet, so drafting a formal batch
-    disposition (release/hold/reject/rework) would be premature — that alone
-    stays fatal. impact_details is supplementary TW data like the ~30-field
-    sets above (its own prompt already treats most of its 12 subsections'
-    "NA" as a normal, expected answer when unsupported) — blank on its own
-    should not block generation.
-
-    Correction & Remedial Action, Root Cause Conclusion, and CAPA are each
-    built from a single sole-source input (a TW field for the first, an
-    already-accepted API artifact for the other two) with no partial middle
-    ground and no workflow/data distinction to draw — any missing value there
-    stays fatal.
+    Correction & Remedial Action, Root Cause Conclusion, Impact Assessment &
+    Batch Disposition, and CAPA are each built from sole-source input(s) —
+    the uploaded RC & CAPA document's own text for Correction & Remedial
+    Action, that same document's Impact Assessment text plus the
+    already-accepted RC conclusion for Impact Assessment & Batch
+    Disposition, and an already-accepted API artifact for Root Cause
+    Conclusion and CAPA — with no partial middle ground and no workflow/data
+    distinction to draw — any missing value there stays fatal.
     """
     if not missing:
         return False
@@ -215,9 +206,6 @@ def _section_should_skip(ctx: RciReportContext, section_key: str, missing: List[
         relevant_required = ctx.required_tw_fields & required_tw
         relevant_missing = ctx.missing_required_tw_fields & required_tw
         return bool(relevant_required) and relevant_missing == relevant_required
-
-    if section_key == "impact_assessment_batch_disposition":
-        return _blank(ctx.accepted_rc_conclusion.rc_conclusion_text)
 
     return True
 
@@ -258,6 +246,9 @@ async def _generate_initial_impact_assessment(
     )
 
 
+_NO_TASK_EVIDENCE_NOTE = "No Task Critique evidence was available for this task — outcome could not be established."
+
+
 async def _generate_investigation_task(llm: LLMClient, ctx: RciReportContext) -> InvestigationTaskSection:
     rci_plan_text = json.dumps([section.model_dump() for section in ctx.rci_plan_sections])
     task_critique_text = json.dumps([item.model_dump() for item in ctx.task_critique])
@@ -271,7 +262,7 @@ async def _generate_investigation_task(llm: LLMClient, ctx: RciReportContext) ->
         f"with the 6M-factor taxonomy used above): broad_category={rc.broad_category}, "
         f"category={rc.category}, root_cause_sub_category={rc.root_cause_sub_category}"
     )
-    return await call_with_retry(
+    result = await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=investigation_task_system_prompt,
             user_prompt=user_prompt,
@@ -279,25 +270,37 @@ async def _generate_investigation_task(llm: LLMClient, ctx: RciReportContext) ->
         ),
         label="investigation_task",
     )
+    # 2026-09-01, per the user: a task with no Task Critique evidence at all must say so
+    # explicitly rather than the LLM writing an outcome with nothing to base it on — the
+    # prompt already asks it not to fabricate, but that's not deterministically enforced,
+    # so the outcome is overridden here regardless of what the LLM wrote for that tick.
+    missing_evidence_ticks = {item.tick for item in ctx.task_critique if not (item.critique or "").strip()}
+    if missing_evidence_ticks:
+        updated_tasks = [
+            task.model_copy(update={"outcome": _NO_TASK_EVIDENCE_NOTE})
+            if task.tick in missing_evidence_ticks else task
+            for task in result.task_summary.tasks
+        ]
+        result = result.model_copy(
+            update={"task_summary": result.task_summary.model_copy(update={"tasks": updated_tasks})}
+        )
+    return result
 
 
 async def _generate_root_cause_conclusion(llm: LLMClient, ctx: RciReportContext) -> RootCauseConclusionSection:
+    # No TrackWise field grounds this section (2026-09-01, per the user) — the
+    # accepted conclusion (the uploaded RC & CAPA document's own verbatim text,
+    # already reviewed and accepted upstream) is the sole source. The old
+    # DB-sourced 3-tier taxonomy hints (broad_category/category/
+    # root_cause_sub_category) are dropped here too: they predate the
+    # 2026-08-09 taxonomy correction and use a scheme real reports never
+    # actually render (see GAPS.md) — still passed to Section 5's own prompt,
+    # just no longer to this one.
     rc = ctx.accepted_rc_conclusion
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
-        f"Accepted Root Cause Conclusion:\n{rc.rc_conclusion_text}\n\n"
-        # These DB-sourced hints predate the 2026-08-09 taxonomy correction and use
-        # a different 3-tier scheme (broad_category/category/root_cause_sub_category)
-        # than the 6M-factor-based output this section now produces — real reports
-        # for the same records these hints came from don't render this 3-tier
-        # scheme either, so treat them as loose supplementary signal only, not a
-        # literal mapping onto the output taxonomy below. See GAPS.md.
-        f"Loose taxonomy hints from upstream critique (may be blank, may not align "
-        f"with the 6M-factor taxonomy below): broad_category={rc.broad_category}, "
-        f"category={rc.category}, root_cause_sub_category={rc.root_cause_sub_category}\n\n"
-        f"Known repeat-occurrence flag (may be null): {rc.is_repeat_occurrence}\n\n"
-        f"Supplementary raw TrackWise root-cause text (may overlap or be blank):\n"
-        f"{ctx.root_cause_conclusion_text_clean}"
+        f"Accepted Root Cause Conclusion (sole source):\n{rc.rc_conclusion_text}\n\n"
+        f"Known repeat-occurrence flag (may be null): {rc.is_repeat_occurrence}"
     )
     return await call_with_retry(
         lambda: llm.get_structured_response(
@@ -309,28 +312,26 @@ async def _generate_root_cause_conclusion(llm: LLMClient, ctx: RciReportContext)
     )
 
 
+_IMPACT_CONCLUSION_NOT_STATED = "Not stated in the uploaded RC & CAPA document."
+
+
 async def _generate_impact_assessment(
     llm: LLMClient, ctx: RciReportContext
 ) -> ImpactAssessmentBatchDispositionSection:
+    # No TrackWise field grounds this section (2026-09-01, per the user) — the
+    # uploaded RC & CAPA document's own Impact Assessment text is the sole
+    # source for all 12 subsections. The accepted Root Cause Conclusion is
+    # passed as cross-reference context only (it's the RC & CAPA report's own
+    # already-accepted output, not a TrackWise field).
     user_prompt = (
         f"Event Type: {ctx.event_type}\n\n"
-        f"Accepted Root Cause Conclusion:\n{ctx.accepted_rc_conclusion.rc_conclusion_text}\n\n"
+        f"Accepted Root Cause Conclusion (cross-reference context only):\n"
+        f"{ctx.accepted_rc_conclusion.rc_conclusion_text}\n\n"
         f"Uploaded RC & CAPA document's own Impact Assessment & Conclusion (Batch disposition) "
-        f"text (may be blank if no RC & CAPA document has been uploaded yet — this is the most "
-        f"authoritative source when present, prefer it over the TrackWise fields below):\n"
-        f"{ctx.uploaded_impact_assessment_text}\n\n"
-        f"Cleaned Impact Details (TrackWise, supplementary/fallback — may be blank; ground "
-        f"subsections in whatever other context below IS available if so):\n"
-        f"{ctx.impact_details_text_clean}\n\n"
-        f"Medical/impact-related TrackWise fields (Market Complaint only, may be blank):\n"
-        f"medical_investigation_summary={ctx.tw('medical_investigation_summary')}, "
-        f"medical_impact_analysis={ctx.tw('medical_impact_analysis')}, "
-        f"health_hazard_evaluation={ctx.tw('health_hazard_evaluation')}\n\n"
-        f"Impact justification (OOS/OOT only, may be blank): {ctx.tw('impact_justification')}\n\n"
-        f"Impact on other batches (OOS/OOT and Market Complaint, may be blank): "
-        f"{ctx.tw('impact_on_other_batches')}"
+        f"text (sole source for all 12 subsections below):\n"
+        f"{ctx.uploaded_impact_assessment_text}"
     )
-    return await call_with_retry(
+    result = await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=impact_batch_disposition_system_prompt,
             user_prompt=user_prompt,
@@ -338,6 +339,16 @@ async def _generate_impact_assessment(
         ),
         label="impact_assessment_batch_disposition",
     )
+    # 2026-09-01, per the user: the batch-disposition conclusion is "lifted and pasted
+    # directly" from the uploaded RC & CAPA document, NEVER LLM-synthesized — mirrors
+    # correction_remedial_action's sole-sourcing pattern. Unconditional: the LLM's own
+    # attempt at this field (see impact_batch_disposition_system.txt item 12 — told to
+    # leave it blank) is always discarded, whether or not a document conclusion was
+    # found, so a reader never mistakes an LLM guess for the document's own words.
+    result = result.model_copy(
+        update={"conclusion": ctx.uploaded_impact_conclusion_text or _IMPACT_CONCLUSION_NOT_STATED}
+    )
+    return result
 
 
 async def _generate_correction_remedial(

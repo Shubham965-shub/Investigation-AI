@@ -171,6 +171,7 @@ _EMPTY_SECTIONS: dict = {
     "is_repeat_occurrence": None,
     "investigation_summary": "",
     "impact_assessment_text": "",
+    "impact_conclusion_text": "",
     "correction_remedial_text": "",
     "capa_overall_text": "",
     "capa_items": [],
@@ -374,6 +375,7 @@ async def critique_rc_conclusion(
         result.rc_conclusion_text_raw = sections["rc_conclusion_text"]
         result.is_repeat_occurrence = sections["is_repeat_occurrence"]
         result.impact_assessment_text = sections["impact_assessment_text"]
+        result.impact_conclusion_text = sections["impact_conclusion_text"]
         return _suppress_recurrence_claims_without_citation(result)
     except HTTPException:
         raise

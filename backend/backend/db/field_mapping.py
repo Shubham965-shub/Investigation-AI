@@ -59,6 +59,22 @@ def _val(row: asyncpg.Record, col: str) -> Any:
     return v
 
 
+def _date_only(row: asyncpg.Record, col: str) -> Any:
+    """Like _val, but drops any time component — for a TIMESTAMP column
+    (date_opened) whose trackwise field is declared kind="date" (see
+    frontend constants/trackwiseFields.ts) and is only ever consumed as a
+    date elsewhere in the app (action_center.py/analytics.py both call
+    .date() on this same column). _val() alone would leak the full
+    datetime into the RCI Report's "Date of Initiation" field (2026-09-02,
+    per the user)."""
+    v = row.get(col)
+    if isinstance(v, datetime.datetime):
+        return v.date().isoformat()
+    if isinstance(v, datetime.date):
+        return v.isoformat()
+    return v
+
+
 def _val_joined(row: asyncpg.Record, col: str, sep: str = ", ") -> Any:
     """Like _val, but joins array-typed columns into a single string.
 
@@ -167,7 +183,7 @@ def _type_specific_trackwise_fields(
             fields.update(
                 {
                     "Deviation Number": _val(row, "deviation_number"),
-                    "Date Opened": _val(row, "date_opened"),
+                    "Date Opened": _date_only(row, "date_opened"),
                     "Observation Date": _val(row, "observation_date"),
                     "Observation Time": _val(row, "observation_time"),
                     "Failure Duration": _val(row, "failure_duration"),

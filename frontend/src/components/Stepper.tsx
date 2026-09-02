@@ -231,7 +231,19 @@ export function Stepper({
     // edge, so without this buffer its centered (up to 170px wide) text
     // would run off the edge of the page instead of just wrapping
     // (2026-08-26, per the user: "now it's all extending too far").
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", width: "100%", padding: "0 90px 60px" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        width: "100%",
+        padding: "0 90px 60px",
+        position: "sticky",
+        top: 0,
+        zIndex: 5,
+        background: "var(--color-bg)",
+      }}
+    >
       {RECORD_STEPS.map((step, index) => {
         const status = stepStatuses[step.key] ?? "open";
         const isLast = index === RECORD_STEPS.length - 1;

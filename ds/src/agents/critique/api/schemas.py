@@ -142,6 +142,11 @@ class RCConclusionCritiqueResponse(BaseModel):
     rc_conclusion_text_raw: str = ""       # verbatim Section 6 text, uncondensed
     is_repeat_occurrence: Optional[bool] = None  # deterministically detected; None = genuinely unknown
     impact_assessment_text: str = ""       # verbatim Section 7 "Impact Assessment & Conclusion" text
+    # Added 2026-09-01: the "Conclusion:"/"Disposition:" line onward within Section 7 — an
+    # additive subset of impact_assessment_text above (not a replacement), so RCI Report
+    # generation can source that one line verbatim instead of synthesizing it (mirrors
+    # correction_remedial_text's sole-sourcing pattern, see CAPACritiqueResponse below).
+    impact_conclusion_text: str = ""
 
 
 # ---------- CAPA Critique ----------

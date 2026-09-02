@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from backend.clients.ds_client import ds_post
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
-from backend.db.generated_content_queries import fetch_rci_sections
+from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections
 from backend.db.queries import fetch_investigation_row
 from backend.db.rc_capa_critique_queries import fetch_rc_capa_reports
 from backend.db.rci_report_export_queries import insert_rci_report_export
@@ -111,6 +111,15 @@ async def generate_rci_report(record_id: str) -> RciReportRecord:
 
     data = await ds_post("/rci-report/generate", json=payload)
     report = RciReportSections(**data)
+
+    # The Executive Summary's problem_description is otherwise ds's own
+    # re-derivation from Description of Event / TrackWise fields — this
+    # overwrites it with the investigator's own already-approved Problem
+    # Statement text verbatim, per the user (2026-09-02), so the two don't
+    # silently diverge.
+    problem_statement = await fetch_problem_statement(deviation_id)
+    if problem_statement and report.executive_summary:
+        report.executive_summary.problem_description = problem_statement
 
     await save_rci_report(
         deviation_id,

@@ -26,6 +26,39 @@ def _elem_text(elem) -> str:
     return "".join(t.text or "" for t in elem.findall(f".//{{{_W}}}t")).strip()
 
 
+def _run_is_italic(r_elem) -> bool:
+    rPr = r_elem.find(f"{{{_W}}}rPr")
+    if rPr is None:
+        return False
+    i_elem = rPr.find(f"{{{_W}}}i")
+    if i_elem is None:
+        return False
+    return i_elem.get(f"{{{_W}}}val") not in ("0", "false")
+
+
+def _elem_text_excluding_italic(elem) -> str:
+    """Like _elem_text, but skips italic runs. This template family
+    consistently styles pure guidance/instructional placeholder text (an
+    unfilled answer prompt, e.g. "(write the final decision about
+    product/batch disposition...)") as italic, distinct from the
+    investigator's own real content -- confirmed run-by-run against a real
+    uploaded document, 2026-09-01 -- exactly the same convention already
+    handled on the *export* side by _strip_guidance_runs in
+    rci_report_export.py. This extractor previously had no equivalent on
+    the *input* side, so every "verbatim" field it produces (rc_conclusion_
+    text, impact_assessment_text, impact_conclusion_text,
+    correction_remedial_text, capa_overall_text, problem_statement,
+    investigation_summary) could silently include unfilled template
+    boilerplate as if it were the investigator's own drafted content."""
+    parts = [
+        t.text or ""
+        for r_elem in elem.findall(f".//{{{_W}}}r")
+        if not _run_is_italic(r_elem)
+        for t in r_elem.findall(f"{{{_W}}}t")
+    ]
+    return "".join(parts).strip()
+
+
 def _heading_level(p_elem) -> int | None:
     """Return heading level (1, 2, 3 …) or None if not a heading."""
     pPr = p_elem.find(f"{{{_W}}}pPr")
@@ -221,6 +254,20 @@ def _is_exec_summary_heading(text: str) -> bool:
     return "executive summary" in text.lower()
 
 
+# Matches the batch-disposition/conclusion line within the Impact Assessment
+# section (item 12 of that section — see impact_batch_disposition_system.txt)
+# — best-effort guess (2026-09-01, unverified against a real uploaded
+# document) based on how the generated RCI report itself renders this exact
+# field verbatim as "Conclusion Statement: {conclusion}" (see
+# rci_report_export.py's _fill_impact_assessment_batch_disposition), since
+# the uploaded RC & CAPA document shares the same template lineage. Revisit
+# this pattern once tested against a real document.
+_IMPACT_CONCLUSION_LABEL_RE = re.compile(
+    r"^\s*(?:conclusion(?:\s+statement)?|(?:batch\s+|product\s+)?disposition(?:\s+statement)?)\s*[:\-]",
+    re.IGNORECASE,
+)
+
+
 # ── Main extractor ─────────────────────────────────────────────────────────────
 
 def extract_rci_report_sections(docx_path) -> dict:
@@ -231,6 +278,8 @@ def extract_rci_report_sections(docx_path) -> dict:
       - is_repeat_occurrence    (section 8 checkbox)
       - investigation_summary   (contributory factors brief summary)
       - impact_assessment_text  (section 7 "Impact Assessment & Conclusion (Batch disposition)")
+      - impact_conclusion_text  (the "Conclusion:"/"Disposition:" line onward within section 7 —
+                                  an additive subset of impact_assessment_text, not a replacement)
       - correction_remedial_text (section 9/10 "Correction and or Remedial action")
       - capa_overall_text       (free text before CAPA table in section 12, real CAPA-action table only)
       - capa_items              (rows from the real CAPA-action table only — see _is_capa_action_table)
@@ -243,6 +292,7 @@ def extract_rci_report_sections(docx_path) -> dict:
         "is_repeat_occurrence": None,
         "investigation_summary": "",
         "impact_assessment_text": "",
+        "impact_conclusion_text": "",
         "correction_remedial_text": "",
         "capa_overall_text": "",
         "capa_items": [],
@@ -252,6 +302,7 @@ def extract_rci_report_sections(docx_path) -> dict:
     collecting_ps = False
     collecting_rc_in_exec = False   # RC text embedded as body text in exec summary
     collecting_summary = False
+    collecting_impact_conclusion = False   # from the "Conclusion:"/"Disposition:" line onward, within "impact"
 
     for elem in doc.element.body:
         tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
@@ -259,18 +310,23 @@ def extract_rci_report_sections(docx_path) -> dict:
         # ── Paragraph ──────────────────────────────────────────────────────────
         if tag == "p":
             text = _elem_text(elem)
+            # Used for actually STORING content (never for heading/keyword matching
+            # above, which stays on the full `text` including any italic runs) --
+            # see _elem_text_excluding_italic's own docstring.
+            content_text = _elem_text_excluding_italic(elem)
             is_h1 = _is_h1(elem)
             is_any_hdg = _is_any_heading(elem)
 
             # Only Heading 1 drives section transitions; Heading 2/3 treated as content
             if is_h1 and text:
+                collecting_impact_conclusion = False
                 if _is_exec_summary_heading(text):
                     current_section = "exec"
                 elif _is_problem_statement_heading(text):
                     # The PS text may be inline in the heading (e.g. "Problem statement: On …")
                     after = re.sub(
                         r".*?(?:problem\s+(?:statement|description)|event\s+description)[:\s]*",
-                        "", text, flags=re.IGNORECASE
+                        "", content_text, flags=re.IGNORECASE
                     ).strip()
                     if after:
                         result["problem_statement"] = after
@@ -291,7 +347,7 @@ def extract_rci_report_sections(docx_path) -> dict:
                     # be silently lost (H1 heading text is never collected as content).
                     after = re.sub(
                         r".*?(?:correction\s+and\s*/?\s*or\s+)?remedial\s+action[:\s]*",
-                        "", text, flags=re.IGNORECASE
+                        "", content_text, flags=re.IGNORECASE
                     ).strip()
                     if after:
                         result["correction_remedial_text"] += after + "\n"
@@ -315,7 +371,7 @@ def extract_rci_report_sections(docx_path) -> dict:
 
             # Collect problem statement from the paragraph after a PS heading
             if collecting_ps and not result["problem_statement"]:
-                result["problem_statement"] = text
+                result["problem_statement"] = content_text
                 collecting_ps = False
                 continue
 
@@ -325,7 +381,7 @@ def extract_rci_report_sections(docx_path) -> dict:
                 if "problem statement" in tl or "problem description" in tl:
                     after = re.sub(
                         r".*?problem\s+(?:statement|description)[:\s]*",
-                        "", text, flags=re.IGNORECASE
+                        "", content_text, flags=re.IGNORECASE
                     ).strip()
                     if after:
                         result["problem_statement"] = after
@@ -349,7 +405,7 @@ def extract_rci_report_sections(docx_path) -> dict:
                 if "problem statement" in tl or "problem description" in tl:
                     after = re.sub(
                         r".*?problem\s+(?:statement|description)[:\s*\d.]*",
-                        "", text, flags=re.IGNORECASE
+                        "", content_text, flags=re.IGNORECASE
                     ).strip()
                     if after:
                         result["problem_statement"] = after
@@ -358,7 +414,7 @@ def extract_rci_report_sections(docx_path) -> dict:
                     continue
                 if "event description" in tl and not result["problem_statement"]:
                     after = re.sub(
-                        r".*?event\s+description[:\s]*", "", text, flags=re.IGNORECASE
+                        r".*?event\s+description[:\s]*", "", content_text, flags=re.IGNORECASE
                     ).strip()
                     if after:
                         result["problem_statement"] = after
@@ -366,7 +422,7 @@ def extract_rci_report_sections(docx_path) -> dict:
                         collecting_ps = True
                     continue
                 if collecting_ps and not result["problem_statement"]:
-                    result["problem_statement"] = text
+                    result["problem_statement"] = content_text
                     collecting_ps = False
                     continue
                 # RC conclusion embedded as body text in exec summary
@@ -374,13 +430,14 @@ def extract_rci_report_sections(docx_path) -> dict:
                     collecting_rc_in_exec = True
                     continue
                 if collecting_rc_in_exec:
-                    result["rc_conclusion_text"] += text + "\n"
+                    if content_text:
+                        result["rc_conclusion_text"] += content_text + "\n"
                     continue
                 if "brief summary" in tl or "contributory factor" in tl:
                     collecting_summary = True
                     continue
-                if collecting_summary:
-                    result["investigation_summary"] += text + "\n"
+                if collecting_summary and content_text:
+                    result["investigation_summary"] += content_text + "\n"
 
             # RC conclusion content
             elif current_section == "rc":
@@ -389,20 +446,35 @@ def extract_rci_report_sections(docx_path) -> dict:
                     ri = _repeat_occurrence_from_text(tl)
                     if ri is not None:
                         result["is_repeat_occurrence"] = ri
-                else:
-                    result["rc_conclusion_text"] += text + "\n"
+                elif content_text:
+                    result["rc_conclusion_text"] += content_text + "\n"
 
             # Impact Assessment content (including H2/H3 sub-heading text)
             elif current_section == "impact":
-                result["impact_assessment_text"] += text + "\n"
+                if content_text:
+                    result["impact_assessment_text"] += content_text + "\n"
+                # The conclusion/batch-disposition line onward — captured ADDITIVELY
+                # into its own field (not removed from impact_assessment_text above),
+                # same principle as reference_number alongside status in the
+                # correction/remedial prompt: a duplicate for structured use, not an
+                # extraction that empties the broader blob.
+                if not collecting_impact_conclusion and _IMPACT_CONCLUSION_LABEL_RE.match(content_text):
+                    collecting_impact_conclusion = True
+                    after = _IMPACT_CONCLUSION_LABEL_RE.sub("", content_text, count=1).strip()
+                    if after:
+                        result["impact_conclusion_text"] += after + "\n"
+                elif collecting_impact_conclusion and content_text:
+                    result["impact_conclusion_text"] += content_text + "\n"
 
             # Correction/Remedial Action content (including H2/H3 sub-heading text)
             elif current_section == "correction_remedial":
-                result["correction_remedial_text"] += text + "\n"
+                if content_text:
+                    result["correction_remedial_text"] += content_text + "\n"
 
             # CAPA content (including H2/H3 sub-heading text)
             elif current_section == "capa":
-                result["capa_overall_text"] += text + "\n"
+                if content_text:
+                    result["capa_overall_text"] += content_text + "\n"
 
         # ── Table ──────────────────────────────────────────────────────────────
         elif tag == "tbl":
@@ -425,7 +497,15 @@ def extract_rci_report_sections(docx_path) -> dict:
                 result["investigation_summary"] += _table_to_text(elem) + "\n"
 
             elif current_section == "impact":
-                result["impact_assessment_text"] += _table_to_text(elem) + "\n"
+                table_text = _table_to_text(elem)
+                result["impact_assessment_text"] += table_text + "\n"
+                if not collecting_impact_conclusion and _IMPACT_CONCLUSION_LABEL_RE.match(table_text):
+                    collecting_impact_conclusion = True
+                    after = _IMPACT_CONCLUSION_LABEL_RE.sub("", table_text, count=1).strip()
+                    if after:
+                        result["impact_conclusion_text"] += after + "\n"
+                elif collecting_impact_conclusion:
+                    result["impact_conclusion_text"] += table_text + "\n"
 
             elif current_section == "correction_remedial":
                 result["correction_remedial_text"] += _table_to_text(elem) + "\n"
@@ -443,6 +523,7 @@ def extract_rci_report_sections(docx_path) -> dict:
     # Tidy up
     result["rc_conclusion_text"] = result["rc_conclusion_text"].strip()
     result["impact_assessment_text"] = result["impact_assessment_text"].strip()
+    result["impact_conclusion_text"] = result["impact_conclusion_text"].strip()
     result["correction_remedial_text"] = result["correction_remedial_text"].strip()
     result["capa_overall_text"] = result["capa_overall_text"].strip()
     result["investigation_summary"] = result["investigation_summary"].strip()

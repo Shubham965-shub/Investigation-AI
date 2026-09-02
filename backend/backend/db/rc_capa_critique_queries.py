@@ -57,7 +57,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                        capa_summary, capa_recommendations,
                        rc_score, impact_score, capa_score, total_score, score_breakdown, uploaded_at,
                        rc_conclusion_text_raw, is_repeat_occurrence, impact_assessment_text,
-                       correction_remedial_text, capa_text_raw, capa_items
+                       impact_conclusion_text, correction_remedial_text, capa_text_raw, capa_items
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 ORDER BY attempt_number
                 """,
@@ -91,6 +91,7 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                         "rc_conclusion_text_raw": r["rc_conclusion_text_raw"],
                         "is_repeat_occurrence": r["is_repeat_occurrence"],
                         "impact_assessment_text": r["impact_assessment_text"],
+                        "impact_conclusion_text": r["impact_conclusion_text"],
                     },
                     {
                         "category": "capa",
@@ -145,6 +146,7 @@ async def save_critiques(
     rc_conclusion_text_raw: str = "",
     is_repeat_occurrence: Optional[bool] = None,
     impact_assessment_text: str = "",
+    impact_conclusion_text: str = "",
     correction_remedial_text: str = "",
     capa_text_raw: str = "",
     capa_items: Optional[List[Dict[str, Any]]] = None,
@@ -165,7 +167,7 @@ async def save_critiques(
     the user) so the frontend can render the two as separate subsections;
     capa's own recommendations carry no type (not split this way).
 
-    rc_conclusion_text_raw/is_repeat_occurrence/impact_assessment_text/
+    rc_conclusion_text_raw/is_repeat_occurrence/impact_assessment_text/impact_conclusion_text/
     correction_remedial_text/capa_text_raw/capa_items (2026-08-25, per the user): the same
     extraction's real verbatim/structured content, persisted alongside the condensed
     summaries above rather than instead of them — consumed only by RCI Report generation,
@@ -190,7 +192,7 @@ async def save_critiques(
                 capa_summary = $4, capa_recommendations = $5::jsonb,
                 rc_conclusion_text_raw = $6, is_repeat_occurrence = $7,
                 impact_assessment_text = $8, correction_remedial_text = $9,
-                capa_text_raw = $10, capa_items = $11::jsonb
+                capa_text_raw = $10, capa_items = $11::jsonb, impact_conclusion_text = $12
             WHERE id = $1
             """,
             report_id,
@@ -204,6 +206,7 @@ async def save_critiques(
             correction_remedial_text,
             capa_text_raw,
             json.dumps(capa_items or []),
+            impact_conclusion_text,
         )
 
 
