@@ -486,6 +486,7 @@ export interface InvestigationRowResponse {
   department: string | null;
   product: string | null;
   is_cancelled: boolean;
+  rci_ids: string[];
   escalation_level: string | null;
   oos_oot_phase: "Phase 1" | "Phase 2" | null;
 }

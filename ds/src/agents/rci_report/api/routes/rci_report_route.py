@@ -49,6 +49,19 @@ def _rci_report_prompt(name: str) -> str:
     return registry.get(f"rci_report/{name}") + "\n" + registry.get("guardrail")
 
 
+def _resolve_event_own_date(ctx: RciReportContext) -> Optional[str]:
+    """The event's own opened/observed/received date — which TrackWise
+    field holds it depends on event type (see shared/schemas.py's field
+    aliases), so try each in turn; only one is ever actually populated for
+    a given event. Used to anchor History Review's lookback window to when
+    the event happened rather than to "now" (2026-09-03, per the user)."""
+    for key in ("Date Opened", "Observation Date", "Date Complaint Received"):
+        value = ctx.tw(key)
+        if value:
+            return value
+    return None
+
+
 def _tw_summary(ctx: RciReportContext) -> str:
     """Flatten non-empty trackwise fields into 'key: value' lines for prompt input."""
     return "\n".join(
@@ -212,6 +225,7 @@ async def _generate_description_of_event(llm: LLMClient, ctx: RciReportContext) 
             system_prompt=_rci_report_prompt("description_of_event_system"),
             user_prompt=user_prompt,
             structure=DescriptionOfEventSection,
+            temperature=0.0,
         ),
         label="description_of_event",
     )
@@ -229,6 +243,7 @@ async def _generate_initial_impact_assessment(
             system_prompt=_rci_report_prompt("initial_impact_assessment_system"),
             user_prompt=user_prompt,
             structure=InitialImpactAssessmentSection,
+            temperature=0.0,
         ),
         label="initial_impact_assessment",
     )
@@ -255,6 +270,7 @@ async def _generate_investigation_task(llm: LLMClient, ctx: RciReportContext) ->
             system_prompt=_rci_report_prompt("investigation_task_system"),
             user_prompt=user_prompt,
             structure=InvestigationTaskSection,
+            temperature=0.0,
         ),
         label="investigation_task",
     )
@@ -295,6 +311,7 @@ async def _generate_root_cause_conclusion(llm: LLMClient, ctx: RciReportContext)
             system_prompt=_rci_report_prompt("root_cause_conclusion_system"),
             user_prompt=user_prompt,
             structure=RootCauseConclusionSection,
+            temperature=0.0,
         ),
         label="root_cause_conclusion",
     )
@@ -324,6 +341,7 @@ async def _generate_impact_assessment(
             system_prompt=_rci_report_prompt("impact_batch_disposition_system"),
             user_prompt=user_prompt,
             structure=ImpactAssessmentBatchDispositionSection,
+            temperature=0.0,
         ),
         label="impact_assessment_batch_disposition",
     )
@@ -353,6 +371,7 @@ async def _generate_correction_remedial(
             system_prompt=_rci_report_prompt("correction_remedial_action_system"),
             user_prompt=user_prompt,
             structure=CorrectionRemedialActionSection,
+            temperature=0.0,
         ),
         label="correction_remedial_action",
     )
@@ -367,6 +386,7 @@ async def _generate_capa(llm: LLMClient, ctx: RciReportContext) -> CAPASection:
     return await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=_rci_report_prompt("capa_system"), user_prompt=user_prompt, structure=CAPASection,
+            temperature=0.0,
         ),
         label="capa",
     )
@@ -380,6 +400,7 @@ async def _generate_capa_effectiveness_check_plan_item(
             system_prompt=_rci_report_prompt("capa_effectiveness_check_plan_system"),
             user_prompt=ctx.effectiveness_plan_evidence_text(capa_item=capa_item),
             structure=CAPAEffectivenessPlanItem,
+            temperature=0.0,
         ),
         label="capa_effectiveness_plan_item",
     )
@@ -433,6 +454,7 @@ async def _generate_risk_assessment(
     generated = await call_with_retry(
         lambda: llm.get_structured_response(
             system_prompt=_rci_report_prompt("risk_factors_system"), user_prompt=user_prompt, structure=GeneratedRiskFactors,
+            temperature=0.0,
         ),
         label="risk_factors",
     )
@@ -478,6 +500,7 @@ async def _generate_executive_summary(
             system_prompt=_rci_report_prompt("executive_summary_system"),
             user_prompt=user_prompt,
             structure=ExecutiveSummarySection,
+            temperature=0.0,
         ),
         label="executive_summary",
     )
@@ -521,6 +544,7 @@ async def generate_rci_report(request: RciReportGenerationRequest) -> RciReportR
             lookback_months=ctx.history_lookback_months,
             narrative_system_prompt=_rci_report_prompt("history_review_narrative_system"),
             exclude_id=ctx.deviation_id,
+            event_date=_resolve_event_own_date(ctx),
         ),
         "investigation_task": _generate_investigation_task(llm, ctx),
         "capa_effectiveness_check_plan": _generate_capa_effectiveness_check_plan(llm, ctx),

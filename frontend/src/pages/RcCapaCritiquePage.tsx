@@ -625,6 +625,25 @@ export function RcCapaCritiquePage() {
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+            {report?.file_name && (
+              <span
+                title={report.file_name}
+                style={{
+                  background: "var(--color-bg)",
+                  border: "1px solid var(--color-card-border)",
+                  borderRadius: 4,
+                  padding: "6px 12px",
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: 700,
+                  maxWidth: 260,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                File: {report.file_name}
+              </span>
+            )}
             {state.due_date && (
               <span style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "6px 12px", fontSize: "var(--font-size-sm)", fontWeight: 700 }}>
                 TCD: {state.due_date}

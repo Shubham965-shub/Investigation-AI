@@ -191,6 +191,7 @@ async def get_action_center_summary(
                 "module": r["module"],
                 "module_risk_status": r["module_risk_status"],
                 "is_cancelled": r["module"] == _CANCELLED_MODULE_VALUE,
+                "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
             }
         )
 
@@ -222,6 +223,7 @@ async def get_action_center_summary(
                 "date_opened": date_opened,
                 "updated_at": updated_at,
                 "bucket": _bucket_for(r["open_investigation_status"]),
+                "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
             }
         )
 
@@ -517,6 +519,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=True,
+                rci_ids=i["rci_ids"],
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
             )
@@ -539,6 +542,7 @@ async def get_action_center_summary(
                 department=i["department"],
                 product=i["product"],
                 is_cancelled=i["is_cancelled"],
+                rci_ids=i["rci_ids"],
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
             )

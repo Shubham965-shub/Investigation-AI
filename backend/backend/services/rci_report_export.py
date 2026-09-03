@@ -572,8 +572,8 @@ def _fill_initial_impact_assessment(cursor: _Cursor, section, event_type: str, e
     rows = _ensure_row_count(equipment_table, 1, len(equip))
     if not equip:
         _set_cell_text(rows[0].cells[1], "N/A")
-    for row, item in zip(rows, equip):
-        _set_cell_text(row.cells[0], "")
+    for i, (row, item) in enumerate(zip(rows, equip)):
+        _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], _sourced(item.equipment_instrument))
         _set_cell_text(row.cells[2], _sourced(item.identification_number))
         actions = item.actions_initiated

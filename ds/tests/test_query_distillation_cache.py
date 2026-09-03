@@ -35,16 +35,16 @@ class TestCacheHelpers:
         assert _distilled_query_cache_get("nope") is None
 
     def test_set_then_get_roundtrips(self):
-        _distilled_query_cache_set("raw text", "distilled text")
-        assert _distilled_query_cache_get("raw text") == "distilled text"
+        _distilled_query_cache_set("raw text", ["distilled text"])
+        assert _distilled_query_cache_get("raw text") == ["distilled text"]
 
     def test_cache_is_bounded_and_evicts_oldest(self):
         nodes_module._DISTILLED_QUERY_CACHE_MAX = 3
         for i in range(4):
-            _distilled_query_cache_set(f"key{i}", f"val{i}")
+            _distilled_query_cache_set(f"key{i}", [f"val{i}"])
         assert _distilled_query_cache_get("key0") is None  # evicted
-        assert _distilled_query_cache_get("key3") == "val3"
-        nodes_module._DISTILLED_QUERY_CACHE_MAX = 1000
+        assert _distilled_query_cache_get("key3") == ["val3"]
+        nodes_module._DISTILLED_QUERY_CACHE_MAX = 8000
 
 
 class TestAnalyzeQueryCaching:
@@ -60,7 +60,11 @@ class TestAnalyzeQueryCaching:
         state = {"query": LONG_QUERY, "search_type": "auto", "filters": {}}
         result1 = await analyze_query(state, llm=llm)
         assert result1["distilled_query"] == "distilled phrase one"
-        assert llm.chat.await_count == 1
+        assert result1["distilled_query_variants"] == ["distilled phrase one"]
+        # Distilled _DISTILLATION_VARIANT_ATTEMPTS (3) times per cold call —
+        # every attempt returned the same mocked text here, so they dedupe
+        # down to a single variant, but the LLM is still genuinely called 3x.
+        assert llm.chat.await_count == 3
 
         # Second call, same raw query — must reuse the cached value, not
         # call the LLM again (even if the LLM would return something
@@ -68,7 +72,31 @@ class TestAnalyzeQueryCaching:
         llm.chat = AsyncMock(return_value="a completely different phrasing")
         result2 = await analyze_query(state, llm=llm)
         assert result2["distilled_query"] == "distilled phrase one"
+        assert result2["distilled_query_variants"] == ["distilled phrase one"]
         llm.chat.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_distinct_worded_attempts_are_all_kept_as_variants(self, monkeypatch):
+        """The actual bug this fix addresses (2026-09-03, per the user):
+        distillation genuinely produces different wordings across identical
+        calls even at temperature=0 — every distinct wording must survive
+        into distilled_query_variants so semantic_search_node can search
+        with all of them, rather than gambling on whichever one call
+        happened to produce."""
+        monkeypatch.setattr(
+            nodes_module, "get_prompt_registry",
+            lambda: type("R", (), {"get": staticmethod(lambda name: "{problem_statement}")})(),
+        )
+        llm = AsyncMock()
+        llm.chat = AsyncMock(
+            side_effect=["phrase alpha", "phrase beta", "phrase alpha"]
+        )
+
+        state = {"query": LONG_QUERY, "search_type": "auto", "filters": {}}
+        result = await analyze_query(state, llm=llm)
+        assert llm.chat.await_count == 3
+        assert set(result["distilled_query_variants"]) == {"phrase alpha", "phrase beta"}
+        assert result["distilled_query"] in result["distilled_query_variants"]
 
     @pytest.mark.asyncio
     async def test_different_queries_are_not_conflated(self, monkeypatch):
@@ -87,7 +115,10 @@ class TestAnalyzeQueryCaching:
         state_b = {"query": LONG_QUERY + " beta", "search_type": "auto", "filters": {}}
         result_b = await analyze_query(state_b, llm=llm)
         assert result_b["distilled_query"] == "second distillation"
-        llm.chat.assert_awaited_once()
+        # 3 distillation attempts per cold call (see test above) — all
+        # identical here, so this is the second query's own cold call, not
+        # a stray hit against the first query's cache entry.
+        assert llm.chat.await_count == 3
 
     @pytest.mark.asyncio
     async def test_short_query_is_never_cached_or_distilled(self, monkeypatch):

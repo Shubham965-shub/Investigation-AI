@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class EventTypeCount(BaseModel):
@@ -53,6 +53,12 @@ class InvestigationRow(BaseModel):
     department: Optional[str] = None
     product: Optional[str] = None
     is_cancelled: bool = False
+    # fact_qms_event.rci_ids — the full list of RCI record ids ever
+    # associated with this deviation (2026-09-03, per the user; a newly
+    # found column, not previously used anywhere in this app). Distinct
+    # from RciReportRecord's own "RCI Number" (dim_rci.rci_key) elsewhere —
+    # this is the QMS-event-level list, not a single report's own id.
+    rci_ids: List[str] = Field(default_factory=list)
     # dim_event.escalation_level — real values live as "L1".."L5" or "Not
     # Applicable" (6,627/6,686 rows, since most investigations never escalate).
     escalation_level: Optional[str] = None

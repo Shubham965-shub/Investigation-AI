@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,19 @@ logger = logging.getLogger(__name__)
 # truncated here to keep the report's History Review table a reasonable
 # length (2026-08-26, per the user: capped from 15 down to 5).
 _TOP_K = 5
+
+# Retries for the search-graph invocation itself, not just the cosmetic
+# closing narrative below (2026-09-03, per the user: the table was coming
+# back empty inconsistently across otherwise-similar records). A transient
+# failure anywhere inside the graph — an LLM rate-limit on query
+# distillation, an embedding-API blip, a DB pool timeout — was previously
+# caught by a bare `except Exception` with zero retry and silently degraded
+# straight to "no similar events found," with only a log line. That's not
+# what call_with_retry (below, still used for the narrative) covers either —
+# it only retries a Pydantic ValidationError from a structured LLM response,
+# not a generic transient failure from a whole multi-node graph run.
+_SEARCH_MAX_ATTEMPTS = 3
+_SEARCH_RETRY_DELAY_SECONDS = 2
 
 
 class HistoryReviewNarrative(BaseModel):
@@ -78,6 +92,24 @@ def _rows_from_search_results(
     return rows
 
 
+def _resolve_event_date(event_date_str: Optional[str]) -> datetime:
+    """The lookback window's anchor point. Falls back to wall-clock "now"
+    only when the caller genuinely has no event date to give (or it fails
+    to parse) — previously this was the ONLY behavior, anchoring "24 months"
+    to whenever the report happened to be generated rather than to when the
+    event itself occurred. For a record whose RCI report is generated weeks
+    or months after the event opened (routine in practice), that silently
+    shrank the effective lookback and dropped real historical matches that
+    fell just outside the drifted window — by an amount that varied per
+    record, i.e. inconsistently (2026-09-03, per the user)."""
+    if event_date_str:
+        try:
+            return datetime.fromisoformat(event_date_str)
+        except ValueError:
+            logger.warning("History review: could not parse event date %r, falling back to now", event_date_str)
+    return datetime.utcnow()
+
+
 async def generate_history_review(
     llm: LLMClient,
     pool: Any,
@@ -87,20 +119,30 @@ async def generate_history_review(
     lookback_months: int,
     narrative_system_prompt: str,
     exclude_id: Optional[str] = None,
+    event_date: Optional[str] = None,
 ) -> HistoryReviewSection:
     """Section 4. Row data is deterministic (a real DB query), never LLM-authored
     — only the one-sentence closing verdict on prior-CAPA effectiveness is
     generated. Reuses search_agent's own graph rather than reimplementing
-    search; adds a date_from filter search_agent's SearchFilters already
-    supports end-to-end but no existing call site uses.
+    search; adds a date_from/date_to filter search_agent's SearchFilters
+    already supports end-to-end but no existing call site used.
 
     exclude_id: the current record's own id. The search query is seeded with
     this record's own description/root-cause text, so without excluding its
     own id it self-matches as a "similar historical event" at near-1.0
     relevance once the record itself is a row in the searchable table.
+
+    event_date: this event's own opened/observed/received date (whichever
+    TrackWise field applies for its event type) — anchors the lookback
+    window to when the event actually happened, not to "now". Also used as
+    date_to's upper bound: history review means events that happened BEFORE
+    this one, so an event that occurred after/concurrent with the current
+    one was never meant to count as "history" here.
     """
     search_graph = build_search_graph(pool=pool, llm=llm)
-    date_from = (datetime.utcnow() - timedelta(days=30 * lookback_months)).isoformat()
+    anchor = _resolve_event_date(event_date)
+    date_from = (anchor - timedelta(days=30 * lookback_months)).isoformat()
+    date_to = anchor.isoformat()
     search_fields = ["description", "root_cause_summary"]
     search_scope_note = (
         f"Semantic search seeded from this event's own description text, run over the "
@@ -114,6 +156,7 @@ async def generate_history_review(
         "filters": {
             "qe_type": resolve_qe_type_filter(event_type),
             "date_from": date_from,
+            "date_to": date_to,
             "exclude_id": exclude_id,
         },
         "determined_search_type": "",
@@ -126,12 +169,16 @@ async def generate_history_review(
         "error": None,
     }
 
-    try:
-        search_state = await search_graph.ainvoke(initial_state)
-        candidates = (search_state.get("final_results") or [])[:_TOP_K]
-    except Exception:
-        logger.exception("History review search failed")
-        candidates = []
+    candidates: List[Dict[str, Any]] = []
+    for attempt in range(1, _SEARCH_MAX_ATTEMPTS + 1):
+        try:
+            search_state = await search_graph.ainvoke(initial_state)
+            candidates = (search_state.get("final_results") or [])[:_TOP_K]
+            break
+        except Exception:
+            logger.exception("History review search failed on attempt %d/%d", attempt, _SEARCH_MAX_ATTEMPTS)
+            if attempt < _SEARCH_MAX_ATTEMPTS:
+                await asyncio.sleep(_SEARCH_RETRY_DELAY_SECONDS)
 
     deviation_ids = [c.get(settings.COLUMN_ID) or c.get("deviation_id") for c in candidates]
     deviation_ids = [d for d in deviation_ids if d is not None]

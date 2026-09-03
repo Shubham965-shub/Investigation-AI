@@ -8,6 +8,7 @@ that distinction since it measures textual closeness, not cause identity.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -18,6 +19,24 @@ from src.config.settings import settings
 from src.agents.search_agent.api.schemas import RelevanceFilterResponse
 
 logger = logging.getLogger(__name__)
+
+# temperature=0.0 alone (see filter_relevant below) reduces but does not
+# eliminate run-to-run flip-flopping on borderline candidates — a known,
+# industry-wide LLM-API limitation (non-associative floating-point ops in
+# batched/distributed inference), not something fixable by parameter tuning
+# alone (confirmed live, 2026-09-03: the same candidate judged relevant on
+# 2 of 3 identical repeated calls, not-relevant on the third). Judging each
+# candidate set _JUDGMENT_ATTEMPTS times and keeping the UNION of every
+# call's "relevant" verdicts — rather than trusting a single roll — matches
+# this module's and semantic_search_node's own established recall-first
+# philosophy (see semantic_search_node's docstring: a fixed score cutoff
+# was removed for the identical reason, "it only risks losing recall").
+# Set to 2, not 3 (2026-09-03, per the user): this call's payload includes
+# every candidate's full description/root-cause text, so each extra attempt
+# meaningfully multiplies input tokens — 2 attempts still catches most
+# single-roll flip-flops (a candidate only needs one "yes" of two) at 2/3
+# the token cost of 3.
+_JUDGMENT_ATTEMPTS = 2
 
 _ROOT_CAUSE_MARKER_RE = re.compile(r"(root cause|probable cause)", re.IGNORECASE)
 _ROOT_CAUSE_WINDOW = 450
@@ -82,19 +101,40 @@ async def filter_relevant(
     # not 0), unlike LLMClient.chat() which always applies the configured
     # temperature — confirmed via direct testing that this was letting
     # judgments vary between repeated runs on the same candidate set.
-    response: RelevanceFilterResponse = await llm.get_structured_response(
-        system_prompt=guard_rail_text,
-        user_prompt=prompt,
-        structure=RelevanceFilterResponse,
-        temperature=0.0,
-    )
+    # temperature=0 alone still isn't fully deterministic (see
+    # _JUDGMENT_ATTEMPTS above), so this call is issued _JUDGMENT_ATTEMPTS
+    # times concurrently and every call's "relevant" verdicts are unioned —
+    # a candidate only needs to be judged relevant once to be kept.
+    async def _one_judgment() -> RelevanceFilterResponse:
+        return await llm.get_structured_response(
+            system_prompt=guard_rail_text,
+            user_prompt=prompt,
+            structure=RelevanceFilterResponse,
+            temperature=0.0,
+        )
 
-    relevant_ids = {j.id for j in response.judgments if j.relevant}
+    responses = await asyncio.gather(
+        *(_one_judgment() for _ in range(_JUDGMENT_ATTEMPTS)),
+        return_exceptions=True,
+    )
+    relevant_ids: set[str] = set()
+    successful_attempts = 0
+    for response in responses:
+        if isinstance(response, BaseException):
+            logger.warning("relevance filter: one of %d judgment attempts failed: %s", _JUDGMENT_ATTEMPTS, response)
+            continue
+        successful_attempts += 1
+        relevant_ids |= {j.id for j in response.judgments if j.relevant}
+    if successful_attempts == 0:
+        raise RuntimeError("relevance filter: all judgment attempts failed") from responses[0]
 
     id_col = settings.COLUMN_ID
     kept = [
         r for r in candidates
         if str(r.get(id_col) or r.get("id") or "") in relevant_ids
     ]
-    logger.info(f"relevance filter: kept {len(kept)}/{len(candidates)} candidates")
+    logger.info(
+        f"relevance filter: kept {len(kept)}/{len(candidates)} candidates "
+        f"(union of {successful_attempts}/{_JUDGMENT_ATTEMPTS} judgment attempts)"
+    )
     return kept

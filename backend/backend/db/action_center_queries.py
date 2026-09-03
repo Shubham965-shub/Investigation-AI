@@ -68,7 +68,7 @@ QE_TYPE_TO_STAT_LABEL: Dict[str, str] = {
 OPEN_INVESTIGATIONS_SINCE = datetime.date(2026, 1, 1)
 
 _OPEN_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
@@ -86,7 +86,8 @@ FROM (
         loc.location,
         dept.department,
         p.name_of_material AS product,
-        f.pg_updated_at_timestamp
+        f.pg_updated_at_timestamp,
+        f.rci_ids
     FROM fact_qms_event f
     JOIN dim_event e ON e.deviation_id = f.deviation_id
     LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
@@ -124,7 +125,7 @@ async def fetch_open_investigations() -> List[asyncpg.Record]:
 # open-investigations-only. See action_center.py for how the two lists are
 # combined.
 _CANCELLED_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp
+SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
@@ -142,7 +143,8 @@ FROM (
         loc.location,
         dept.department,
         p.name_of_material AS product,
-        f.pg_updated_at_timestamp
+        f.pg_updated_at_timestamp,
+        f.rci_ids
     FROM fact_qms_event f
     JOIN dim_event e ON e.deviation_id = f.deviation_id
     LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key

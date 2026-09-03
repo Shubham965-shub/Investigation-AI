@@ -678,7 +678,7 @@ export function ActionCenterPage() {
                 return (
                   <tr key={inv.id} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
                     <td>
-                      <div className="ac-inv-id">{inv.id}</div>
+                      <div className="ac-inv-id">{inv.id}{inv.rci_ids.length > 0 ? ` / ${inv.rci_ids.join(", ")}` : ""}</div>
                       <div className="ac-inv-title">{inv.title}</div>
                     </td>
                     <td>{inv.event_type}</td>
