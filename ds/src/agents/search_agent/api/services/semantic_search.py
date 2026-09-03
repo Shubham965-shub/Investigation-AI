@@ -66,7 +66,16 @@ async def semantic_search(
     vec_table_alias = "v" if settings.SEARCH_DETAILS_TABLE else "t"
     escaped_vec_column = f'{vec_table_alias}."{target_vec_column}"'
 
-    # Perform standard vector search with an appended relevance_score metric
+    # Perform standard vector search with an appended relevance_score metric.
+    # ORDER BY relevance_score DESC alone has no tiebreaker for rows with an
+    # identical (or floating-point-identical) score — Postgres makes no
+    # ordering guarantee for ties, so which exact rows land inside LIMIT can
+    # genuinely vary between otherwise-identical executions of this same
+    # query (confirmed live, 2026-09-03: repeated identical History Review
+    # searches on the same record returned different candidate sets —
+    # sometimes a real historical match, sometimes none). Appending the id
+    # column as a stable secondary sort key makes row order, and therefore
+    # which rows survive LIMIT, fully deterministic for identical input.
     query_sql = f"""
         SELECT
             t.*,
@@ -74,7 +83,7 @@ async def semantic_search(
         {_build_from_clause()}
         WHERE {escaped_vec_column} IS NOT NULL
             {search_conditions.sql}
-        ORDER BY relevance_score DESC
+        ORDER BY relevance_score DESC, t."{settings.COLUMN_ID}" ASC
         LIMIT ${limit_parameter_index}
     """
 

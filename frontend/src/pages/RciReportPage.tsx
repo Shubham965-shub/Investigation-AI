@@ -1218,7 +1218,7 @@ export function RciReportPage() {
                         <DataTable
                           columns={[
                             { key: "material_product_batch", label: "Material / Product" },
-                            { key: "stage", label: "Stage" },
+                            { key: "batch_number", label: "Batch Number" },
                             { key: "quantity_involved", label: "Quantity Involved" },
                             { key: "quantity_on_hold", label: "Quantity on Hold" },
                             { key: "type_of_impact", label: "Type of Impact" },
@@ -1239,11 +1239,11 @@ export function RciReportPage() {
                       <>
                         {list.map((item, i) => (
                           <div key={i} style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                            <Field label="Material / Product / Batch">
+                            <Field label="Material / Product">
                               <TextInput value={item.material_product_batch} onChange={(v) => h.update(i, { material_product_batch: v })} />
                             </Field>
-                            <Field label="Stage">
-                              <TextInput value={item.stage} onChange={(v) => h.update(i, { stage: v })} />
+                            <Field label="Batch Number">
+                              <TextInput value={item.batch_number} onChange={(v) => h.update(i, { batch_number: v })} />
                             </Field>
                             <Field label="Quantity Involved">
                               <TextInput value={item.quantity_involved} onChange={(v) => h.update(i, { quantity_involved: v })} />
@@ -1264,7 +1264,7 @@ export function RciReportPage() {
                           onClick={() =>
                             h.add({
                               material_product_batch: "",
-                              stage: "",
+                              batch_number: "",
                               quantity_involved: "",
                               quantity_on_hold: { value: "", source: "manual_entry_provided" },
                               type_of_impact: "Not applicable",

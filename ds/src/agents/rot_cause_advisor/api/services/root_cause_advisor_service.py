@@ -6,8 +6,8 @@ from typing import Any, List
 
 from fastapi import HTTPException, UploadFile, status
 
-from src.config.settings import settings
 from src.llm.client import LLMClient
+from src.utils.deps import get_prompt_registry
 from agents.rot_cause_advisor.api.schemas import rootCauseAdvisoryResponse
 
 logger = logging.getLogger(__name__)
@@ -23,26 +23,6 @@ ROOT_CAUSE_CATEGORIES = [
     "milieu",
 ]
 
-def _load_prompt(filename: str, subfolder: str | None = None) -> str:
-    prompt_dir = settings.PROMPTS_DIR
-    if subfolder:
-        prompt_dir = prompt_dir / subfolder
-    prompt_path = prompt_dir / filename
-    return prompt_path.read_text(encoding="utf-8")
-
-
-ROOT_CAUSE_ADVISOR_SYSTEM_PROMPT = _load_prompt(
-    "root_cause_advisor_system.txt",
-    subfolder="rca",
-)
-
-ROOT_CAUSE_ADVISOR_USER_PROMPT = _load_prompt(
-    "root_cause_advisor_user.txt",
-    subfolder="rca",
-)
-
-GUARDRAIL_TEXT = _load_prompt("guardrail.txt")
-
 
 def _build_advisor_prompt(event_type: str) -> str:
     """
@@ -50,7 +30,7 @@ def _build_advisor_prompt(event_type: str) -> str:
     We intentionally instruct the model to read from the uploaded file
     and return a top-level JSON array.
     """
-    prompt = ROOT_CAUSE_ADVISOR_USER_PROMPT
+    prompt = get_prompt_registry().get("rca/root_cause_advisor_user")
     prompt = prompt.replace("__EVENT_TYPE__", event_type)
 
     prompt = prompt + (
@@ -101,8 +81,9 @@ async def generate_root_cause_advice(
         file_id = await llm.upload_file(temp_file)
         logger.info(f"Uploaded file to LLM successfully: file_id={file_id}")
 
+        registry = get_prompt_registry()
         user_prompt = _build_advisor_prompt(event_type)
-        system_prompt = ROOT_CAUSE_ADVISOR_SYSTEM_PROMPT + "\n" + GUARDRAIL_TEXT
+        system_prompt = registry.get("rca/root_cause_advisor_system") + "\n" + registry.get("guardrail")
 
         logger.info("Requesting raw JSON root cause advisor response from LLM")
 

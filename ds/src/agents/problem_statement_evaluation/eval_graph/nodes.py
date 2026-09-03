@@ -17,28 +17,11 @@ sys.path.insert(0, str(project_root))
 import asyncpg
 
 from src.llm.client import LLMClient
-from config.settings import settings
+from src.utils.deps import get_prompt_registry
 from src.agents.problem_statement_evaluation.api.schemas import CheckList, ImprovementSuggestionList, LLMActions
 from src.agents.problem_statement_evaluation.eval_graph.state import PseState, ActionsState
 from src.agents.problem_statement_evaluation.domain.sops import SOP_BY_EVENT_TYPE
 logger = logging.getLogger(__name__)
-
-def _load_prompt(filename: str) -> str:
-    """Load a prompt template from the centralized prompts directory."""
-    if filename == "guardrail.txt":
-        prompt_path = settings.PROMPTS_DIR / filename
-        return prompt_path.read_text(encoding="utf-8")
-    prompt_path = settings.PROMPTS_DIR / "ps_evaluation" / filename
-    return prompt_path.read_text(encoding="utf-8")
-
-guard_rail_text = _load_prompt("guardrail.txt")
-system_prompt = _load_prompt("system.txt")
-mc_eval_prompt = _load_prompt("pse_mc.txt")
-non_mc_eval_prompt = _load_prompt("pse_non_mc.txt")
-mc_imp_prompt = _load_prompt("mc_improvement.txt")
-non_mc_imp_prompt = _load_prompt("non_mc_improvement.txt")
-immediate_actions_system_prompt = _load_prompt("immediate_actions_system.txt")
-immediate_actions_user_prompt = _load_prompt("immediate_actions_user.txt")
 
 llm = LLMClient()
 
@@ -59,12 +42,13 @@ async def analyze_problem_statement(
         query = state.get("query", "")
     except Exception as exc:
         logger.error("input type not defined: %s", exc)
+    registry = get_prompt_registry()
     if event_type == "Market Complaint":
-        user_prompt = mc_eval_prompt.format(query=query, event_type=event_type)
+        user_prompt = registry.get("ps_evaluation/pse_mc").format(query=query, event_type=event_type)
     else:
-        user_prompt = non_mc_eval_prompt.format(query=query, event_type=event_type)
+        user_prompt = registry.get("ps_evaluation/pse_non_mc").format(query=query, event_type=event_type)
     try:
-        response = await llm.get_structured_response(system_prompt=(system_prompt + guard_rail_text), user_prompt=user_prompt, structure=CheckList)
+        response = await llm.get_structured_response(system_prompt=(registry.get("ps_evaluation/system") + registry.get("guardrail")), user_prompt=user_prompt, structure=CheckList)
         
         checklist_model: CheckList = response
         checklist_dict = checklist_model.model_dump()
@@ -85,11 +69,12 @@ async def improvement_suggestion(
         event_type = state.get("event_type", "")
         query = state.get("query", "")
         check_list_data = state.get("checklist", [])
+        registry = get_prompt_registry()
         if event_type == "Market Complaint":
-            user_prompt = mc_imp_prompt.format(query=query, event_type=event_type, checklist=check_list_data)
+            user_prompt = registry.get("ps_evaluation/mc_improvement").format(query=query, event_type=event_type, checklist=check_list_data)
         else:
-            user_prompt = non_mc_imp_prompt.format(query=query, event_type=event_type, checklist=check_list_data)
-        response = await llm.get_structured_response(system_prompt=system_prompt, user_prompt=user_prompt, structure=ImprovementSuggestionList)
+            user_prompt = registry.get("ps_evaluation/non_mc_improvement").format(query=query, event_type=event_type, checklist=check_list_data)
+        response = await llm.get_structured_response(system_prompt=registry.get("ps_evaluation/system"), user_prompt=user_prompt, structure=ImprovementSuggestionList)
         return {"suggestions": response}
     
     except Exception as exc:
@@ -110,10 +95,11 @@ async def generate_immediate_actions(
         if event_type not in SOP_BY_EVENT_TYPE:
             raise ValueError(f"event_type must be one of: {', '.join(SOP_BY_EVENT_TYPE.keys())}")
         sops = SOP_BY_EVENT_TYPE[event_type]
-        user_prompt = immediate_actions_user_prompt.format(event_type=event_type,
+        registry = get_prompt_registry()
+        user_prompt = registry.get("ps_evaluation/immediate_actions_user").format(event_type=event_type,
                                                            problem_statement=query,
                                                            sop_list=sops)
-        response = await llm.get_structured_response(system_prompt=immediate_actions_system_prompt,
+        response = await llm.get_structured_response(system_prompt=registry.get("ps_evaluation/immediate_actions_system"),
                                                       user_prompt=user_prompt, structure=LLMActions)
         
         actions: list[str] = response.llm_actions

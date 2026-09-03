@@ -486,6 +486,7 @@ export interface InvestigationRowResponse {
   department: string | null;
   product: string | null;
   is_cancelled: boolean;
+  rci_ids: string[];
   escalation_level: string | null;
   oos_oot_phase: "Phase 1" | "Phase 2" | null;
 }
@@ -672,7 +673,7 @@ export type ImpactType = "Direct" | "Indirect" | "Not applicable";
 
 export interface MaterialProductImpactItem {
   material_product_batch: string;
-  stage: string;
+  batch_number: string;
   quantity_involved: string;
   quantity_on_hold: SourcedTextItem;
   type_of_impact: ImpactType;

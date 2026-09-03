@@ -291,6 +291,22 @@ export function TaskCritiquePage() {
                       </div>
                     );
                   })()}
+                  {hasScore && section.latest_report!.file_name && (
+                    <p
+                      title={section.latest_report!.file_name}
+                      style={{
+                        margin: "6px 0 0",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--color-text-faint)",
+                        textAlign: "center",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {section.latest_report!.file_name}
+                    </p>
+                  )}
                 </div>
               </div>
 

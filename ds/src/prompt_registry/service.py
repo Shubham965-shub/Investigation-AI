@@ -21,6 +21,26 @@ logger = logging.getLogger(__name__)
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
+class _PromptDumper(yaml.SafeDumper):
+    """Plain yaml.dump() picks PyYAML's default scalar style for every
+    string, which for anything containing a newline is a double-quoted,
+    backslash-wrapped mess — not the clean `template: |` block style every
+    hand-authored prompt file in this directory actually uses. Multi-line
+    strings are dumped in literal block style here so a saved file reads
+    the same way regardless of whether it was hand-written or written by
+    this module (2026-09-02 — found after a migration went through
+    create_version()/_save_file() and produced escaped, line-wrapped
+    prompt text instead of matching the existing convention)."""
+
+
+def _str_presenter(dumper: yaml.Dumper, data: str):
+    style = "|" if "\n" in data else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+
+_PromptDumper.add_representer(str, _str_presenter)
+
+
 def _prompt_path(name: str) -> Path:
     """Map 'group/prompt_name' → src/prompts/group/prompt_name.yaml"""
     return PROMPTS_DIR / f"{name}.yaml"
@@ -38,7 +58,7 @@ def _save_file(name: str, data: dict) -> None:
     path = _prompt_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.dump(data, f, Dumper=_PromptDumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
 class PromptRegistry:
@@ -135,6 +155,15 @@ class PromptRegistry:
         self, name: str, template: str, description: Optional[str] = None
     ) -> dict:
         """Append a new version (not yet active). Version key = vN+1."""
+        # Trailing whitespace on any line silently defeats _PromptDumper's
+        # literal block style — PyYAML's emitter refuses `|` style for a
+        # scalar with trailing space on a line and falls back to a
+        # double-quoted, backslash-wrapped mess instead (found 2026-09-02,
+        # after a migration produced 6 such files out of 35). Trailing
+        # whitespace has no effect on an LLM's reading of the prompt, so
+        # stripping it per-line here is safe and keeps every saved prompt
+        # in the same clean block style regardless of what was pasted in.
+        template = "\n".join(line.rstrip() for line in template.split("\n"))
         try:
             data = _load_file(name)
         except KeyError:

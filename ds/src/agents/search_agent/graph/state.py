@@ -26,6 +26,17 @@ class SearchState(TypedDict, total=False):
                                    # when the raw query is long free text —
                                    # absent/unset otherwise (nodes fall back
                                    # to raw `query` in that case)
+    distilled_query_variants: list[str]  # 2026-09-03: distillation isn't
+                                   # fully deterministic even at temperature=0
+                                   # (confirmed: identical input produced 3
+                                   # differently-worded outputs across 5
+                                   # calls) — semantic_search_node embeds and
+                                   # searches EVERY variant and unions the
+                                   # results, rather than gambling on one
+                                   # phrasing's exact wording. distilled_query
+                                   # stays the single primary variant, used
+                                   # unchanged by keyword_search_node/
+                                   # rerank_candidates_node.
 
     # ── Intermediate results ────────────────────────────────
     keyword_results: list[dict[str, Any]]

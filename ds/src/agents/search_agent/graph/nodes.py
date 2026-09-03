@@ -8,6 +8,7 @@ Side-effect dependencies (DB pool, LLM client) are injected via closures in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import sys
@@ -61,36 +62,39 @@ _DISTILLATION_WORD_THRESHOLD = 25
 # persisted records, not one-off free text, so the same raw text is searched
 # repeatedly — caching by that text guarantees identical distillation, and
 # therefore identical downstream ranking, for every repeat search of the same
-# investigation. Bounded to avoid unbounded growth in a long-running process.
-_DISTILLED_QUERY_CACHE: "OrderedDict[str, str]" = OrderedDict()
-_DISTILLED_QUERY_CACHE_MAX = 1000
+# investigation. Bounded to avoid unbounded growth in a long-running process
+# — raised from 1000 to 8000 (2026-09-03, per the user): on a live, actively-
+# used server, other unrelated concurrent searches evict LRU entries just
+# like any other search would, so a repeat History Review search on the
+# same record could still hit a cache miss (and a differently-worded, if
+# rare, redistillation) purely from other traffic in between — a much larger
+# bound makes that far less likely without meaningfully growing memory use
+# (each entry is a couple of short strings).
+_DISTILLED_QUERY_CACHE: "OrderedDict[str, list[str]]" = OrderedDict()
+_DISTILLED_QUERY_CACHE_MAX = 8000
+
+# Caching alone only guarantees determinism for a WARM cache entry — a cold
+# or evicted one still rolls the dice on a single distillation. Generating
+# this many variants per (cold) distillation and searching with all of them
+# (semantic_search_node) directly reduces the odds a genuine match is missed
+# because of how ANY ONE of them happened to be worded, matching this
+# module's existing recall-first pattern (score-cutoff removal, relevance-
+# filter judgment unioning) rather than trusting a single LLM roll.
+_DISTILLATION_VARIANT_ATTEMPTS = 3
 
 
-def _distilled_query_cache_get(key: str) -> str | None:
+def _distilled_query_cache_get(key: str) -> list[str] | None:
     if key not in _DISTILLED_QUERY_CACHE:
         return None
     _DISTILLED_QUERY_CACHE.move_to_end(key)
     return _DISTILLED_QUERY_CACHE[key]
 
 
-def _distilled_query_cache_set(key: str, value: str) -> None:
+def _distilled_query_cache_set(key: str, value: list[str]) -> None:
     _DISTILLED_QUERY_CACHE[key] = value
     _DISTILLED_QUERY_CACHE.move_to_end(key)
     if len(_DISTILLED_QUERY_CACHE) > _DISTILLED_QUERY_CACHE_MAX:
         _DISTILLED_QUERY_CACHE.popitem(last=False)
-
-
-# ── Prompt Loading ──────────────────────────────────────────
-
-def _load_prompt(filename: str) -> str:
-    """Load a prompt template from the centralized prompts directory."""
-    if filename == "guardrail.txt":
-        prompt_path = settings.PROMPTS_DIR / filename
-        return prompt_path.read_text(encoding="utf-8")
-    prompt_path = settings.PROMPTS_DIR / "search_agent" / filename
-    return prompt_path.read_text(encoding="utf-8")
-
-guard_rail_text = _load_prompt("guardrail.txt")
 
 
 # ── Helpers ─────────────────────────────────────────────────
@@ -163,24 +167,44 @@ async def analyze_query(
         cache_key = raw_query.strip()
         cached = _distilled_query_cache_get(cache_key)
         if cached is not None:
-            result["distilled_query"] = cached
+            result["distilled_query"] = cached[0]
+            result["distilled_query_variants"] = cached
         else:
             try:
                 registry = get_prompt_registry()
                 prompt = registry.get("search_agent/build_search_query").format(
                     problem_statement=raw_query,
                 )
-                distilled = (await llm.chat(prompt)).strip()
-                # Light sanitize only — preserve phrase structure for the
-                # embedder; keyword_search_node applies its own stricter,
-                # tsquery-safe pass on top of this.
-                distilled = re.sub(r"[^\w\s\-/]", "", distilled).strip()
-                distilled = distilled or raw_query
-                result["distilled_query"] = distilled
-                _distilled_query_cache_set(cache_key, distilled)
+
+                async def _one_distillation() -> str:
+                    distilled = (await llm.chat(prompt)).strip()
+                    # Light sanitize only — preserve phrase structure for the
+                    # embedder; keyword_search_node applies its own stricter,
+                    # tsquery-safe pass on top of this.
+                    distilled = re.sub(r"[^\w\s\-/]", "", distilled).strip()
+                    return distilled
+
+                attempts = await asyncio.gather(
+                    *(_one_distillation() for _ in range(_DISTILLATION_VARIANT_ATTEMPTS)),
+                    return_exceptions=True,
+                )
+                variants: list[str] = []
+                for attempt in attempts:
+                    if isinstance(attempt, BaseException):
+                        logger.warning("analyze_query: one of %d distillation attempts failed: %s", _DISTILLATION_VARIANT_ATTEMPTS, attempt)
+                        continue
+                    if attempt and attempt not in variants:
+                        variants.append(attempt)
+                if not variants:
+                    variants = [raw_query]
+
+                result["distilled_query"] = variants[0]
+                result["distilled_query_variants"] = variants
+                _distilled_query_cache_set(cache_key, variants)
             except Exception:
                 logger.exception("analyze_query distillation failed, falling back to raw query")
                 result["distilled_query"] = raw_query
+                result["distilled_query_variants"] = [raw_query]
 
     return result
 
@@ -266,28 +290,36 @@ async def semantic_search_node(
     filters = _filters_from_dict(state.get("filters", {}))
     search_fields = state.get("search_fields", ["description"])
     all_results = []
-    query = state.get("distilled_query") or state["query"]
-    logger.info(f"entered semantic search")
+    # Search with every distilled variant (see analyze_query /
+    # _DISTILLATION_VARIANT_ATTEMPTS), not just the primary one — embedding
+    # and searching each, then merging below like the existing per-field
+    # union already does. Falls back to the single primary query/raw query
+    # when no variants were produced (short queries skip distillation
+    # entirely, or a genuinely empty candidate list should just mean no
+    # matches, not an error).
+    queries = state.get("distilled_query_variants") or [state.get("distilled_query") or state["query"]]
+    logger.info(f"entered semantic search with {len(queries)} query variant(s)")
 
-    try:
-        query_vector = await llm.embed_text(query)
+    for query in queries:
+        try:
+            query_vector = await llm.embed_text(query)
 
-        # Search each field separately
-        for field in search_fields:
-            try:
-                field_results = await semantic_search(
-                    pool=pool,
-                    query_vector=query_vector,
-                    search_field=field,
-                    filters=filters,
-                    limit=settings.SEMANTIC_SEARCH_LIMIT,
-                )
-                all_results.extend(field_results)
-            except Exception as exc:
-                logger.error("semantic_search_node failed for field %s: %s", field, exc)
+            # Search each field separately
+            for field in search_fields:
+                try:
+                    field_results = await semantic_search(
+                        pool=pool,
+                        query_vector=query_vector,
+                        search_field=field,
+                        filters=filters,
+                        limit=settings.SEMANTIC_SEARCH_LIMIT,
+                    )
+                    all_results.extend(field_results)
+                except Exception as exc:
+                    logger.error("semantic_search_node failed for field %s (variant %r): %s", field, query, exc)
 
-    except Exception as exc:
-        logger.error("semantic_search_node embedding failed: %s", exc)
+        except Exception as exc:
+            logger.error("semantic_search_node embedding failed for variant %r: %s", query, exc)
 
     # Deduplicate by ID (keep highest score if duplicate)
     # Use the dynamic ID column name from settings
@@ -406,7 +438,7 @@ async def relevance_filter_node(
         filtered = await filter_relevant(
             llm=llm,
             prompt_template=prompt_template,
-            guard_rail_text=guard_rail_text,
+            guard_rail_text=registry.get("guardrail"),
             query=state.get("query", ""),
             candidates=candidates,
         )
