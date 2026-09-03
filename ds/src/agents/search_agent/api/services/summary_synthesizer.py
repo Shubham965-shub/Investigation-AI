@@ -12,7 +12,7 @@ from src.agents.search_agent.api.schemas import (
     SynthType,
     ERSynth
 )
-from src.config.settings import settings
+from src.utils.deps import get_prompt_registry
 from dataclasses import dataclass
 from typing import Type, Generic, TypeVar
 
@@ -26,20 +26,10 @@ T = TypeVar("T")  # category payload
 @dataclass
 class SynthConfig(Generic[T]):
     response_model: Type[SynthResponse[T]]
-    prompt: str
-
-def _load_prompt(filename: str) -> str:
-    """Load a prompt template from the centralized prompts directory."""
-    if filename == "guardrail.txt":
-        prompt_path = settings.PROMPTS_DIR / filename
-        return prompt_path.read_text(encoding="utf-8")
-    prompt_path = settings.PROMPTS_DIR / "search_agent" / filename
-    return prompt_path.read_text(encoding="utf-8")
-
-guard_rail_text = _load_prompt("guardrail.txt")
-rcs_prompt = _load_prompt("rcs_summary.txt")
-capa_prompt = _load_prompt("capa_summary.txt")
-event_prompt = _load_prompt("event_summary.txt")
+    # Registry key, not the prompt text itself — resolved at request time via
+    # get_prompt_registry().get(...) in get_synth_summary below (migrated off
+    # static .txt files, 2026-09-02).
+    prompt_name: str
 
 from typing import Type, Any
 
@@ -53,15 +43,15 @@ class CAPAResponse(SynthResponse[CAPAData]):
 SYNTH_CONFIG: dict[SynthType, SynthConfig] = {
     SynthType.RC: SynthConfig(
         response_model=RootCauseResponse,
-        prompt=rcs_prompt,
+        prompt_name="search_agent/rcs_summary",
     ),
     SynthType.CAPA: SynthConfig(
         response_model=CAPAResponse,
-        prompt=capa_prompt,
+        prompt_name="search_agent/capa_summary",
     ),
     SynthType.EVENT: SynthConfig(
         response_model=ERSynth,
-        prompt=event_prompt,
+        prompt_name="search_agent/event_summary",
     ),
 }
 
@@ -93,7 +83,7 @@ async def get_synth_summary(
             "- All counts, trends, and summaries MUST strictly align with these numbers\n"
         )
 
-        prompt_with_counts = config.prompt + count_details
+        prompt_with_counts = get_prompt_registry().get(config.prompt_name) + count_details
 
         result = await run_llm(
             payload=payload,
@@ -132,7 +122,7 @@ async def run_llm(
     response_model: Type[SynthResponse[T]],
 ) -> SynthResponse[T]:
     return await llm.get_structured_response(
-        system_prompt=guard_rail_text,
+        system_prompt=get_prompt_registry().get("guardrail"),
         user_prompt=f"{prompt}\n\nINPUT:\n{json.dumps(payload)}",
         structure=response_model,
     )

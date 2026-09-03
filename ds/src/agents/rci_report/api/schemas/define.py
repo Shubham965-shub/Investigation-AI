@@ -36,8 +36,12 @@ ImpactType = Literal["Direct", "Indirect", "Not applicable"]
 
 
 class MaterialProductImpactItem(BaseModel):
-    material_product_batch: str  # e.g. "Lamotrigine Tablets 200 mg, batch# 7263940" — name+batch fused, per confirmed UI
-    stage: str
+    material_product_batch: str  # e.g. "Lamotrigine Tablets 200 mg" — material/product name only
+    # Real batch number as its own structured field, not fused into
+    # material_product_batch (2026-09-03, per the user — the exported
+    # table's own "Batch Number" column needs the actual figure, not
+    # process-stage text filling a column its header doesn't name).
+    batch_number: str
     quantity_involved: str
     quantity_on_hold: SourcedText  # no TW field for MC/OOS-OOT — manual entry
     type_of_impact: ImpactType

@@ -25,26 +25,12 @@ from src.agents.critique.api.services.llm_extraction import (
 )
 from src.agents.critique.api.services.xml_extraction import extract_all_sections
 from src.llm.client import LLMClient
-from config.settings import settings
+from src.utils.deps import get_prompt_registry
 
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/critique', tags=['critique'])
-
-
-def _load_prompt(filename: str) -> str:
-    if filename == "guardrail.txt":
-        return (settings.PROMPTS_DIR / filename).read_text(encoding="utf-8")
-    return (settings.PROMPTS_DIR / "critique" / filename).read_text(encoding="utf-8")
-
-
-guard_rail_text = _load_prompt("guardrail.txt")
-critique_system_prompt = _load_prompt("critique_system.txt")
-critique_user_prompt = _load_prompt("critique_user.txt")
-rc_conclusion_system_prompt = _load_prompt("rc_conclusion_system.txt")
-capa_system_prompt = _load_prompt("capa_system.txt")
-condense_summary_system_prompt = _load_prompt("condense_summary.txt")
 
 llm = LLMClient()
 
@@ -159,6 +145,7 @@ async def _condense_section_text(label: str, text: str) -> str:
     if not text.strip():
         return text
     try:
+        condense_summary_system_prompt = get_prompt_registry().get("critique/condense_summary")
         return (await llm.chat(text, system=condense_summary_system_prompt)).strip()
     except Exception:
         logger.warning("Section summary condensation failed for %s", label, exc_info=True)
@@ -240,16 +227,17 @@ async def critique_plan(event_type: str, RCI_data: CritiqueRCIRequest):
             event_type=event_type,
         )
         llm_instance = LLMClient()
+        registry = get_prompt_registry()
         strong_system_prompt = (
-            critique_system_prompt
+            registry.get("critique/critique_system")
             + "\nCRITICAL: Return tasks in EXACTLY the same order and same length as provided. "
               "Do NOT add, remove, or reorder tasks."
-            + guard_rail_text
+            + registry.get("guardrail")
         )
         return await critique_in_batches(
             llm=llm_instance,
             system_prompt=strong_system_prompt,
-            user_prefix=critique_user_prompt,
+            user_prefix=registry.get("critique/critique_user"),
             data=critique_input,
             structure_model=CritiqueOutSchema,
             batch_size=5,
@@ -362,10 +350,11 @@ async def critique_rc_conclusion(
         )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
+        registry = get_prompt_registry()
         result = await llm_instance.get_structured_response(
             system_prompt=_with_previous_recommendations(
-                rc_conclusion_system_prompt, _parse_previous_recommendations(previous_recommendations)
-            ) + "\n" + guard_rail_text,
+                registry.get("critique/rc_conclusion_system"), _parse_previous_recommendations(previous_recommendations)
+            ) + "\n" + registry.get("guardrail"),
             user_prompt=user_prompt,
             structure=RCConclusionCritiqueResponse,
             temperature=0,
@@ -413,10 +402,11 @@ async def critique_capa(
         )
         user_prompt = f"Event Type: {event_type}\n\nFull Task Report:\n{full_doc_text}"
 
+        registry = get_prompt_registry()
         result = await llm_instance.get_structured_response(
             system_prompt=_with_previous_recommendations(
-                capa_system_prompt, _parse_previous_recommendations(previous_recommendations)
-            ) + "\n" + guard_rail_text,
+                registry.get("critique/capa_system"), _parse_previous_recommendations(previous_recommendations)
+            ) + "\n" + registry.get("guardrail"),
             user_prompt=user_prompt,
             structure=CAPACritiqueResponse,
             temperature=0,

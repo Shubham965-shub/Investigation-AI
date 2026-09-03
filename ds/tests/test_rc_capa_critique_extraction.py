@@ -365,6 +365,27 @@ def test_extract_sections_impact_conclusion_absent_when_no_label_present():
 
 
 ROUTE_MODULE = "src.agents.critique.api.routes.critique_route"
+
+# The route now loads its system prompts from PromptRegistry at request time
+# (migrated off static .txt files, 2026-09-02) — client is built directly
+# rather than as a lifespan-entering context manager, so the registry that
+# lifespan would normally set up is registered explicitly here instead.
+# Must be a per-test fixture, not bare module-level code: deps._prompt_registry
+# is a process-global, and other test files' fixtures (e.g.
+# test_problem_statement_evaluation_v2.py) reset it to None in their own
+# teardown — a one-time module-level set gets wiped out by the time this
+# file's tests actually run later in a full-suite session.
+from src.prompt_registry.service import PromptRegistry
+from src.utils import deps
+
+
+@pytest.fixture(autouse=True)
+def _prompt_registry():
+    deps.set_prompt_registry(PromptRegistry())
+    yield
+    deps._prompt_registry = None
+
+
 client = TestClient(create_app())
 
 _FAKE_SECTIONS = {

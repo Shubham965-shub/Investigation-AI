@@ -557,11 +557,10 @@ def _fill_initial_impact_assessment(cursor: _Cursor, section, event_type: str, e
     for i, (row, item) in enumerate(zip(rows, impacts)):
         _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], item.material_product_batch)
-        # cells[2]'s template header is "Batch Number" — the batch number itself is
-        # already folded into material_product_batch above (per confirmed UI), so
-        # there's no separate figure to put here; `stage` is labeled explicitly
-        # rather than dropped silently into a column its own header doesn't name.
-        _set_cell_text(row.cells[2], f"Stage: {item.stage}" if item.stage else "")
+        # cells[2]'s template header is "Batch Number" — now a genuine
+        # structured field (2026-09-03, per the user), not stage text filling
+        # a column its header doesn't name.
+        _set_cell_text(row.cells[2], item.batch_number)
         # cells[3]'s template header is "Action taken (Hold/Quarantined etc.)" — lead
         # with the actual hold/quarantine status rather than burying it after the
         # impact classification, which isn't a "Hold/Quarantined etc." action at all.

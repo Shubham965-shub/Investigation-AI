@@ -80,19 +80,6 @@ def _distilled_query_cache_set(key: str, value: str) -> None:
         _DISTILLED_QUERY_CACHE.popitem(last=False)
 
 
-# ── Prompt Loading ──────────────────────────────────────────
-
-def _load_prompt(filename: str) -> str:
-    """Load a prompt template from the centralized prompts directory."""
-    if filename == "guardrail.txt":
-        prompt_path = settings.PROMPTS_DIR / filename
-        return prompt_path.read_text(encoding="utf-8")
-    prompt_path = settings.PROMPTS_DIR / "search_agent" / filename
-    return prompt_path.read_text(encoding="utf-8")
-
-guard_rail_text = _load_prompt("guardrail.txt")
-
-
 # ── Helpers ─────────────────────────────────────────────────
 
 def _normalize_date(date_val):
@@ -406,7 +393,7 @@ async def relevance_filter_node(
         filtered = await filter_relevant(
             llm=llm,
             prompt_template=prompt_template,
-            guard_rail_text=guard_rail_text,
+            guard_rail_text=registry.get("guardrail"),
             query=state.get("query", ""),
             candidates=candidates,
         )

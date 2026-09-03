@@ -1,6 +1,7 @@
 from src.llm.client import LLMClient
 from src.agents.search_agent.graph.state import SearchState
 from src.config.settings import settings
+from src.utils.deps import get_prompt_registry
 from src.agents.search_agent.api.schemas import (
     SearchRequest
 )
@@ -14,9 +15,7 @@ async def _get_executive_narrative(state: SearchState, body: SearchRequest) -> s
     """Generate executive summary from search results using LLM."""
     
     # Load the executive summary prompt
-    prompt_path = settings.PROMPTS_DIR / "search_agent" / "executive_narrative.txt"
-    with open(prompt_path, 'r') as f:
-        prompt_template = f.read()
+    prompt_template = get_prompt_registry().get("search_agent/executive_narrative")
 
     ranked = get_final_ranked_results(state)
 
@@ -83,9 +82,7 @@ async def _get_top_cause_description(state: SearchState, body: SearchRequest) ->
     """Generate top cause description from search results using LLM."""
     
     # Load the top causes prompt
-    prompt_path = settings.PROMPTS_DIR / "search_agent" / "top_cause_analysis.txt"
-    with open(prompt_path, 'r') as f:
-        prompt_template = f.read()
+    prompt_template = get_prompt_registry().get("search_agent/top_cause_analysis")
     
     ranked = get_final_ranked_results(state)
 

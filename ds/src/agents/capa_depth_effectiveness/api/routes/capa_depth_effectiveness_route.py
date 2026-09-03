@@ -19,23 +19,11 @@ from src.agents.capa_depth_effectiveness.api.services.capa_depth_effectiveness_s
     save_upload,
     strip_section_12,
 )
-from src.config.settings import settings
 from src.llm.client import LLMClient
+from src.utils.deps import get_prompt_registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/capa-depth-effectiveness", tags=["capa-depth-effectiveness"])
-
-
-def _load_prompt(filename: str) -> str:
-    if filename == "guardrail.txt":
-        return (settings.PROMPTS_DIR / filename).read_text(encoding="utf-8")
-    return (settings.PROMPTS_DIR / "capa_depth_effectiveness" / filename).read_text(encoding="utf-8")
-
-
-guard_rail_text = _load_prompt("guardrail.txt")
-capa_depth_system_prompt = _load_prompt("capa_depth_system.txt")
-effectiveness_check_system_prompt = _load_prompt("effectiveness_check_system.txt")
-generated_plan_system_prompt = _load_prompt("generated_effectiveness_plan_system.txt")
 
 
 @router.post(
@@ -55,6 +43,11 @@ async def analyse_capa_depth_effectiveness(
     temp_path = None
     file_id = None
     llm_instance = LLMClient()
+    registry = get_prompt_registry()
+    guard_rail_text = registry.get("guardrail")
+    capa_depth_system_prompt = registry.get("capa_depth_effectiveness/capa_depth_system")
+    effectiveness_check_system_prompt = registry.get("capa_depth_effectiveness/effectiveness_check_system")
+    generated_plan_system_prompt = registry.get("capa_depth_effectiveness/generated_effectiveness_plan_system")
     try:
         temp_path = await save_upload(file, suffix)
         user_prompt_prefix = f"Event Type: {event_type}"

@@ -672,7 +672,7 @@ export type ImpactType = "Direct" | "Indirect" | "Not applicable";
 
 export interface MaterialProductImpactItem {
   material_product_batch: string;
-  stage: string;
+  batch_number: string;
   quantity_involved: string;
   quantity_on_hold: SourcedTextItem;
   type_of_impact: ImpactType;

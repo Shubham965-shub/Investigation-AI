@@ -1,0 +1,107 @@
+active: v1
+versions:
+  v1:
+    description: Migrated from static .txt prompt
+    created_at: '2026-09-03T04:38:50.748377+00:00'
+    template: |
+      You will also receive:
+      - event_type: string describing the investigation type
+        (e.g., Deviation, Market Complaint, Out Of Specification (OOS), Out Of Trend (OOT))
+
+      Use event_type only to contextualize relevance and critique scope.
+      Do NOT assume requirements beyond what is implied by the event_type.
+
+      1) problem_statement: array of short points describing the event.
+      2) tasks: array of task rows with:
+         - tick (string)                  // task name
+         - task (string)                  // task status (Verified / Not Applicable / Shall be verified)
+         - responsible_person (string)
+         - selected (boolean)             // whether the checkbox is selected
+         - mandatory (boolean)
+         - (optional) mandatory_selected (boolean)
+
+      ────────────────────────────────
+      Semantic Validity Check (Mandatory)
+      ────────────────────────────────
+      Before evaluating any task, assess whether the problem_statement contains meaningful,
+      human‑readable information describing a pharmaceutical investigation event.
+
+      If the problem_statement:
+      - Contains gibberish, random characters, or non‑interpretable text, OR
+      - Is clearly unrelated to pharmaceutical quality, laboratory, or investigation activities
+
+      Then:
+      - Do NOT evaluate task applicability
+      - Return an empty string "" as the critique for ALL tasks
+
+      If the problem_statement is incomplete but semantically meaningful and investigation‑relevant,
+      proceed conservatively using only the stated information.
+
+      ────────────────────────────────
+      Your Objective
+      ────────────────────────────────
+      For each task, determine — based ONLY on the problem_statement —
+      whether the task logically applies to this event.
+
+      Then compare that determination against the user's selection (selected) and write a critique for the task.
+
+      Important:
+      - Write critique for EVERY task that logically applies to the event,
+        regardless of whether selected is true or false.
+      - If a task applies and was not selected, critique the omission.
+      - If a task applies and was selected, critique the quality or appropriateness of that choice.
+      - If a task does NOT apply but was selected, critique the mismatch.
+      - Do not skip critique simply because selected is false.
+      - The presence or absence of selection should affect the content of the critique,
+        not whether a critique is produced for applicable tasks.
+
+      Do NOT explicitly state whether a task “should be selected” or not.
+      Your judgment must be reflected ONLY through the critique text.
+
+      Base all reasoning ONLY on the problem_statement.
+      Do not use outside assumptions or inferred context beyond what is stated.
+
+      ────────────────────────────────
+      Critique Rules
+      ────────────────────────────────
+      For each task, determine whether it applies to the event using ONLY the explicit facts in problem_statement in the context of event_type.
+
+      A task applies only when it has a direct and concrete connection to the event, its likely cause, the evidence needed, the operational impact, or the investigation required.
+
+      Apply exactly ONE case per task:
+
+      Case 1: Task applies, but selected = false
+      - Identify the exact fact(s) in problem_statement that make the task relevant
+      - State the specific evidence, check, or investigative action this task would require for this event
+      - Explain the concrete gap, uncertainty, or weakness created by leaving it out
+
+      Case 2: Task does NOT apply, and selected = false
+      - Return an empty string ""
+
+      Case 3: Task applies, and selected = true
+      - Critique how the task could be made more precise for this event
+      - Reference the exact event detail(s) the task should target more clearly
+      - Suggest tighter scope, wording, expected evidence, or verification method
+      - Keep the critique brief and specific
+
+      Case 4: Task does NOT apply, but selected = true
+      - Identify the exact fact(s) showing the task is not relevant to the event
+      - Explain how selecting it could misdirect effort, add unnecessary work, or shift focus away from the real issue
+
+      ────────────────────────────────
+      Mandatory Rule
+      ────────────────────────────────
+      If mandatory = true AND selected = false,
+      append this exact sentence to the critique:
+      “Mandatory task appears unselected.”
+
+      ────────────────────────────────
+      Output Rules
+      ────────────────────────────────
+      - Do NOT rename, reorder, add, or remove tasks
+      - Return critique as "" when no critique is required
+      - Do NOT explicitly state whether a task should or should not be selected
+      - Do NOT use praise, validation, or confirmation phrases
+      - Start critiques directly with the explanation
+      - Base every critique only on explicit information in problem_statement
+      - Do NOT use vague wording; specify the exact evidence, check, scope issue, or consequence whenever critique is non-empty

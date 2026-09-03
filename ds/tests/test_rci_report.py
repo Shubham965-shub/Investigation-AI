@@ -686,7 +686,24 @@ from src.agents.rci_report.api.schemas.request import (
     RciReportGenerationRequest,
 )
 from src.agents.rci_report.api.services.history_review_service import HistoryReviewNarrative
+from src.prompt_registry.service import PromptRegistry
 from src.utils import deps
+
+# rci_report_route.py now loads its system prompts from PromptRegistry at
+# request time (migrated off static .txt files, 2026-09-02) — client is
+# built directly rather than as a lifespan-entering context manager, so the
+# registry that lifespan would normally set up is registered explicitly
+# here instead. Must be a per-test fixture, not bare module-level code:
+# deps._prompt_registry is a process-global, and other test files' fixtures
+# (e.g. test_problem_statement_evaluation_v2.py) reset it to None in their
+# own teardown — a one-time module-level set gets wiped out by the time
+# this file's tests actually run later in a full-suite session.
+@pytest.fixture(autouse=True)
+def _prompt_registry():
+    deps.set_prompt_registry(PromptRegistry())
+    yield
+    deps._prompt_registry = None
+
 
 rci_report_client = TestClient(create_app())
 
@@ -748,8 +765,8 @@ def _fake_initial_impact_assessment():
     return InitialImpactAssessmentSection(
         material_product_impacts=[
             MaterialProductImpactItem(
-                material_product_batch="Product X, batch B-001",
-                stage="Granulation",
+                material_product_batch="Product X",
+                batch_number="B-001",
                 quantity_involved="1 batch",
                 quantity_on_hold=SourcedText(value="1 batch", source="trackwise"),
                 type_of_impact="Direct",

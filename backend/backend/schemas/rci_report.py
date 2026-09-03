@@ -93,7 +93,7 @@ ImpactType = Literal["Direct", "Indirect", "Not applicable"]
 
 class MaterialProductImpactItem(BaseModel):
     material_product_batch: str
-    stage: str
+    batch_number: str
     quantity_involved: str
     quantity_on_hold: SourcedText
     type_of_impact: ImpactType

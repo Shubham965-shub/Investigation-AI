@@ -5,10 +5,28 @@ from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
 from src.agents.app import create_app
+from src.prompt_registry.service import PromptRegistry
+from src.utils import deps
 from agents.rot_cause_advisor.api.services.root_cause_advisor_service import (
     ROOT_CAUSE_CATEGORIES,
     validate_root_cause_advice,
 )
+
+# The service now loads its prompts from PromptRegistry at request time
+# (migrated off static .txt files, 2026-09-02) — client is built directly
+# rather than as a lifespan-entering context manager, so the registry that
+# lifespan would normally set up is registered explicitly here instead.
+# Must be a per-test fixture, not bare module-level code: deps._prompt_registry
+# is a process-global, and other test files' fixtures (e.g.
+# test_problem_statement_evaluation_v2.py) reset it to None in their own
+# teardown — a one-time module-level set gets wiped out by the time this
+# file's tests actually run later in a full-suite session.
+@pytest.fixture(autouse=True)
+def _prompt_registry():
+    deps.set_prompt_registry(PromptRegistry())
+    yield
+    deps._prompt_registry = None
+
 
 client = TestClient(create_app())
 
