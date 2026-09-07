@@ -446,10 +446,21 @@ export function pushRcCapaToSitReview(recordId: string): Promise<RcCapaState> {
 
 // ── Action Center ─────────────────────────────────────────────────────────
 
+export interface MonthlyBar {
+  label: string;
+  count: number;
+}
+
+export interface MonthlyTrend {
+  monthly: MonthlyBar[];
+  trend_percent: number | null;
+}
+
 export interface EventTypeCount {
   label: string;
   count: number;
   percent: number;
+  closed_trend: MonthlyTrend;
 }
 
 export interface StatusCardResponse {
@@ -508,6 +519,7 @@ export interface ChartBarResponse {
 export interface ActionCenterSummaryResponse {
   total_investigations: number;
   event_type_counts: EventTypeCount[];
+  opened_trend: MonthlyTrend;
   status_cards: StatusCardResponse[];
   // Same 4 cards as status_cards, scoped to just that event type — keyed by
   // the same labels as event_type_counts[].label.

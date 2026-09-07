@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 from backend.db.action_center_queries import (
     QE_TYPE_TO_STAT_LABEL,
     fetch_cancelled_investigations,
+    fetch_monthly_trend_rows,
     fetch_open_investigations,
 )
 from backend.db.module_stage import MODULE_LABELS, next_module_label, stage_for
@@ -18,6 +19,8 @@ from backend.schemas.action_center import (
     EventTypeCount,
     FilterOptions,
     InvestigationRow,
+    MonthlyBar,
+    MonthlyTrend,
     PendingAction,
     StatusCard,
 )
@@ -29,6 +32,48 @@ router = APIRouter(prefix="/action-center", tags=["Action Center"])
 _PENDING_ACTIONS_PER_ROW = 3
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
+
+# KPI card monthly bar chart + MoM trend (SIT Dashboard Figma, 2026-09-04,
+# per the user) — the 6 most recently COMPLETED calendar months, excluding
+# the current in-progress one, matching the Figma mock's own Mar-Aug window.
+_TREND_MONTHS = 6
+
+
+def _month_starts(n: int, today: datetime.date) -> List[datetime.date]:
+    """n calendar month-start dates, oldest first, ending with the most
+    recently completed month (e.g. run on 2026-09-04 with n=6 gives
+    Mar-Aug 2026, never a partial September)."""
+    months = []
+    cursor = today.replace(day=1)
+    for _ in range(n):
+        cursor = (cursor - datetime.timedelta(days=1)).replace(day=1)
+        months.append(cursor)
+    return list(reversed(months))
+
+
+def _bucket_monthly(rows: List[Dict[str, Any]], date_key: str, months: List[datetime.date]) -> List[MonthlyBar]:
+    counts = {m: 0 for m in months}
+    for row in rows:
+        d = row.get(date_key)
+        if d is None:
+            continue
+        # fact_qms_event.date_opened/closed_on are TIMESTAMPs (datetime, with
+        # a time-of-day component), not plain dates — .date() first, or
+        # .replace(day=1) below would produce a datetime that never equals
+        # (or hashes equal to) the plain `date` keys in `counts`, silently
+        # zeroing every bucket (confirmed live, 2026-09-04).
+        if isinstance(d, datetime.datetime):
+            d = d.date()
+        month_start = d.replace(day=1)
+        if month_start in counts:
+            counts[month_start] += 1
+    return [MonthlyBar(label=m.strftime("%b"), count=counts[m]) for m in months]
+
+
+def _trend_percent(monthly: List[MonthlyBar]) -> Optional[int]:
+    if len(monthly) < 2 or monthly[-2].count == 0:
+        return None
+    return round((monthly[-1].count - monthly[-2].count) / monthly[-2].count * 100)
 
 # Sentinel the Investigator filter uses to mean "no investigator assigned" —
 # per the user (2026-07-31). Sent/received as a plain investigator= query
@@ -354,40 +399,67 @@ async def get_action_center_summary(
         type_counts[label] = type_counts.get(label, 0) + 1
     ordered_labels = list(_EVENT_TYPE_ORDER)
     ordered_labels += [l for l in type_counts if l not in _EVENT_TYPE_ORDER]
+
+    # KPI cards' monthly bar chart + MoM trend — a separate query since it
+    # covers the full event population (open AND closed), unlike `enriched`
+    # above which is open-investigations-only (see fetch_monthly_trend_rows).
+    trend_months = _month_starts(_TREND_MONTHS, datetime.date.today())
+    trend_rows = [dict(r) for r in await fetch_monthly_trend_rows(trend_months[0])]
+    opened_monthly = _bucket_monthly(trend_rows, "date_opened", trend_months)
+    opened_trend = MonthlyTrend(monthly=opened_monthly, trend_percent=_trend_percent(opened_monthly))
+    closed_trend_by_label: Dict[str, MonthlyTrend] = {}
+    for label in ordered_labels:
+        label_rows = [r for r in trend_rows if QE_TYPE_TO_STAT_LABEL.get(r["qe_type"], r["qe_type"] or "Unknown") == label]
+        closed_monthly = _bucket_monthly(label_rows, "closed_on", trend_months)
+        closed_trend_by_label[label] = MonthlyTrend(monthly=closed_monthly, trend_percent=_trend_percent(closed_monthly))
+
     event_type_counts = [
         EventTypeCount(
             label=label,
             count=type_counts.get(label, 0),
             percent=round(type_counts.get(label, 0) / total * 100) if total else 0,
+            closed_trend=closed_trend_by_label[label],
         )
         for label in ordered_labels
     ]
 
-    # ── Status buckets (4-card view) ──────────────────────────────────
-    # No sub-row date bifurcation (2026-08-16, per the user) — each card is
-    # just a single count line now, previously split into near/far day bands
-    # per Figma node 1246:15617.
-    def _build_status_cards(items: List[Dict[str, Any]]) -> List[StatusCard]:
-        unassigned_all = [i for i in items if i["bucket"] == "unassigned"]
-        # Phase 1 OOS/OOT investigations get their own pill instead of
-        # counting toward the general Unassigned pill (2026-08-25, per the
-        # user) — Unassigned itself now covers everything else (Deviations,
-        # Market Complaints, and Phase 2 — or not-yet-phased — OOS/OOT).
-        unassigned_phase1 = [i for i in unassigned_all if i["oos_oot_phase"] == "Phase 1"]
-        unassigned = [i for i in unassigned_all if i["oos_oot_phase"] != "Phase 1"]
-        on_track = [i for i in items if i["bucket"] == "on_track"]
-        delay = [i for i in items if i["bucket"] == "delay"]
-        overdue = [i for i in items if i["bucket"] == "overdue"]
+    # ── Status cards (escalation-level view) ──────────────────────────
+    # Replaces the old due-date-based Overdue/Delay/Unassigned/On Track/
+    # Phase-1 cards with dim_event.escalation_level buckets, matching the
+    # Figma SIT Dashboard mock (node 2255:70409, 2026-09-04 per the user):
+    # Unassigned, then L5 (most days open) down to L1. "Unassigned" here
+    # means no escalation level has been set (null or "Not Applicable") —
+    # a different meaning from the old Unassigned status card, which was
+    # about investigator assignment (that concept still exists per-row as
+    # InvestigationRow.investigator / the "Unassigned" investigator filter,
+    # just no longer has a dedicated summary card).
+    _ESCALATION_LEVELS = ["L5", "L4", "L3", "L2", "L1"]
 
-        # Order: Overdue, Delay, Unassigned, Phase 1 OOS/OOT, On Track
-        # (per the user, 2026-07-30 and 2026-08-25) — most urgent first, not
-        # the original Unassigned/On Track/Delay/Overdue grouping.
-        return [
-            StatusCard(key="overdue", label="Overdue", count=len(overdue), rows=[]),
-            StatusCard(key="delay", label="At Risk of Delay", count=len(delay), rows=[]),
-            StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=[]),
-            StatusCard(key="unassigned_phase1", label="Phase 1 OOS/OOT", count=len(unassigned_phase1), rows=[]),
-            StatusCard(key="on-track", label="On Track", count=len(on_track), rows=[]),
+    def _build_status_cards(items: List[Dict[str, Any]], show_phase_breakdown: bool = False) -> List[StatusCard]:
+        by_level: Dict[str, List[Dict[str, Any]]] = {level: [] for level in _ESCALATION_LEVELS}
+        unassigned: List[Dict[str, Any]] = []
+        for i in items:
+            level = i.get("escalation_level")
+            (by_level[level] if level in by_level else unassigned).append(i)
+
+        # Phase 1/Phase 2 breakdown on the Unassigned card (SIT Dashboard
+        # Figma, 2026-09-04, per the user — confirmed against a reference
+        # frame in the Figma file where Phase 1 + Phase 2 sum exactly to the
+        # Unassigned total). Explicitly scoped by the caller (only True for
+        # the OOS/OOT-labeled calls below) rather than inferred from the
+        # counts — always shown when scoped to OOS/OOT, even at 0/0, same
+        # "zero count still shows" convention as every other card here.
+        unassigned_rows = (
+            [
+                ["Phase 1", sum(1 for i in unassigned if i.get("oos_oot_phase") == "Phase 1")],
+                ["Phase 2", sum(1 for i in unassigned if i.get("oos_oot_phase") == "Phase 2")],
+            ]
+            if show_phase_breakdown
+            else []
+        )
+
+        return [StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=unassigned_rows)] + [
+            StatusCard(key=level, label=level, count=len(by_level[level]), rows=[]) for level in _ESCALATION_LEVELS
         ]
 
     status_cards = _build_status_cards(enriched)
@@ -398,7 +470,10 @@ async def get_action_center_summary(
     # frontend picks status_cards_by_event_type[label] instead of status_cards
     # when a pill is active. Keyed by the same labels as event_type_counts.
     status_cards_by_event_type: Dict[str, List[StatusCard]] = {
-        label: _build_status_cards([i for i in enriched if QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown") == label])
+        label: _build_status_cards(
+            [i for i in enriched if QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown") == label],
+            show_phase_breakdown=label in ("OOS", "OOT"),
+        )
         for label in ordered_labels
     }
 
@@ -552,6 +627,7 @@ async def get_action_center_summary(
     return ActionCenterSummary(
         total_investigations=total,
         event_type_counts=event_type_counts,
+        opened_trend=opened_trend,
         status_cards=status_cards,
         status_cards_by_event_type=status_cards_by_event_type,
         pending_actions=pending_actions,
