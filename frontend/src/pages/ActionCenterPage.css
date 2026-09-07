@@ -204,41 +204,6 @@
 .ac-status-card.l2 .ac-status-count { color: var(--color-info-text); }
 .ac-status-card.l1 .ac-status-count { color: var(--color-success-text); }
 
-/* Phase 1/Phase 2 breakdown, inline beside the Unassigned bar's label (SIT
-   Dashboard Figma, 2026-09-04) — plain label + bold count text, matching
-   the Figma reference frame exactly (no pill/badge background there).
-   Each is its own filter, independent of the parent card's click (handled
-   via e.stopPropagation() in renderStatusCard) — hover/active affordance
-   is a subtle background only, not a permanent badge shape. */
-.ac-status-phase-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.ac-status-phase-pill b {
-  color: var(--color-text);
-  font-weight: 700;
-}
-
-.ac-status-phase-pill:hover {
-  background: var(--color-open-bg);
-}
-
-.ac-status-phase-pill.active {
-  background: var(--color-primary);
-  color: #fafafa;
-}
-
-.ac-status-phase-pill.active b {
-  color: #fafafa;
-}
-
 .ac-section-title {
   font-family: var(--font-heading);
   font-size: var(--font-size-lg);

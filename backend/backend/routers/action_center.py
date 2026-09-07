@@ -424,43 +424,52 @@ async def get_action_center_summary(
     ]
 
     # ── Status cards (escalation-level view) ──────────────────────────
-    # Replaces the old due-date-based Overdue/Delay/Unassigned/On Track/
-    # Phase-1 cards with dim_event.escalation_level buckets, matching the
-    # Figma SIT Dashboard mock (node 2255:70409, 2026-09-04 per the user):
-    # Unassigned, then L5 (most days open) down to L1. "Unassigned" here
-    # means no escalation level has been set (null or "Not Applicable") —
-    # a different meaning from the old Unassigned status card, which was
-    # about investigator assignment (that concept still exists per-row as
-    # InvestigationRow.investigator / the "Unassigned" investigator filter,
-    # just no longer has a dedicated summary card).
+    # Unassigned and L5-L1 are INDEPENDENT dimensions, not a partition
+    # (2026-09-07, per the user, correcting an earlier assumption this
+    # session that they were mutually exclusive) — an investigation can be
+    # both Unassigned and L1 at the same time; the escalation level has no
+    # bearing on assignment status. "Unassigned" here is the same bucket
+    # used everywhere else on this page (i["bucket"] == "unassigned", i.e.
+    # dim_event.open_investigation_status == "Unassigned" — see _bucket_for
+    # above, already used for the per-row Status pill and PendingAction.
+    # is_unassigned) — NOT escalation_level being null, which was this
+    # session's earlier, incorrect definition. L5-L1 remain mutually
+    # exclusive among THEMSELVES (escalation_level is a single value per
+    # investigation), just no longer exclusive with Unassigned.
     _ESCALATION_LEVELS = ["L5", "L4", "L3", "L2", "L1"]
 
     def _build_status_cards(items: List[Dict[str, Any]], show_phase_breakdown: bool = False) -> List[StatusCard]:
-        by_level: Dict[str, List[Dict[str, Any]]] = {level: [] for level in _ESCALATION_LEVELS}
-        unassigned: List[Dict[str, Any]] = []
-        for i in items:
-            level = i.get("escalation_level")
-            (by_level[level] if level in by_level else unassigned).append(i)
+        unassigned = [i for i in items if i["bucket"] == "unassigned"]
+        by_level = {level: [i for i in items if i.get("escalation_level") == level] for level in _ESCALATION_LEVELS}
 
-        # Phase 1/Phase 2 breakdown on the Unassigned card (SIT Dashboard
-        # Figma, 2026-09-04, per the user — confirmed against a reference
-        # frame in the Figma file where Phase 1 + Phase 2 sum exactly to the
-        # Unassigned total). Explicitly scoped by the caller (only True for
-        # the OOS/OOT-labeled calls below) rather than inferred from the
-        # counts — always shown when scoped to OOS/OOT, even at 0/0, same
-        # "zero count still shows" convention as every other card here.
-        unassigned_rows = (
+        # Phase 1/Phase 2, as their own standalone cards alongside Unassigned
+        # (SIT Dashboard Figma live prototype, 2026-09-07, per the user —
+        # confirmed against the actual OOS-selected screenshot: Unassigned/
+        # Phase 1/Phase 2 render as 3 sibling cards). Counted over ALL items
+        # (not just the `unassigned` bucket) — same "independent dimension"
+        # fix as Unassigned vs L5-L1 above: an OOS/OOT investigation's phase
+        # has no bearing on its assignment status, so scoping to `unassigned`
+        # first was silently hiding every already-assigned Phase 2 case
+        # (confirmed live, 2026-09-07: OOS had 17 real Phase 2 investigations,
+        # all already assigned, so the card read 0). Explicitly scoped by the
+        # caller (only True for the OOS/OOT-labeled calls below) rather than
+        # inferred from the counts — always shown when scoped to OOS/OOT,
+        # even at 0/0, same "zero count still shows" convention as every
+        # other card here.
+        phase_cards = (
             [
-                ["Phase 1", sum(1 for i in unassigned if i.get("oos_oot_phase") == "Phase 1")],
-                ["Phase 2", sum(1 for i in unassigned if i.get("oos_oot_phase") == "Phase 2")],
+                StatusCard(key="phase1", label="Phase 1", count=sum(1 for i in items if i.get("oos_oot_phase") == "Phase 1"), rows=[]),
+                StatusCard(key="phase2", label="Phase 2", count=sum(1 for i in items if i.get("oos_oot_phase") == "Phase 2"), rows=[]),
             ]
             if show_phase_breakdown
             else []
         )
 
-        return [StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=unassigned_rows)] + [
-            StatusCard(key=level, label=level, count=len(by_level[level]), rows=[]) for level in _ESCALATION_LEVELS
-        ]
+        return (
+            [StatusCard(key="unassigned", label="Unassigned", count=len(unassigned), rows=[])]
+            + phase_cards
+            + [StatusCard(key=level, label=level, count=len(by_level[level]), rows=[]) for level in _ESCALATION_LEVELS]
+        )
 
     status_cards = _build_status_cards(enriched)
 
