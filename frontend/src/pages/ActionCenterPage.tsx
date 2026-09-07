@@ -23,20 +23,23 @@ const STATUS_ICONS: Record<string, string> = {
   unassigned: iconUnassigned,
 };
 
-const _ESCALATION_LEVEL_SET = new Set(["L1", "L2", "L3", "L4", "L5"]);
-
-// Status cards are keyed directly by dim_event.escalation_level ("L1".."L5")
-// or "unassigned" (see action_center.py's _build_status_cards) — matching
-// against each investigation row's own escalation_level is a direct
-// comparison, no bucket-name translation layer needed.
+// Status cards are keyed by dim_event.escalation_level ("L1".."L5") or
+// "unassigned"/"phase1"/"phase2" (see action_center.py's _build_status_cards).
+// Unassigned and L5-L1 are INDEPENDENT dimensions, not a partition
+// (2026-09-07, per the user, correcting an earlier assumption this session
+// that they were mutually exclusive) — an investigation can be both
+// Unassigned and L1 at once, so this does NOT derive "unassigned" from a
+// missing escalation_level; it uses the same `bucket` field as the per-row
+// Status pill/PendingAction.is_unassigned everywhere else on this page.
 function matchesStatusCard(inv: InvestigationRowResponse, cardKey: string): boolean {
-  const isUnassigned = !inv.escalation_level || !_ESCALATION_LEVEL_SET.has(inv.escalation_level);
-  // Phase 1/Phase 2 pills (SIT Dashboard Figma, 2026-09-04, per the user) —
-  // sub-filters of "unassigned", keyed "unassigned:phase1"/"unassigned:phase2"
-  // by renderStatusCard's subRowKey, only ever present when scoped to OOS/OOT.
-  if (cardKey === "unassigned:phase1") return isUnassigned && inv.oos_oot_phase === "Phase 1";
-  if (cardKey === "unassigned:phase2") return isUnassigned && inv.oos_oot_phase === "Phase 2";
-  if (cardKey === "unassigned") return isUnassigned;
+  // Phase 1/Phase 2 are their own standalone cards, independent of
+  // assignment status (2026-09-07, per the user) — an OOS/OOT
+  // investigation's phase has no bearing on whether it's unassigned, only
+  // ever present when scoped to OOS/OOT (see action_center.py's
+  // show_phase_breakdown).
+  if (cardKey === "phase1") return inv.oos_oot_phase === "Phase 1";
+  if (cardKey === "phase2") return inv.oos_oot_phase === "Phase 2";
+  if (cardKey === "unassigned") return inv.bucket === "unassigned";
   return inv.escalation_level === cardKey;
 }
 
@@ -228,16 +231,11 @@ const LEVEL_CAPTION: Record<string, string> = {
   L1: "Days Open ≤ 15",
 };
 
-// A sub-row's own filter key, e.g. "unassigned" + "Phase 1" -> "unassigned:phase1"
-// — distinct from the parent card's key ("unassigned") so clicking a phase
-// pill filters to just that phase, not the whole Unassigned bucket.
-function subRowKey(cardKey: string, label: string): string {
-  return `${cardKey}:${label.toLowerCase().replace(/\s+/g, "")}`;
-}
-
 function renderStatusCard(card: StatusCardResponse, statusFilter: string | null, onSelect: (key: string) => void) {
-  // card.key is already the CSS class ("unassigned", "L5".."L1") — just
-  // lowercased, to match ActionCenterPage.css's .l5/.l4/.l3/.l2/.l1 rules.
+  // card.key is already the CSS class ("unassigned", "phase1", "phase2",
+  // "L5".."L1") — just lowercased, to match ActionCenterPage.css's
+  // .l5/.l4/.l3/.l2/.l1 rules ("unassigned"/"phase1"/"phase2" fall through
+  // to the plain default .ac-status-card look, no override needed).
   const cssClass = card.key.toLowerCase();
   const icon = STATUS_ICONS[cssClass];
   const caption = LEVEL_CAPTION[card.key];
@@ -248,37 +246,9 @@ function renderStatusCard(card: StatusCardResponse, statusFilter: string | null,
       onClick={() => onSelect(card.key)}
     >
       <div className="ac-status-card-header">
-        <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {icon && <img src={icon} alt="" width={18} height={18} />}
-            {card.label}
-          </span>
-          {/* Phase 1/Phase 2 breakdown, only present when scoped to OOS/OOT
-              (SIT Dashboard Figma, 2026-09-04, per the user) — plain
-              label + bold count text, matching the Figma reference frame
-              exactly (no pill/badge shape there), kept inline beside the
-              label since Unassigned is a single-line stretched bar here,
-              not a tall card with room for stacked sub-rows below. Each is
-              still its own clickable filter, not just display text. */}
-          {card.rows.length > 0 && (
-            <span style={{ display: "flex", gap: 16 }}>
-              {card.rows.map(([label, count]) => {
-                const key = subRowKey(card.key, String(label));
-                return (
-                  <span
-                    key={label}
-                    className={`ac-status-phase-pill ${statusFilter === key ? "active" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(key);
-                    }}
-                  >
-                    {label} <b>{count}</b>
-                  </span>
-                );
-              })}
-            </span>
-          )}
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {icon && <img src={icon} alt="" width={18} height={18} />}
+          {card.label}
         </span>
         <span className="ac-status-count">{card.count}</span>
       </div>
@@ -595,7 +565,16 @@ export function ActionCenterPage() {
           Dashboard Figma, 2026-09-04, per the user) — replaces the old
           single "Open Investigations" card + flat stat-pill row. */}
       <div className="ac-kpi-row">
-        <div className="ac-kpi-card neutral">
+        {/* Open Investigations resets back to the all-types default view
+            (2026-09-07, per the user) — the other 4 cards scope down to one
+            event type, this one clears that scope. */}
+        <div
+          className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
+          onClick={() => {
+            setActiveFilter(null);
+            setPage(1);
+          }}
+        >
           <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
           <div className="ac-kpi-card-count">{summary.total_investigations}</div>
           <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
@@ -615,12 +594,32 @@ export function ActionCenterPage() {
         ))}
       </div>
 
-      {/* Unassigned back in line with L5-L1, all 6 in one row (2026-09-04,
-          per the user — reverted the earlier "Unassigned as its own
-          full-width bar above" layout). */}
-      <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
-        {statusCards.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter))}
-      </div>
+      {/* Unassigned only splits into its own row above L5-L1 when Phase
+          1/Phase 2 are also present (i.e. scoped to OOS/OOT) — every other
+          selection keeps all 6 cards in one line (2026-09-07, per the
+          user). */}
+      {(() => {
+        const topRowKeys = new Set(["unassigned", "phase1", "phase2"]);
+        const topRow = statusCards.filter((c) => topRowKeys.has(c.key));
+        const levelRow = statusCards.filter((c) => !topRowKeys.has(c.key));
+        if (topRow.length <= 1) {
+          return (
+            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
+              {statusCards.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter))}
+            </div>
+          );
+        }
+        return (
+          <>
+            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${topRow.length}, 1fr)` }}>
+              {topRow.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter))}
+            </div>
+            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${levelRow.length}, 1fr)` }}>
+              {levelRow.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter))}
+            </div>
+          </>
+        );
+      })()}
 
       {false && (
       <div>
