@@ -30,63 +30,115 @@
   padding: 20px;
 }
 
-.ac-total-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 16px;
+/* KPI cards (SIT Dashboard Figma, 2026-09-04) — Open Investigations + one
+   per event type, each with a monthly mini bar chart and MoM trend line. */
+.ac-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
 }
 
-.ac-total-header h2 {
-  font-size: var(--font-size-md);
+.ac-kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.ac-kpi-card.active {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.ac-kpi-card-header {
+  font-size: var(--font-size-xs);
   font-weight: 700;
-  margin: 0;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
 }
 
-.ac-total-header .ac-total-count {
+.ac-kpi-card-count {
   font-size: var(--font-size-hero);
   font-weight: 700;
+  line-height: 1.2;
 }
 
-.ac-stat-pills {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.ac-stat-pill {
-  flex: 1 1 220px;
-  background: var(--color-open-bg);
-  border-radius: 8px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-
-.ac-stat-pill.active {
-  background: var(--color-primary);
-  color: #fafafa;
-}
-
-.ac-stat-pill .ac-stat-count {
-  font-weight: 700;
-}
-
-.ac-stat-pill .ac-stat-percent {
+.ac-kpi-card-subtitle {
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
-  font-weight: 400;
-  margin-left: 6px;
-  font-size: var(--font-size-base);
+  margin-bottom: 14px;
 }
 
-.ac-stat-pill.active .ac-stat-percent {
-  color: #fafafa;
-  opacity: 0.85;
+.ac-kpi-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 40px;
 }
+
+.ac-kpi-bar-col {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.ac-kpi-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+}
+
+.ac-kpi-bar-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -4px);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 100ms ease;
+  z-index: 1;
+}
+
+.ac-kpi-bar-col:hover .ac-kpi-bar-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ac-kpi-bar-label {
+  font-size: 9px;
+  color: var(--color-text-faint);
+  margin-top: 4px;
+}
+
+.ac-kpi-chart-neutral .ac-kpi-bar.muted { background: var(--color-chart-neutral-muted); }
+.ac-kpi-chart-neutral .ac-kpi-bar.strong { background: var(--color-chart-neutral-strong); }
+.ac-kpi-chart-warm .ac-kpi-bar.muted { background: var(--color-chart-warm-muted); }
+.ac-kpi-chart-warm .ac-kpi-bar.strong { background: var(--color-chart-warm-strong); }
+.ac-kpi-chart-cool .ac-kpi-bar.muted { background: var(--color-chart-cool-muted); }
+.ac-kpi-chart-cool .ac-kpi-bar.strong { background: var(--color-chart-cool-strong); }
+
+.ac-kpi-trend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.ac-kpi-trend .up { color: var(--color-success-text); font-weight: 700; }
+.ac-kpi-trend .down { color: var(--color-danger-text); font-weight: 700; }
 
 .ac-status-row {
   display: grid;
@@ -106,10 +158,15 @@
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 
+/* Escalation-level cards (SIT Dashboard Figma, 2026-09-04) — order/colors
+   match the design: Unassigned (neutral), then L5 (danger) down to L1
+   (success), i.e. most-days-open to least. */
 .ac-status-card.unassigned { border-color: var(--color-card-border); background: var(--color-surface); }
-.ac-status-card.on-track { border-color: var(--color-success-border); background: var(--color-success-bg); }
-.ac-status-card.delay { border-color: var(--color-warning-border); background: var(--color-warning-bg); }
-.ac-status-card.overdue { border-color: var(--color-danger-border); background: var(--color-danger-bg); }
+.ac-status-card.l5 { border-color: var(--color-danger-border); background: var(--color-danger-bg); }
+.ac-status-card.l4 { border-color: var(--color-pink-border); background: var(--color-pink-bg); }
+.ac-status-card.l3 { border-color: var(--color-warning-border); background: var(--color-warning-bg); }
+.ac-status-card.l2 { border-color: var(--color-info-border); background: var(--color-info-bg); }
+.ac-status-card.l1 { border-color: var(--color-success-border); background: var(--color-success-bg); }
 
 .ac-status-card-header {
   display: flex;
@@ -120,27 +177,66 @@
   font-size: var(--font-size-md);
 }
 
+/* Unassigned's full-width bar has no sub-row beneath it, unlike the
+   asymmetric padding above (left over from when every card had one) — even
+   padding reads as a flatter bar, matching the Figma. */
+.ac-status-card.unassigned .ac-status-card-header {
+  padding: 14px 16px;
+}
+
 .ac-status-card-header .ac-status-count {
   font-size: var(--font-size-xl);
 }
 
-.ac-status-card.unassigned .ac-status-count { color: var(--color-text-muted); }
-.ac-status-card.on-track .ac-status-count { color: var(--color-success-text); }
-.ac-status-card.delay .ac-status-count { color: var(--color-warning-text); }
-.ac-status-card.overdue .ac-status-count { color: var(--color-danger-text); }
-
-.ac-status-subrow {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 16px;
-  font-size: var(--font-size-base);
+/* Per-level tagline below the header (SIT Dashboard Figma, 2026-09-04) —
+   e.g. "26 ≤ Days Open ≤ 30" under L4. */
+.ac-status-card-caption {
+  padding: 0 16px 14px;
+  margin-top: -6px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
-  border-top: 1px solid var(--color-card-border);
 }
 
-.ac-status-subrow span:last-child {
-  font-weight: 700;
+.ac-status-card.unassigned .ac-status-count { color: var(--color-text-muted); }
+.ac-status-card.l5 .ac-status-count { color: var(--color-danger-text); }
+.ac-status-card.l4 .ac-status-count { color: var(--color-pink-text); }
+.ac-status-card.l3 .ac-status-count { color: var(--color-warning-text); }
+.ac-status-card.l2 .ac-status-count { color: var(--color-info-text); }
+.ac-status-card.l1 .ac-status-count { color: var(--color-success-text); }
+
+/* Phase 1/Phase 2 breakdown, inline beside the Unassigned bar's label (SIT
+   Dashboard Figma, 2026-09-04) — plain label + bold count text, matching
+   the Figma reference frame exactly (no pill/badge background there).
+   Each is its own filter, independent of the parent card's click (handled
+   via e.stopPropagation() in renderStatusCard) — hover/active affordance
+   is a subtle background only, not a permanent badge shape. */
+.ac-status-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.ac-status-phase-pill b {
   color: var(--color-text);
+  font-weight: 700;
+}
+
+.ac-status-phase-pill:hover {
+  background: var(--color-open-bg);
+}
+
+.ac-status-phase-pill.active {
+  background: var(--color-primary);
+  color: #fafafa;
+}
+
+.ac-status-phase-pill.active b {
+  color: #fafafa;
 }
 
 .ac-section-title {
@@ -154,6 +250,43 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+}
+
+/* Card View's grouped sections (SIT Dashboard Figma, 2026-09-04) — one per
+   distinct product/investigator, each with its own .ac-pending-grid below. */
+.ac-grouped-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ac-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ac-group-header .ac-inv-avatar {
+  width: 24px;
+  height: 24px;
+  font-size: var(--font-size-xs);
+}
+
+.ac-group-name {
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ac-group-count {
+  background: var(--color-open-bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-text-muted);
 }
 
 .ac-pending-card-header {
@@ -430,7 +563,9 @@
   flex-shrink: 0;
 }
 .escalation-bubble.success { background: var(--color-success-bg); color: var(--color-success-text); }
+.escalation-bubble.info { background: var(--color-info-bg); color: var(--color-info-text); }
 .escalation-bubble.warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.escalation-bubble.pink { background: var(--color-pink-bg); color: var(--color-pink-text); }
 .escalation-bubble.danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
 
 .ac-inv-card-header {

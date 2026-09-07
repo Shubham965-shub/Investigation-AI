@@ -7,58 +7,37 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { CriticalityGuidelines } from "../components/CriticalityGuidelines";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
-import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type StatusCardResponse } from "../api/dashboard";
+import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type MonthlyTrend, type StatusCardResponse } from "../api/dashboard";
 import { useAuth } from "../auth/AuthContext";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
-import iconOnTrack from "../assets/icons/status-on-track.svg";
-import iconDelay from "../assets/icons/status-delay.svg";
-import iconOverdue from "../assets/icons/status-overdue.svg";
 import iconSearch from "../assets/icons/search.svg";
 import iconViewGrid from "../assets/icons/view-grid.png";
 import iconViewList from "../assets/icons/view-list.png";
 import iconRowArrow from "../assets/icons/row-arrow.svg";
 import "./ActionCenterPage.css";
 
+// Only "Unassigned" has an icon (matches the SIT Dashboard Figma — the L1-L5
+// cards show no icon, just the level text). renderStatusCard skips the <img>
+// when a card's key has no entry here.
 const STATUS_ICONS: Record<string, string> = {
   unassigned: iconUnassigned,
-  "on-track": iconOnTrack,
-  delay: iconDelay,
-  overdue: iconOverdue,
 };
 
-// Maps each status card's backend key to the css class + icon it should
-// reuse. See src/routers/action_center.py for how these buckets are computed.
-const CARD_KEY_TO_CSS_CLASS: Record<string, string> = {
-  unassigned: "unassigned",
-  unassigned_phase1: "unassigned",
-  "on-track": "on-track",
-  delay: "delay",
-  overdue: "overdue",
-};
+const _ESCALATION_LEVEL_SET = new Set(["L1", "L2", "L3", "L4", "L5"]);
 
-// Status cards use hyphenated keys ("on-track") while each investigation
-// row's own bucket field uses underscores ("on_track") — see
-// action_center.py's _bucket_for/_OPEN_STATUS_TO_BUCKET vs its status-card
-// building. Needed to filter the table by clicking a card (2026-08-19, per
-// the user, same click-to-filter UX as the event-type pills below).
-const CARD_KEY_TO_BUCKET: Record<string, string> = {
-  unassigned: "unassigned",
-  unassigned_phase1: "unassigned",
-  "on-track": "on_track",
-  delay: "delay",
-  overdue: "overdue",
-};
-
-// The Unassigned bucket itself splits into two status-card pills
-// (2026-08-25, per the user): "Phase 1 OOS/OOT" for Phase 1 OOS/OOT
-// investigations only, and "Unassigned" for everything else (Deviations,
-// Market Complaints, and Phase 2 — or not-yet-phased — OOS/OOT). Bucket
-// alone can't tell those apart, so this checks oos_oot_phase too instead of
-// a plain CARD_KEY_TO_BUCKET lookup.
+// Status cards are keyed directly by dim_event.escalation_level ("L1".."L5")
+// or "unassigned" (see action_center.py's _build_status_cards) — matching
+// against each investigation row's own escalation_level is a direct
+// comparison, no bucket-name translation layer needed.
 function matchesStatusCard(inv: InvestigationRowResponse, cardKey: string): boolean {
-  if (cardKey === "unassigned_phase1") return inv.bucket === "unassigned" && inv.oos_oot_phase === "Phase 1";
-  if (cardKey === "unassigned") return inv.bucket === "unassigned" && inv.oos_oot_phase !== "Phase 1";
-  return inv.bucket === CARD_KEY_TO_BUCKET[cardKey];
+  const isUnassigned = !inv.escalation_level || !_ESCALATION_LEVEL_SET.has(inv.escalation_level);
+  // Phase 1/Phase 2 pills (SIT Dashboard Figma, 2026-09-04, per the user) —
+  // sub-filters of "unassigned", keyed "unassigned:phase1"/"unassigned:phase2"
+  // by renderStatusCard's subRowKey, only ever present when scoped to OOS/OOT.
+  if (cardKey === "unassigned:phase1") return isUnassigned && inv.oos_oot_phase === "Phase 1";
+  if (cardKey === "unassigned:phase2") return isUnassigned && inv.oos_oot_phase === "Phase 2";
+  if (cardKey === "unassigned") return isUnassigned;
+  return inv.escalation_level === cardKey;
 }
 
 // Real backend bucket -> the table/grid status-pill styling + label.
@@ -70,13 +49,14 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
 };
 
 // dim_event.escalation_level ("L1".."L5", or "Not Applicable"/null for most
-// rows) -> the same tone as the status bucket it corresponds to (per the
-// user): L1/L2 = on-track, L3/L4 = at-risk-of-delay, L5 = overdue.
-const ESCALATION_TONE: Record<string, "success" | "warning" | "danger"> = {
+// rows) -> the same 5 distinct tones as the escalation-level status cards
+// above (2026-09-04, per the user — previously grouped into just
+// success/warning/danger, now one tone per level to match).
+const ESCALATION_TONE: Record<string, "success" | "info" | "warning" | "pink" | "danger"> = {
   L1: "success",
-  L2: "success",
+  L2: "info",
   L3: "warning",
-  L4: "warning",
+  L4: "pink",
   L5: "danger",
 };
 
@@ -157,6 +137,76 @@ function compareForSort(a: string | number | null, b: string | number | null, di
   return direction === "asc" ? cmp : -cmp;
 }
 
+// KPI card mini bar-chart tone (SIT Dashboard Figma, 2026-09-04, per the
+// user) — Deviation/Market Complaint share "warm" (pink/red), OOS/OOT share
+// "cool" (sage/teal), matching the Figma mock exactly rather than giving
+// each event type its own hue. "Open Investigations" itself always uses
+// "neutral" (gray/slate), passed directly rather than looked up here.
+const KPI_TONE: Record<string, "warm" | "cool"> = {
+  Deviation: "warm",
+  "Market Complaint": "warm",
+  OOS: "cool",
+  OOT: "cool",
+};
+
+// Fixed pixel height of .ac-kpi-chart in ActionCenterPage.css — bar heights
+// are computed in JS as a pixel value against this, not a CSS `%`, since a
+// percentage height on a flex item only resolves reliably when every
+// ancestor in the chain has its own definite (non-flex-computed) height;
+// through .ac-kpi-bar-col/.ac-kpi-chart's flex layout it didn't, so every
+// bar silently fell back to the same rendered height regardless of count
+// (confirmed live, 2026-09-04, per the user).
+const KPI_CHART_HEIGHT_PX = 40;
+
+// Rounds a chart's max count up to a "nice" axis ceiling built from ~4
+// steps of a round size (the classic 1-2-5-10 sequence) — e.g. a max of 75
+// picks a step of 20 for a 0-20-40-60-80 scale; a max of 101 picks a step
+// of 50 for 0-50-100-150 (2026-09-04, per the user). Keeps bars
+// proportional to a real 0 baseline (went back on an earlier min-max
+// version, which exaggerated differences but made bar height no longer
+// mean the real number) while still giving the tallest bar some headroom
+// instead of always touching the top.
+function niceAxisMax(max: number, targetSteps = 4): number {
+  if (max <= 0) return 1;
+  const rawStep = max / targetSteps;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+  return Math.ceil(max / step) * step;
+}
+
+// Renders a MonthlyTrend as a small bar chart (older months "muted", the
+// most recent "strong") with month labels beneath, plus a caption + MoM
+// trend line below that — e.g. "Opened / month  ▼ 9% MoM".
+function renderKpiChart(trend: MonthlyTrend, tone: "neutral" | "warm" | "cool", caption: string) {
+  const axisMax = niceAxisMax(Math.max(...trend.monthly.map((b) => b.count)));
+  const heightFor = (count: number) => Math.max(2, Math.round((count / axisMax) * KPI_CHART_HEIGHT_PX));
+  return (
+    <>
+      <div className={`ac-kpi-chart ac-kpi-chart-${tone}`}>
+        {trend.monthly.map((bar, i) => (
+          <div className="ac-kpi-bar-col" key={bar.label + i}>
+            <span className="ac-kpi-bar-tooltip">{bar.count}</span>
+            <div
+              className={`ac-kpi-bar ${i === trend.monthly.length - 1 ? "strong" : "muted"}`}
+              style={{ height: heightFor(bar.count) }}
+            />
+            <span className="ac-kpi-bar-label">{bar.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="ac-kpi-trend">
+        <span>{caption}</span>
+        {trend.trend_percent !== null && (
+          <span className={trend.trend_percent < 0 ? "down" : trend.trend_percent > 0 ? "up" : ""}>
+            {trend.trend_percent < 0 ? "▼" : trend.trend_percent > 0 ? "▲" : "—"} {Math.abs(trend.trend_percent)}% MoM
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
 // Supervisor variant of the Action Center (see project memory: Action Center
 // has CXO/Supervisor/Investigator variants — CXO is on hold, Investigator
 // filters this same data down to the current user). Real data as of
@@ -164,23 +214,75 @@ function compareForSort(a: string | number | null, b: string | number | null, di
 // action_center_roles for the business-rule placeholders this endpoint
 // encodes (status buckets, pending actions, progress chart).
 
-function renderStatusCard(card: StatusCardResponse, active: boolean, onClick: () => void) {
-  const cssClass = CARD_KEY_TO_CSS_CLASS[card.key] ?? "unassigned";
+// Per-level tagline (SIT Dashboard Figma, 2026-09-04, per the user) — the
+// days-open range each escalation level represents, copied verbatim from
+// the Figma mock. Frontend-only static text: dim_event.escalation_level is
+// computed upstream by TrackWise, not derived here, so these ranges aren't
+// independently verified against a real threshold in this codebase — they
+// document what the design shows, not a rule this app enforces.
+const LEVEL_CAPTION: Record<string, string> = {
+  L5: "Days Open > 30",
+  L4: "26 ≤ Days Open ≤ 30",
+  L3: "21 ≤ Days Open ≤ 25",
+  L2: "16 ≤ Days Open ≤ 20",
+  L1: "Days Open ≤ 15",
+};
+
+// A sub-row's own filter key, e.g. "unassigned" + "Phase 1" -> "unassigned:phase1"
+// — distinct from the parent card's key ("unassigned") so clicking a phase
+// pill filters to just that phase, not the whole Unassigned bucket.
+function subRowKey(cardKey: string, label: string): string {
+  return `${cardKey}:${label.toLowerCase().replace(/\s+/g, "")}`;
+}
+
+function renderStatusCard(card: StatusCardResponse, statusFilter: string | null, onSelect: (key: string) => void) {
+  // card.key is already the CSS class ("unassigned", "L5".."L1") — just
+  // lowercased, to match ActionCenterPage.css's .l5/.l4/.l3/.l2/.l1 rules.
+  const cssClass = card.key.toLowerCase();
+  const icon = STATUS_ICONS[cssClass];
+  const caption = LEVEL_CAPTION[card.key];
   return (
-    <div className={`ac-status-card ${cssClass} ${active ? "active" : ""}`} key={card.key} onClick={onClick}>
+    <div
+      className={`ac-status-card ${cssClass} ${statusFilter === card.key ? "active" : ""}`}
+      key={card.key}
+      onClick={() => onSelect(card.key)}
+    >
       <div className="ac-status-card-header">
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src={STATUS_ICONS[cssClass]} alt="" width={18} height={18} />
-          {card.label}
+        <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {icon && <img src={icon} alt="" width={18} height={18} />}
+            {card.label}
+          </span>
+          {/* Phase 1/Phase 2 breakdown, only present when scoped to OOS/OOT
+              (SIT Dashboard Figma, 2026-09-04, per the user) — plain
+              label + bold count text, matching the Figma reference frame
+              exactly (no pill/badge shape there), kept inline beside the
+              label since Unassigned is a single-line stretched bar here,
+              not a tall card with room for stacked sub-rows below. Each is
+              still its own clickable filter, not just display text. */}
+          {card.rows.length > 0 && (
+            <span style={{ display: "flex", gap: 16 }}>
+              {card.rows.map(([label, count]) => {
+                const key = subRowKey(card.key, String(label));
+                return (
+                  <span
+                    key={label}
+                    className={`ac-status-phase-pill ${statusFilter === key ? "active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(key);
+                    }}
+                  >
+                    {label} <b>{count}</b>
+                  </span>
+                );
+              })}
+            </span>
+          )}
         </span>
         <span className="ac-status-count">{card.count}</span>
       </div>
-      {card.rows.map(([label, count]) => (
-        <div className="ac-status-subrow" key={label}>
-          <span>{label}</span>
-          <span>{count}</span>
-        </div>
-      ))}
+      {caption && <div className="ac-status-card-caption">{caption}</div>}
     </div>
   );
 }
@@ -202,11 +304,14 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 }
 
 export function ActionCenterPage() {
-  const { username, viewAsInvestigator } = useAuth();
-  // Ajay Pathania's account is SIT (Site Inspection Team), not a generic
-  // admin (2026-08-18, per the user) — everyone else still defaults to
-  // "Admin View" when not viewing as a specific investigator.
-  const isSitAccount = username?.toLowerCase() === "pathania.ajay@strides.com";
+  const { roles, viewAsInvestigator } = useAuth();
+  // Anyone with the SIT (Site Inspection Team) role, or Admin, sees "SIT
+  // Dashboard" as the page title instead of "Action Center" (2026-08-18, per
+  // the user; made role-based instead of a single hardcoded account on
+  // 2026-09-03; swapped from User to Admin on 2026-09-04, per the user) —
+  // the plain "User" role sees "Action Center" (when not viewing as a
+  // specific investigator, which has its own title).
+  const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -218,6 +323,12 @@ export function ActionCenterPage() {
   // scoped to a card's bucket instead of an event type.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  // Card View's grouping toggle (SIT Dashboard Figma, 2026-09-04, per the
+  // user) — genuine group-by, not a value filter: Card View always shows
+  // every matching investigation, just organized into named sections by
+  // product or by investigator instead of one flat grid. "all" (added
+  // 2026-09-04, per the user) shows the plain ungrouped flat grid.
+  const [groupBy, setGroupBy] = useState<"all" | "product" | "investigator">("product");
   const [page, setPage] = useState(1);
   const [siteFilter, setSiteFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -367,6 +478,25 @@ export function ActionCenterPage() {
   const currentPage = Math.min(page, totalPages);
   const pagedInvestigations = sortedInvestigations.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  // Card View's grouped sections — built from every sorted+filtered
+  // investigation, not just the current page, since a group split across
+  // pages would show as incomplete/duplicated sections. Grouping and
+  // List View's pagination are mutually exclusive views of the same data,
+  // matching the Figma mock (no pager shown alongside grouped cards). "all"
+  // is a single unnamed group — Card View renders it as one flat grid, no
+  // section header (see the "all" branch in the render below).
+  const groupedInvestigations: { name: string; items: InvestigationRowResponse[] }[] = (() => {
+    if (groupBy === "all") return [{ name: "", items: sortedInvestigations }];
+    const groups = new Map<string, InvestigationRowResponse[]>();
+    for (const inv of sortedInvestigations) {
+      const raw = groupBy === "investigator" ? inv.investigator : inv.product;
+      const name = raw && raw.trim() ? raw : "Unassigned";
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name)!.push(inv);
+    }
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, items]) => ({ name, items }));
+  })();
+
   function handleSort(column: SortColumn) {
     if (sortColumn === column) {
       setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
@@ -400,38 +530,96 @@ export function ActionCenterPage() {
     };
   }
 
+  function renderInvestigationCard(inv: InvestigationRowResponse) {
+    const percent = Math.round((inv.stage / inv.total_stages) * 100);
+    const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
+    const initials = (inv.investigator ?? "")
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
+    return (
+      <div className="ac-card" key={inv.id} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
+        <div className="ac-inv-card-header">
+          <span className="ac-pending-card-id">{inv.id}</span>
+          <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
+        </div>
+        <p className="ac-pending-card-title">{inv.title}</p>
+        <div className="ac-inv-tag-row">
+          <span className="ac-inv-tag">{inv.event_type}</span>
+          <span className="ac-inv-tag">Start date: {inv.start_date ?? "—"}</span>
+          <span className="ac-inv-tag">Due date: {inv.due_date ?? "—"}</span>
+        </div>
+        {inv.investigator && (
+          <div className="ac-inv-investigator-row">
+            <span className="ac-inv-avatar">{initials}</span>
+            <div>
+              <div className="ac-inv-investigator-name">{inv.investigator}</div>
+              <div className="ac-inv-investigator-role">INVESTIGATOR</div>
+            </div>
+          </div>
+        )}
+        {inv.is_cancelled ? (
+          <span className="status-pill cancelled">Cancelled</span>
+        ) : (
+          <>
+            <div className="ac-inv-progress-label">
+              <span>PROGRESS</span>
+              <span>{inv.stage}/{inv.total_stages}</span>
+            </div>
+            <div className="ac-progress-track">
+              <div className="ac-progress-fill" style={{ width: `${percent}%` }} />
+            </div>
+            <p className="ac-inv-progress-caption">{percent}% complete</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="ac-page-bg">
     <div className="ac-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
       <h1 className="ac-title">
-        Action Center{viewAsInvestigator ? ` - Investigator View (${viewAsInvestigator})` : isSitAccount ? " - SIT View" : " - Admin View"}
+        {viewAsInvestigator
+          ? `Action Center - Investigator View (${viewAsInvestigator})`
+          : showsSitDashboardTitle
+            ? "SIT Dashboard"
+            : "Action Center"}
       </h1>
 
-      <section className="ac-card">
-        <div className="ac-total-header">
-          <h2>Open Investigations</h2>
-          <span className="ac-total-count">{summary.total_investigations}</span>
+      {/* 5 equal-width KPI cards — Open Investigations plus one per event
+          type, each with its own monthly bar chart + MoM trend (SIT
+          Dashboard Figma, 2026-09-04, per the user) — replaces the old
+          single "Open Investigations" card + flat stat-pill row. */}
+      <div className="ac-kpi-row">
+        <div className="ac-kpi-card neutral">
+          <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
+          <div className="ac-kpi-card-count">{summary.total_investigations}</div>
+          <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
+          {renderKpiChart(summary.opened_trend, "neutral", "Opened / month")}
         </div>
-        <div className="ac-stat-pills">
-          {eventTypeCounts.map((s) => (
-            <div
-              className={`ac-stat-pill ${activeFilter === s.label ? "active" : ""}`}
-              key={s.label}
-              onClick={() => setFilter(s.label)}
-            >
-              <span>{s.label}</span>
-              <span>
-                <span className="ac-stat-count">{s.count}</span>
-                <span className="ac-stat-percent">({s.percent}%)</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+        {eventTypeCounts.map((s) => (
+          <div
+            className={`ac-kpi-card ${KPI_TONE[s.label] ?? "warm"} ${activeFilter === s.label ? "active" : ""}`}
+            key={s.label}
+            onClick={() => setFilter(s.label)}
+          >
+            <div className="ac-kpi-card-header">{s.label.toUpperCase()}</div>
+            <div className="ac-kpi-card-count">{s.count}</div>
+            <div className="ac-kpi-card-subtitle">{s.percent}% of open</div>
+            {renderKpiChart(s.closed_trend, KPI_TONE[s.label] ?? "warm", "Closed / month")}
+          </div>
+        ))}
+      </div>
 
+      {/* Unassigned back in line with L5-L1, all 6 in one row (2026-09-04,
+          per the user — reverted the earlier "Unassigned as its own
+          full-width bar above" layout). */}
       <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
-        {statusCards.map((card) => renderStatusCard(card, statusFilter === card.key, () => setStatusCardFilter(card.key)))}
+        {statusCards.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter))}
       </div>
 
       {false && (
@@ -488,61 +676,61 @@ export function ActionCenterPage() {
       </div>
       )}
 
+      {/* Filters section — criticality toggle, dropdown filters, and search
+          all live here now, separate from the Investigation Details table
+          below (SIT Dashboard Figma, 2026-09-04, per the user) — previously
+          all of this, plus the table itself, shared one card. */}
       <div className="ac-card">
         <div className="ac-details-header">
-          <div className="ac-details-title-group">
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <h2>Investigation Details</h2>
-              <div className="ac-criticality-toggle">
-                <button
-                  type="button"
-                  className={criticalityFilter === "" ? "active" : ""}
-                  onClick={() => {
-                    setCriticalityFilter("");
-                    setPage(1);
-                  }}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  className={criticalityFilter === "critical" ? "active" : ""}
-                  onClick={() => {
-                    setCriticalityFilter("critical");
-                    setPage(1);
-                  }}
-                >
-                  Critical
-                </button>
-                {activeFilter === "OOS" || activeFilter === "OOT" ? (
-                  <>
-                    <button
-                      type="button"
-                      className={criticalityFilter === "phase2" ? "active" : ""}
-                      onClick={() => {
-                        setCriticalityFilter("phase2");
-                        setPage(1);
-                      }}
-                    >
-                      Phase 2
-                    </button>
-                  </>
-                ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="ac-criticality-toggle">
+              <button
+                type="button"
+                className={criticalityFilter === "" ? "active" : ""}
+                onClick={() => {
+                  setCriticalityFilter("");
+                  setPage(1);
+                }}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={criticalityFilter === "critical" ? "active" : ""}
+                onClick={() => {
+                  setCriticalityFilter("critical");
+                  setPage(1);
+                }}
+              >
+                Critical
+              </button>
+              {activeFilter === "OOS" || activeFilter === "OOT" ? (
+                <>
                   <button
                     type="button"
-                    className={criticalityFilter === "non_critical" ? "active" : ""}
+                    className={criticalityFilter === "phase2" ? "active" : ""}
                     onClick={() => {
-                      setCriticalityFilter("non_critical");
+                      setCriticalityFilter("phase2");
                       setPage(1);
                     }}
                   >
-                    Major & Minor
+                    Phase 2
                   </button>
-                )}
-              </div>
-              <CriticalityGuidelines eventType={activeFilter} />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={criticalityFilter === "non_critical" ? "active" : ""}
+                  onClick={() => {
+                    setCriticalityFilter("non_critical");
+                    setPage(1);
+                  }}
+                >
+                  Major & Minor
+                </button>
+              )}
             </div>
-            <p>{summary.total_investigations} investigations total</p>
+            <CriticalityGuidelines eventType={activeFilter} />
           </div>
           <div className="ac-filters">
             <FilterSelect
@@ -608,7 +796,7 @@ export function ActionCenterPage() {
           </div>
         </div>
 
-        <div className="ac-search-row">
+        <div className="ac-search-row" style={{ marginBottom: 0 }}>
           <div className="ac-search-input-wrap">
             <img src={iconSearch} alt="" width={16} height={16} />
             <input
@@ -622,6 +810,15 @@ export function ActionCenterPage() {
             />
           </div>
           <button type="button" className="ac-search-btn">Search</button>
+        </div>
+      </div>
+
+      <div className="ac-card">
+        <div className="ac-details-header">
+          <div className="ac-details-title-group">
+            <h2>Investigation Details</h2>
+            <p>{summary.total_investigations} investigations total</p>
+          </div>
           <div className="ac-view-toggle">
             <button
               type="button"
@@ -641,6 +838,29 @@ export function ActionCenterPage() {
             </button>
           </div>
         </div>
+
+        {/* Card View's group-by toggle (SIT Dashboard Figma, 2026-09-04, per
+            the user) — no List View equivalent, matches the Figma mock. */}
+        {viewMode === "grid" && (
+          <div className="ac-details-header" style={{ marginTop: -8 }}>
+            <div className="ac-criticality-toggle">
+              <button type="button" className={groupBy === "all" ? "active" : ""} onClick={() => setGroupBy("all")}>
+                All
+              </button>
+              <button type="button" className={groupBy === "product" ? "active" : ""} onClick={() => setGroupBy("product")}>
+                By Product
+              </button>
+              <button type="button" className={groupBy === "investigator" ? "active" : ""} onClick={() => setGroupBy("investigator")}>
+                By Investigator
+              </button>
+            </div>
+            <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+              {groupBy === "all"
+                ? `${sortedInvestigations.length} investigations`
+                : `${groupedInvestigations.length} ${groupBy === "investigator" ? "investigators" : "products"}`}
+            </span>
+          </div>
+        )}
 
         {viewMode === "list" ? (
           <table className="ac-table">
@@ -729,95 +949,74 @@ export function ActionCenterPage() {
             </tbody>
           </table>
         ) : (
-          <div className="ac-pending-grid">
-            {pagedInvestigations.map((inv) => {
-              const percent = Math.round((inv.stage / inv.total_stages) * 100);
-              const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
-              const initials = (inv.investigator ?? "")
-                .split(" ")
-                .filter(Boolean)
-                .map((part) => part[0])
-                .join("")
-                .toUpperCase();
-              return (
-                <div className="ac-card" key={inv.id} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
-                  <div className="ac-inv-card-header">
-                    <span className="ac-pending-card-id">{inv.id}</span>
-                    <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
+          <div className="ac-grouped-sections">
+            {groupedInvestigations.map((group, idx) => (
+              <div key={group.name || idx} className="ac-group-section">
+                {groupBy !== "all" && (
+                  <div className="ac-group-header">
+                    {groupBy === "investigator" && (
+                      <span className="ac-inv-avatar">
+                        {group.name
+                          .split(" ")
+                          .filter(Boolean)
+                          .map((part) => part[0])
+                          .join("")
+                          .toUpperCase()}
+                      </span>
+                    )}
+                    <span className="ac-group-name">{group.name}</span>
+                    <span className="ac-group-count">{group.items.length}</span>
                   </div>
-                  <p className="ac-pending-card-title">{inv.title}</p>
-                  <div className="ac-inv-tag-row">
-                    <span className="ac-inv-tag">{inv.event_type}</span>
-                    <span className="ac-inv-tag">Start date: {inv.start_date ?? "—"}</span>
-                    <span className="ac-inv-tag">Due date: {inv.due_date ?? "—"}</span>
-                  </div>
-                  {inv.investigator && (
-                    <div className="ac-inv-investigator-row">
-                      <span className="ac-inv-avatar">{initials}</span>
-                      <div>
-                        <div className="ac-inv-investigator-name">{inv.investigator}</div>
-                        <div className="ac-inv-investigator-role">INVESTIGATOR</div>
-                      </div>
-                    </div>
-                  )}
-                  {inv.is_cancelled ? (
-                    <span className="status-pill cancelled">Cancelled</span>
-                  ) : (
-                    <>
-                      <div className="ac-inv-progress-label">
-                        <span>PROGRESS</span>
-                        <span>{inv.stage}/{inv.total_stages}</span>
-                      </div>
-                      <div className="ac-progress-track">
-                        <div className="ac-progress-fill" style={{ width: `${percent}%` }} />
-                      </div>
-                      <p className="ac-inv-progress-caption">{percent}% complete</p>
-                    </>
-                  )}
-                </div>
-              );
-            })}
+                )}
+                <div className="ac-pending-grid">{group.items.map(renderInvestigationCard)}</div>
+              </div>
+            ))}
           </div>
         )}
 
-        <div className="ac-pagination">
-          <button
-            type="button"
-            className="ac-page-btn"
-            aria-label="Previous page"
-            disabled={currentPage <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            ‹
-          </button>
-          {pageNumbers(currentPage, totalPages).map((p, idx) =>
-            p === "…" ? (
-              <span key={`ellipsis-${idx}`} style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", padding: "0 4px" }}>
-                …
-              </span>
-            ) : (
-              <button
-                key={p}
-                type="button"
-                className={`ac-page-btn ${p === currentPage ? "active" : ""}`}
-                aria-label={`Page ${p}`}
-                aria-current={p === currentPage ? "page" : undefined}
-                onClick={() => setPage(p)}
-              >
-                {p}
-              </button>
-            )
-          )}
-          <button
-            type="button"
-            className="ac-page-btn"
-            aria-label="Next page"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            ›
-          </button>
-        </div>
+        {/* Card View's groups always show every matching investigation, not
+            a page at a time (see groupedInvestigations above) — pagination
+            only applies to the flat List View table. */}
+        {viewMode === "list" && (
+          <div className="ac-pagination">
+            <button
+              type="button"
+              className="ac-page-btn"
+              aria-label="Previous page"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ‹
+            </button>
+            {pageNumbers(currentPage, totalPages).map((p, idx) =>
+              p === "…" ? (
+                <span key={`ellipsis-${idx}`} style={{ fontSize: "var(--font-size-base)", color: "var(--color-text-muted)", padding: "0 4px" }}>
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  className={`ac-page-btn ${p === currentPage ? "active" : ""}`}
+                  aria-label={`Page ${p}`}
+                  aria-current={p === currentPage ? "page" : undefined}
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </button>
+              )
+            )}
+            <button
+              type="button"
+              className="ac-page-btn"
+              aria-label="Next page"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              ›
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </div>

@@ -6,10 +6,26 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class MonthlyBar(BaseModel):
+    label: str  # "Mar", "Apr", ... — the 6 most recently COMPLETED calendar months
+    count: int
+
+
+class MonthlyTrend(BaseModel):
+    monthly: List[MonthlyBar]
+    # Signed % change of the last bar vs. the one before it; None when the
+    # prior month's count is 0 (a % change would be undefined/infinite).
+    trend_percent: Optional[int] = None
+
+
 class EventTypeCount(BaseModel):
     label: str
     count: int
     percent: int
+    # How many of this event type were CLOSED per month, last 6 complete
+    # months, plus the MoM trend — matches the SIT Dashboard Figma mock
+    # (node 2255:70409, 2026-09-04, per the user).
+    closed_trend: MonthlyTrend
 
 
 class StatusCard(BaseModel):
@@ -89,6 +105,10 @@ class FilterOptions(BaseModel):
 class ActionCenterSummary(BaseModel):
     total_investigations: int
     event_type_counts: List[EventTypeCount]
+    # How many investigations (any type) were OPENED per month, last 6
+    # complete months, plus the MoM trend — the "Open Investigations" card's
+    # own chart (see EventTypeCount.closed_trend for the per-type version).
+    opened_trend: MonthlyTrend
     status_cards: List[StatusCard]
     # Same 4 cards as status_cards, scoped to just that event type — per the
     # user (2026-07-31), clicking a Deviation/OOS/OOT/Market Complaint pill

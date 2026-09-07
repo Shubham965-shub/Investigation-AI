@@ -36,3 +36,17 @@ export function nameFromToken(token: string): string | null {
     return null;
   }
 }
+
+/** Pulls the `roles` claim (see backend/backend/routers/auth.py's
+ * issue_token — athena_users.role_id -> athena_roles.name, e.g. "Admin",
+ * "User", "SIT") — same no-verification caveat as isTokenExpired above.
+ * Used to branch UI on role (e.g. Action Center's "SIT View" label) instead
+ * of hardcoding a specific user's identity. */
+export function rolesFromToken(token: string): string[] {
+  try {
+    const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));
+    return Array.isArray(payload.roles) ? payload.roles.filter((r: unknown) => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}

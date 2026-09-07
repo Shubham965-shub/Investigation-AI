@@ -89,6 +89,29 @@
   --color-accepted-bg: #fdf2fe;
   --color-accepted-border: #f0abfc;
   --color-accepted-text: #8126dc;
+  /* Action Center's L4 escalation-level status card (SIT Dashboard Figma,
+     2026-09-04) — a fifth tone alongside success/warning/danger/info, same
+     pastel-bg/300-border/600-text scale, since none of the existing four
+     tones is pink. */
+  --color-pink-bg: #fdf2f8;
+  --color-pink-border: #f9a8d4;
+  --color-pink-text: #db2777;
+  /* KPI card mini bar-chart series (SIT Dashboard Figma, 2026-09-04) — each
+     chart's 5 older bars are "muted", the most recent month is "strong".
+     Sampled directly off the Figma mock: Open Investigations uses neutral
+     (gray/slate); Deviation & Market Complaint use warm (pink/red);
+     OOS & OOT use cool (sage/teal) — the mock reuses these two families
+     across both pairs rather than giving each event type its own hue.
+     Distinct from the success/warning/danger/pink/info tones above since
+     those are for status badges/cards (pale bg + saturated text), not
+     bars, which need a visibly-colored "muted" tone to read as a bar at
+     all against a white card. */
+  --color-chart-neutral-muted: #a8afb9;
+  --color-chart-neutral-strong: #334155;
+  --color-chart-warm-muted: #ffcbcb;
+  --color-chart-warm-strong: #dc0000;
+  --color-chart-cool-muted: #bbd0cb;
+  --color-chart-cool-strong: #337263;
 }
 
 :root[data-theme="dark"] {
@@ -124,6 +147,16 @@
   --color-accepted-bg: rgba(192, 38, 211, 0.12);
   --color-accepted-border: rgba(192, 38, 211, 0.35);
   --color-accepted-text: #e879f9;
+  --color-pink-bg: rgba(219, 39, 119, 0.12);
+  --color-pink-border: rgba(219, 39, 119, 0.35);
+  --color-pink-text: #f472b6;
+
+  --color-chart-neutral-muted: #475569;
+  --color-chart-neutral-strong: #cbd5e1;
+  --color-chart-warm-muted: rgba(220, 38, 38, 0.35);
+  --color-chart-warm-strong: #f87171;
+  --color-chart-cool-muted: rgba(16, 185, 129, 0.35);
+  --color-chart-cool-strong: #34d399;
 }
 
 /* @strides-pharma-science-ltd/feedback-widget (AppFeedbackButton.tsx) colors

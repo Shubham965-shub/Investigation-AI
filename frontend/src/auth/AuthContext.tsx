@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { login as loginRequest } from "../api/auth";
-import { isTokenExpired, nameFromToken } from "./jwt";
+import { isTokenExpired, nameFromToken, rolesFromToken } from "./jwt";
 
 interface AuthContextValue {
   username: string | null;
@@ -8,6 +8,10 @@ interface AuthContextValue {
   // token's `name` claim) — null until a token exists (2026-08-18, per the
   // user: shown in AppHeader instead of the raw username/email).
   fullName: string | null;
+  // athena_roles.name values for the signed-in user (e.g. ["SIT"]) — empty
+  // until a token exists. Use this instead of hardcoding a specific
+  // username/email to branch UI by role.
+  roles: string[];
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -44,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       username,
       fullName: token ? nameFromToken(token) : null,
+      roles: token ? rolesFromToken(token) : [],
       viewAsInvestigator,
       setViewAsInvestigator,
       // A cached username alone isn't enough — the token itself may have

@@ -165,6 +165,41 @@ async def fetch_cancelled_investigations() -> List[asyncpg.Record]:
         return await conn.fetch(_CANCELLED_INVESTIGATIONS_QUERY)
 
 
+# Backs the KPI cards' monthly bar chart + MoM trend (SIT Dashboard Figma,
+# 2026-09-04, per the user) — unlike _OPEN_INVESTIGATIONS_QUERY, this covers
+# the FULL event population (open, closed, and cancelled excluded), same
+# convention as analytics_queries.py's _ANALYTICS_ROWS_QUERY: small enough
+# (7,545 rows total live) to pull as one flat, deduped row set and bucket by
+# month in Python rather than hand-rolling a date_trunc GROUP BY. Matches a
+# row if EITHER its open date or its close date falls in the window, since
+# the same row feeds both the "opened per month" chart (by date_opened) and
+# the "closed per month" chart (by closed_on).
+_MONTHLY_TREND_ROWS_QUERY = """
+SELECT deviation_id, qe_type, date_opened, closed_on
+FROM (
+    SELECT DISTINCT ON (f.deviation_id)
+        f.deviation_id,
+        ec.qe_type,
+        f.date_opened,
+        f.closed_on,
+        e.module,
+        f.pg_updated_at_timestamp
+    FROM fact_qms_event f
+    JOIN dim_event e ON e.deviation_id = f.deviation_id
+    LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
+    WHERE f.date_opened >= $1 OR f.closed_on >= $1
+    ORDER BY f.deviation_id, f.pg_updated_at_timestamp DESC NULLS LAST
+) dedup
+WHERE module IS DISTINCT FROM 'Cancelled'
+"""
+
+
+async def fetch_monthly_trend_rows(since: datetime.date) -> List[asyncpg.Record]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetch(_MONTHLY_TREND_ROWS_QUERY, since)
+
+
 async def fetch_module_completion(deviation_ids: List[int]) -> Dict[int, int]:
     """How many of the 4 real generated-content modules exist per deviation_id.
 
