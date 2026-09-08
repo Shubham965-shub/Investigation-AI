@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS athena_users (
 -- just the CREATE above, since that only fires on a fresh table.
 ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS full_name TEXT;
 
+-- Set on every successful POST /auth/login (routers/auth.py) — backs the
+-- User Management page's "Last Logged In" column (2026-09-08, per the user).
+-- NULL for an account that has never logged in yet.
+ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS athena_api_call_trails (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES athena_users(id),

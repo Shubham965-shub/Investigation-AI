@@ -5,12 +5,14 @@ import {
   getProblemStatementRecord,
   getRcCapaCritique,
   getRcCapaHistory,
+  getTaskCritique,
   pushRcCapaToSitReview,
   uploadRcCapaCritiqueReport,
   type RcCapaCritique,
   type RcCapaRecommendation,
   type RcCapaReport,
   type RcCapaState,
+  type TaskCritiqueListResponse,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
@@ -251,7 +253,13 @@ function RecommendationGroup({
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn-outline" disabled={decisionBusy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={decisionBusy}
+              onClick={handleYesClick}
+              style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)", padding: "8px 28px", justifyContent: "center" }}
+            >
               Yes
             </button>
           </div>
@@ -365,6 +373,7 @@ export function RcCapaCritiquePage() {
   const [retryKey, setRetryKey] = useState(0);
   const [state, setState] = useState<RcCapaState | null>(null);
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
+  const [taskCritique, setTaskCritique] = useState<TaskCritiqueListResponse | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -411,10 +420,15 @@ export function RcCapaCritiquePage() {
     setDbError(null);
     (async () => {
       try {
-        const [data, psRecord] = await Promise.all([getRcCapaCritique(recordId), getProblemStatementRecord(recordId)]);
+        const [data, psRecord, taskCritiqueData] = await Promise.all([
+          getRcCapaCritique(recordId),
+          getProblemStatementRecord(recordId),
+          getTaskCritique(recordId),
+        ]);
         if (cancelled) return;
         setState(data);
         setProblemStatement(psRecord?.problem_statement ?? null);
+        setTaskCritique(taskCritiqueData);
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
       } finally {
@@ -438,6 +452,30 @@ export function RcCapaCritiquePage() {
 
   if (dbError) {
     return <DbErrorModal message={dbError} onRetry={() => setRetryKey((k) => k + 1)} />;
+  }
+
+  // Blocks navigating here (stepper click, direct URL, back/forward — this
+  // check runs regardless of how the page was reached) until every Task
+  // Critique section is complete (2026-09-08, per the user). No backend
+  // aggregate for this exists yet, so it's the same per-section reduction
+  // TaskCritiquePage.tsx itself already does for its own "push to RC & CAPA
+  // Critique" button — computed here too since that button is only a UI
+  // nicety, not an actual guard against a direct URL/stepper click.
+  const taskCritiqueComplete =
+    !!taskCritique &&
+    taskCritique.has_source_document &&
+    taskCritique.sections.length > 0 &&
+    taskCritique.sections.every((s) => s.status === "complete");
+
+  if (!taskCritiqueComplete) {
+    return (
+      <div className="empty-state">
+        <p>RC, Impact & CAPA Critique isn't available until every Task Critique section is complete.</p>
+        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
+          Go to Task Critique
+        </button>
+      </div>
+    );
   }
 
   if (!state) {

@@ -4,6 +4,7 @@ import { generateQuestionnaire, getProblemStatementRecord, getQuestionnaireRecor
 import { ApiError } from "../api/client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AddItemDialog } from "../components/AddItemDialog";
 
@@ -220,7 +221,12 @@ export function InterviewQuestionnairePage() {
         <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
         <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>Additional questions may be asked during the interview as needed.</p>
 
-        {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating interview questions…</p>}
+        {loading && (
+          <GeneratingDialog
+            heading="Generating interview questions…"
+            message="Recommended interview questions for this investigation are being generated — this can take a moment."
+          />
+        )}
         {error && <p className="error-banner">{error}</p>}
         {limitMessage && <p className="error-banner">{limitMessage}</p>}
 

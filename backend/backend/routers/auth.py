@@ -41,9 +41,28 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+import asyncpg
+
 from backend.config.settings import settings
-from backend.db.auth_queries import fetch_user_by_username
-from backend.schemas.auth import CurrentUser, EventExplorerHandoffResponse, LoginRequest, LoginResponse
+from backend.db.auth_queries import (
+    create_user,
+    fetch_all_role_names,
+    fetch_all_users,
+    fetch_role_id_by_name,
+    fetch_user_by_username,
+    record_login,
+    update_user_role,
+)
+from backend.schemas.auth import (
+    AdminCreateUserRequest,
+    AdminUpdateUserRoleRequest,
+    AdminUserListResponse,
+    AdminUserRow,
+    CurrentUser,
+    EventExplorerHandoffResponse,
+    LoginRequest,
+    LoginResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +114,7 @@ def issue_token(username: str, user_id: int, roles: Optional[list[str]] = None, 
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def _decode_token(token: str) -> str:
+def _decode_token_payload(token: str) -> dict:
     try:
         # ExpiredSignatureError is a subclass of InvalidTokenError — must be
         # caught first, or "expired" would be misreported as "invalid".
@@ -106,10 +125,13 @@ def _decode_token(token: str) -> str:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
     # NOT "sub" — see module docstring (sub is now a UUID derived from uid,
     # not the username).
-    username = payload.get("username")
-    if not username:
+    if not payload.get("username"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    return username
+    return payload
+
+
+def _decode_token(token: str) -> str:
+    return _decode_token_payload(token)["username"]
 
 
 def try_decode_payload(token: str) -> Optional[dict]:
@@ -134,6 +156,25 @@ def get_current_username(
     return _decode_token(credentials.credentials)
 
 
+# Gate for the User Management endpoints below (2026-09-08, per the user) —
+# the first role-based authorization check in this codebase; every other
+# router only ever required a valid token (see module docstring), never a
+# specific role. Checks the JWT's own `roles` claim (already embedded at
+# login, see issue_token) rather than re-querying the DB, so a role change
+# only takes effect on that user's next login — same characteristic already
+# true of the frontend's role-based UI (e.g. Action Center's "SIT Dashboard"
+# title), not a new inconsistency introduced here.
+def require_admin(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> str:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    payload = _decode_token_payload(credentials.credentials)
+    if "Admin" not in (payload.get("roles") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return payload["username"]
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest) -> LoginResponse:
     user = await fetch_user_by_username(request.username)
@@ -143,6 +184,7 @@ async def login(request: LoginRequest) -> LoginResponse:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
     roles = [user["role"]] if user["role"] else []
     token = issue_token(user["username"], user["id"], roles, user["full_name"])
+    await record_login(user["id"])
     return LoginResponse(access_token=token, username=user["username"])
 
 
@@ -171,3 +213,54 @@ async def event_explorer_handoff(username: str = Depends(get_current_username)) 
     token = jwt.encode(payload, settings.EVENT_EXPLORER_HANDOFF_SECRET, algorithm=settings.JWT_ALGORITHM)
     url = f"{settings.EVENT_EXPLORER_URL}/event-explorer?handoff={token}"
     return EventExplorerHandoffResponse(url=url)
+
+
+# User Management (2026-09-08, per the user) — admin-only: list every
+# athena_users row, create a new one, or change an existing one's role.
+_USERNAME_TAKEN_DETAIL = "That username/email is already in use"
+_UNKNOWN_ROLE_DETAIL = "Unknown role"
+
+
+@router.get("/admin/users", response_model=AdminUserListResponse)
+async def list_users(_: str = Depends(require_admin)) -> AdminUserListResponse:
+    rows = await fetch_all_users()
+    roles = await fetch_all_role_names()
+    return AdminUserListResponse(users=[AdminUserRow(**dict(r)) for r in rows], roles=roles)
+
+
+@router.post("/admin/users", response_model=AdminUserRow, status_code=status.HTTP_201_CREATED)
+async def create_admin_user(request: AdminCreateUserRequest, _: str = Depends(require_admin)) -> AdminUserRow:
+    role_id = await fetch_role_id_by_name(request.role)
+    if role_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_UNKNOWN_ROLE_DETAIL)
+    password_hash = bcrypt.hashpw(request.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    try:
+        user_id = await create_user(request.username, request.full_name, password_hash, role_id)
+    except asyncpg.exceptions.UniqueViolationError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_USERNAME_TAKEN_DETAIL)
+    return AdminUserRow(
+        id=user_id,
+        username=request.username,
+        full_name=request.full_name,
+        role=request.role,
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        last_login=None,
+    )
+
+
+@router.put("/admin/users/{user_id}/role", response_model=AdminUserRow)
+async def update_admin_user_role(
+    user_id: int, request: AdminUpdateUserRoleRequest, _: str = Depends(require_admin)
+) -> AdminUserRow:
+    role_id = await fetch_role_id_by_name(request.role)
+    if role_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_UNKNOWN_ROLE_DETAIL)
+    updated = await update_user_role(user_id, role_id)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    rows = await fetch_all_users()
+    row = next((r for r in rows if r["id"] == user_id), None)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return AdminUserRow(**dict(row))

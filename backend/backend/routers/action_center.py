@@ -417,7 +417,7 @@ async def get_action_center_summary(
         EventTypeCount(
             label=label,
             count=type_counts.get(label, 0),
-            percent=round(type_counts.get(label, 0) / total * 100) if total else 0,
+            percent=round(type_counts.get(label, 0) / total * 100, 1) if total else 0,
             closed_trend=closed_trend_by_label[label],
         )
         for label in ordered_labels
@@ -606,6 +606,7 @@ async def get_action_center_summary(
                 rci_ids=i["rci_ids"],
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
+                criticality=i["criticality"],
             )
             for i in cancelled_enriched
         ]
@@ -629,6 +630,7 @@ async def get_action_center_summary(
                 rci_ids=i["rci_ids"],
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
+                criticality=i["criticality"],
             )
             for i in enriched
         ]

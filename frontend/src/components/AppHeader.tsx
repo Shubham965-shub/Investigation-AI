@@ -4,6 +4,7 @@ import logo from "../assets/icons/logo.png";
 import athenaLogo from "../assets/icons/athena-logo.svg";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
 import headerIcon2 from "../assets/icons/header-icon-2.svg";
+import userManagementIcon from "../assets/icons/panel-team.svg";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
@@ -28,7 +29,7 @@ function formatShortName(fullName: string): string {
 
 export function AppHeader() {
   const { toggleTheme } = useTheme();
-  const { username, fullName, logout, viewAsInvestigator, setViewAsInvestigator } = useAuth();
+  const { username, fullName, roles, logout, viewAsInvestigator, setViewAsInvestigator } = useAuth();
   const { isPanelOpen } = usePanelState();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -75,6 +76,21 @@ export function AppHeader() {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginRight: 16 }}>
         <AppFeedbackButton />
+
+        {/* Admin-only (2026-09-08, per the user) — opens User Management.
+            The backend independently re-checks the Admin role on every call
+            there; hiding the button is just a UX nicety, not the real gate. */}
+        {roles.includes("Admin") && (
+          <button
+            type="button"
+            aria-label="User Management"
+            title="User Management"
+            onClick={() => navigate("/user-management")}
+            style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <img src={userManagementIcon} alt="" width={20} height={20} />
+          </button>
+        )}
 
         <button
           type="button"

@@ -4,6 +4,7 @@ import { collectEvidence, getEvidenceRecord, getProblemStatementRecord, updateEv
 import { ApiError } from "../api/client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AddItemDialog } from "../components/AddItemDialog";
 
@@ -223,7 +224,12 @@ export function EvidenceCollectionPage() {
         <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-md)" }}>Note: You may uncheck if any of the evidence is not required in this investigation.</p>
         <p style={{ margin: 0, fontSize: "var(--font-size-sm)", fontStyle: "italic", color: "var(--color-text-muted)" }}>These recommendations are generated from a rule-based library.</p>
 
-        {loading && <p style={{ color: "var(--color-text-muted)" }}>Generating recommended evidence…</p>}
+        {loading && (
+          <GeneratingDialog
+            heading="Generating evidence…"
+            message="Recommended evidence items for this investigation are being generated — this can take a moment."
+          />
+        )}
         {error && <p className="error-banner">{error}</p>}
         {limitMessage && <p className="error-banner">{limitMessage}</p>}
 
