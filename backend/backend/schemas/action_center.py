@@ -21,7 +21,7 @@ class MonthlyTrend(BaseModel):
 class EventTypeCount(BaseModel):
     label: str
     count: int
-    percent: int
+    percent: float
     # How many of this event type were CLOSED per month, last 6 complete
     # months, plus the MoM trend — matches the SIT Dashboard Figma mock
     # (node 2255:70409, 2026-09-04, per the user).
@@ -82,6 +82,12 @@ class InvestigationRow(BaseModel):
     # otherwise (including for OOS/OOT not yet phased). Drives the Unassigned
     # vs Unassigned – Phase 1 status-card split (see action_center.py).
     oos_oot_phase: Optional[str] = None
+    # dim_event.criticality — "Critical"/"Major"/"Minor". Already computed
+    # into `enriched`/`cancelled_enriched` for the page's own criticality
+    # filter, but wasn't previously surfaced on each row; now used for the
+    # investigation table's per-row criticality badge (2026-09-08, per the
+    # user).
+    criticality: Optional[str] = None
 
 
 class ChartBar(BaseModel):

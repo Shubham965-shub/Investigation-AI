@@ -344,7 +344,13 @@ export function TaskCritiqueDetailPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <span style={{ fontSize: "var(--font-size-base)", fontWeight: 600 }}>Accept Recommendations?</span>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button type="button" className="btn-outline" disabled={busy} onClick={handleYesClick} style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)" }}>
+                          <button
+                            type="button"
+                            className="btn-outline"
+                            disabled={busy}
+                            onClick={handleYesClick}
+                            style={{ color: "var(--color-success-text)", borderColor: "var(--color-success-text)", padding: "8px 28px", justifyContent: "center" }}
+                          >
                             Yes
                           </button>
                         </div>

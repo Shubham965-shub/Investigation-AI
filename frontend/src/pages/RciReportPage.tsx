@@ -33,6 +33,7 @@ import {
 import type { TrackwiseFields } from "../constants/trackwiseFields";
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkSingleIcon from "../assets/icons/rci-report-check-single.svg";
@@ -240,13 +241,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // Full grid borders (every th/td bordered, square corners) so this reads as
 // a real Word table, matching the real exported document (2026-08-25, per
 // the user) rather than the app's usual rounded dashboard-card tables.
-function DataTable<T>({ columns, rows }: { columns: { key: string; label: string }[]; rows: (T & { _cell?: (key: string) => React.ReactNode })[] }) {
+function DataTable<T>({
+  columns,
+  rows,
+}: {
+  // width is optional (2026-09-08, per the user — Report Approval's Name/
+  // Title columns wider, Department/Signature-Date narrower) — every other
+  // DataTable usage omits it and keeps its existing auto-sized columns.
+  columns: { key: string; label: string; width?: string }[];
+  rows: (T & { _cell?: (key: string) => React.ReactNode })[];
+}) {
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
       <thead>
         <tr>
           {columns.map((c) => (
-            <th key={c.key} style={{ ...READ_LABEL_STYLE, textAlign: "left", padding: "10px 12px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)" }}>
+            <th
+              key={c.key}
+              style={{ ...READ_LABEL_STYLE, textAlign: "left", padding: "10px 12px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", width: c.width }}
+            >
               {c.label}
             </th>
           ))}
@@ -256,7 +269,7 @@ function DataTable<T>({ columns, rows }: { columns: { key: string; label: string
         {rows.map((row, i) => (
           <tr key={i}>
             {columns.map((c) => (
-              <td key={c.key} style={{ padding: "10px 12px", verticalAlign: "top", border: "1px solid var(--color-card-border)" }}>
+              <td key={c.key} style={{ padding: "10px 12px", verticalAlign: "top", border: "1px solid var(--color-card-border)", width: c.width }}>
                 {row._cell ? row._cell(c.key) : (row as Record<string, React.ReactNode>)[c.key]}
               </td>
             ))}
@@ -1007,8 +1020,16 @@ export function RciReportPage() {
   }
 
   // Gates "Download and View" on every section having been marked read
-  // (2026-08-24, per the user).
-  const allSectionsRead = !!report && SECTIONS.every((s) => readSections[s.key]);
+  // (2026-08-24, per the user). "annexures"/"approval" are excluded — they
+  // render as plain pass-through <div>s (see below), never wrapped in
+  // <DocSection read=.../>, so there's no control anywhere for the user to
+  // actually mark them read — requiring them made this gate permanently
+  // unsatisfiable no matter what the user did (confirmed live, 2026-09-08,
+  // per the user: marking every visible section read still left the button
+  // disabled).
+  const _UNGATED_SECTIONS = new Set(["annexures", "approval"]);
+  const allSectionsRead =
+    !!report && SECTIONS.filter((s) => !_UNGATED_SECTIONS.has(s.key)).every((s) => readSections[s.key]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1058,14 +1079,33 @@ export function RciReportPage() {
         </div>
       )}
 
+      {/* Covers both the initial "Generate RCI Report" and later
+          "Regenerate" actions — both drive the same `generating` state
+          (2026-09-08, per the user). RCI Report is by far the heaviest
+          generation in this app (9+ LLM calls per rci_report_route.py), so
+          this is the one most in need of real progress feedback instead of
+          just a disabled button. */}
+      {generating && (
+        <GeneratingDialog
+          heading="Generating RCI Report…"
+          message="Every section of the RCI Report is being generated — this can take a couple of minutes."
+        />
+      )}
+
       {report && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, maxWidth: 850 + 24 + 340, margin: "0 auto" }}>
+        // Full width, no outer max-width/centering (2026-09-08, per the
+        // user) — the Index sidebar sits flush at the true left edge of the
+        // page instead of being centered as a group with the doc, and the
+        // doc panel's own `maxWidth: 850` (DOC_PAPER_STYLE's default,
+        // matching the real .docx page width) is overridden below so it
+        // actually grows to fill the freed-up horizontal space.
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, width: "100%" }}>
           <div style={{ ...DOC_PAPER_STYLE, ...DOC_SIDEBAR_STYLE }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>INDEX</p>
             <DocIndex onJump={jumpToSection} compact />
           </div>
 
-          <div style={{ ...DOC_PAPER_STYLE, margin: 0, flex: 1, minWidth: 0 }}>
+          <div style={{ ...DOC_PAPER_STYLE, margin: 0, maxWidth: "none", flex: 1, minWidth: 0 }}>
             <DocHeaderTable recordId={recordId} rciNumber={rciNumber} trackwiseFields={trackwiseFields} />
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1225,12 +1265,25 @@ export function RciReportPage() {
                           ]}
                           rows={list.map((item) => ({
                             ...item,
-                            _cell: (key: string) =>
-                              key === "quantity_on_hold" ? (
-                                item.quantity_on_hold.value
-                              ) : key === "type_of_impact" ? (
-                                <span style={{ ...pillColor(item.type_of_impact), borderRadius: 4, padding: "2px 8px", fontSize: "var(--font-size-sm)", fontWeight: 600 }}>{item.type_of_impact}</span>
-                              ) : undefined,
+                            // Same fallback-missing bug as CAPA Effectiveness
+                            // Check Plan's table (fixed 2026-09-08, per the
+                            // user) — material_product_batch/batch_number/
+                            // quantity_involved weren't handled here either,
+                            // so they silently rendered blank despite having
+                            // real values; falls through to the plain field
+                            // now instead of only covering the two keys that
+                            // need special (non-plain-string) rendering.
+                            _cell: (key: string) => {
+                              if (key === "quantity_on_hold") return item.quantity_on_hold.value;
+                              if (key === "type_of_impact") {
+                                return (
+                                  <span style={{ ...pillColor(item.type_of_impact), borderRadius: 4, padding: "2px 8px", fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
+                                    {item.type_of_impact}
+                                  </span>
+                                );
+                              }
+                              return (item as unknown as Record<string, React.ReactNode>)[key];
+                            },
                           }))}
                         />
                       );
@@ -1395,9 +1448,6 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.history_review} />
             ) : (
               <>
-                <Field label="Search Scope">
-                  <ReadOnlyValue value={report.history_review.search_scope_note} />
-                </Field>
                 <Field label="Lookback Months">
                   <TextInput
                     type="number"
@@ -1405,11 +1455,21 @@ export function RciReportPage() {
                     onChange={(v) => setSectionField("history_review", "lookback_months", Number(v))}
                   />
                 </Field>
-                <CheckboxField
-                  label="No Similar Events Found"
-                  checked={report.history_review.no_similar_events_found}
-                  onChange={(v) => setSectionField("history_review", "no_similar_events_found", v)}
-                />
+                {/* Suppressed in read-only view whenever real rows exist
+                    (2026-09-08, per the user) — this checkbox reflects ds's
+                    own no_similar_events_found flag, which isn't always
+                    reconciled with the rows it actually generated, so
+                    showing "✓ No Similar Events Found" directly above a
+                    populated table read as contradictory. Still shown while
+                    editing so a genuinely wrong flag can be corrected by
+                    hand. */}
+                {(!!editSections["history-review"] || report.history_review.rows.length === 0) && (
+                  <CheckboxField
+                    label="No Similar Events Found"
+                    checked={report.history_review.no_similar_events_found}
+                    onChange={(v) => setSectionField("history_review", "no_similar_events_found", v)}
+                  />
+                )}
                 {(() => {
                   const list = report.history_review!.rows;
                   const h = listHelpers<HistoryReviewRow>("history_review", "rows", list);
@@ -2216,8 +2276,26 @@ export function RciReportPage() {
                         ]}
                         rows={list.map((item) => ({
                           ...item,
-                          _cell: (key: string) =>
-                            key === "effectiveness_check" ? bullets(item.effectiveness_check) : key === "effectiveness_criteria" ? bullets(item.effectiveness_criteria) : undefined,
+                          // Responsibility/Monitoring Duration show a fixed
+                          // "to be filled by user" note instead of the
+                          // generated value here (2026-09-08, per the user).
+                          // Every other key falls through to the item's own
+                          // field — DataTable's default rendering only
+                          // kicks in when `_cell` itself is absent, not when
+                          // it returns undefined for a given key, so every
+                          // key handled here needs an explicit case or it
+                          // silently renders blank (confirmed live,
+                          // 2026-09-08: this is why capa_description showed
+                          // empty in the preview despite being correctly
+                          // generated and correctly exported to the docx).
+                          _cell: (key: string) => {
+                            if (key === "effectiveness_check") return bullets(item.effectiveness_check);
+                            if (key === "effectiveness_criteria") return bullets(item.effectiveness_criteria);
+                            if (key === "responsibility" || key === "monitoring_duration") {
+                              return <span style={{ fontStyle: "italic", color: "var(--color-text-muted)" }}>To be filled by user in document</span>;
+                            }
+                            return (item as unknown as Record<string, React.ReactNode>)[key];
+                          },
                         }))}
                       />
                     );
@@ -2313,11 +2391,11 @@ export function RciReportPage() {
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>Report Approval</p>
             <DataTable
               columns={[
-                { key: "role_label", label: "" },
-                { key: "name", label: "Name" },
-                { key: "title", label: "Title" },
-                { key: "department", label: "Department" },
-                { key: "signature_date", label: "Signature / Date" },
+                { key: "role_label", label: "", width: "20%" },
+                { key: "name", label: "Name", width: "27%" },
+                { key: "title", label: "Title", width: "27%" },
+                { key: "department", label: "Department", width: "13%" },
+                { key: "signature_date", label: "Signature / Date", width: "13%" },
               ]}
               rows={APPROVAL_ROLE_ROWS.map((r) => {
                 const match = findApprovalRow(report.approval.rows, r.key);

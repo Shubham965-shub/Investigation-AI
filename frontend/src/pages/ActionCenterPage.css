@@ -39,15 +39,59 @@
 }
 
 .ac-kpi-card {
+  /* --kpi-accent set per event type below; falls back to the plain card
+     border color for anything that doesn't set it. */
+  --kpi-accent: var(--color-card-border);
+  position: relative;
   background: var(--color-surface);
   border: 1px solid var(--color-card-border);
+  /* Left accent line replaces a fully-colored card border (SIT Dashboard
+     Figma, 2026-09-08, per the user) — color set per event type below. */
+  border-left: 4px solid var(--kpi-accent);
   border-radius: 12px;
   padding: 16px;
   cursor: pointer;
+  /* Without this, a grid track with `1fr` still sizes to its content's
+     min-content first — the longer "4 event types · 6-step workflow"
+     subtitle (Open Investigations only) forced that column wider than the
+     other 4, so the row wasn't actually equal-width despite the grid
+     already being repeat(5, 1fr) (2026-09-08, per the user). min-width: 0
+     lets the track shrink to the shared 1fr size and the subtitle wrap
+     instead of stretching its column.
+  */
+  min-width: 0;
 }
 
-.ac-kpi-card.active {
-  box-shadow: 0 0 0 2px var(--color-primary);
+/* Selected card gets a thin accent-colored outline plus a small solid dot
+   top-right, both in the card's own accent color (SIT Dashboard Figma,
+   2026-09-08, per the user). Doesn't apply to Open Investigations (.neutral)
+   — that card has no "selected" indicator of its own; selecting it (the
+   default, no-event-type-filter view) instead shows as the permanent grey
+   fade below, so :not(.neutral) keeps the ring/dot treatment off it even
+   though it does carry the "active" class when activeFilter is null. */
+.ac-kpi-card.active:not(.neutral) {
+  border-color: var(--kpi-accent);
+}
+
+.ac-kpi-active-dot {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--kpi-accent);
+}
+
+.ac-kpi-card.event-blue { --kpi-accent: var(--color-info-text); }
+.ac-kpi-card.event-teal { --kpi-accent: var(--color-primary); }
+
+/* Open Investigations always gets this subtle grey top-fade — permanent,
+   not tied to whether it's the active/default view — instead of the
+   ring+dot the other 4 cards use when selected (2026-09-08, per the user). */
+.ac-kpi-card.neutral {
+  --kpi-accent: var(--color-chart-neutral-muted);
+  background: linear-gradient(to bottom, rgba(100, 116, 139, 0.12), transparent 70%), var(--color-surface);
 }
 
 .ac-kpi-card-header {
@@ -147,6 +191,16 @@
 }
 
 .ac-status-card {
+  /* Fills the height of its grid row (SIT Dashboard Figma, 2026-09-08, per
+     the user) — needed because level cards are each wrapped in a plain div
+     (see renderStatusCard's dividerBefore wrapper) that itself receives the
+     grid row's stretch, but a plain block child doesn't inherit that; the
+     "Status" assignment-filter card has no such wrapper and is a direct
+     grid item, so without this it ends up a different (shorter) height
+     than the wrapped level cards whenever their content naturally differs. */
+  height: 100%;
+  box-sizing: border-box;
+  position: relative;
   border-radius: 12px;
   border: 1px solid var(--color-card-border);
   background: var(--color-surface);
@@ -158,15 +212,41 @@
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 
-/* Escalation-level cards (SIT Dashboard Figma, 2026-09-04) — order/colors
-   match the design: Unassigned (neutral), then L5 (danger) down to L1
-   (success), i.e. most-days-open to least. */
-.ac-status-card.unassigned { border-color: var(--color-card-border); background: var(--color-surface); }
-.ac-status-card.l5 { border-color: var(--color-danger-border); background: var(--color-danger-bg); }
-.ac-status-card.l4 { border-color: var(--color-pink-border); background: var(--color-pink-bg); }
-.ac-status-card.l3 { border-color: var(--color-warning-border); background: var(--color-warning-bg); }
-.ac-status-card.l2 { border-color: var(--color-info-border); background: var(--color-info-bg); }
-.ac-status-card.l1 { border-color: var(--color-success-border); background: var(--color-success-bg); }
+.ac-status-active-dot {
+  position: absolute;
+  /* Pushed closer to the true corner (2026-09-08, per the user) — at
+     top:14/right:16 it sat right on top of the count number's line, since
+     that's also where .ac-status-card-header's own 16px right padding puts
+     the count's right edge. */
+  top: 8px;
+  right: 8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--status-accent, var(--color-primary));
+}
+
+/* Escalation-level cards (SIT Dashboard Figma, 2026-09-04) — order matches
+   the design: Unassigned (neutral), then L5 (danger) down to L1 (success),
+   i.e. most-days-open to least. Like the event-type KPI cards, these always
+   show their color as a left accent line, but ALSO as the full border color
+   (unlike the KPI cards, which keep a plain grey border by default) — the
+   background fill and the corner dot are reserved for when that level is
+   actually selected (2026-09-08, per the user). No generic active ring for
+   these (unlike unassigned/phase1/phase2, which keep the plain
+   .ac-status-card.active box-shadow above), since the background fill + dot
+   is now that indicator instead. */
+.ac-status-card.l5 { --status-accent: var(--color-danger-text); border-color: var(--color-danger-border); border-left: 4px solid var(--color-danger-border); }
+.ac-status-card.l4 { --status-accent: var(--color-pink-text); border-color: var(--color-pink-border); border-left: 4px solid var(--color-pink-border); }
+.ac-status-card.l3 { --status-accent: var(--color-warning-text); border-color: var(--color-warning-border); border-left: 4px solid var(--color-warning-border); }
+.ac-status-card.l2 { --status-accent: var(--color-info-text); border-color: var(--color-info-border); border-left: 4px solid var(--color-info-border); }
+.ac-status-card.l1 { --status-accent: var(--color-success-text); border-color: var(--color-success-border); border-left: 4px solid var(--color-success-border); }
+
+.ac-status-card.l5.active { background: var(--color-danger-bg); box-shadow: none; }
+.ac-status-card.l4.active { background: var(--color-pink-bg); box-shadow: none; }
+.ac-status-card.l3.active { background: var(--color-warning-bg); box-shadow: none; }
+.ac-status-card.l2.active { background: var(--color-info-bg); box-shadow: none; }
+.ac-status-card.l1.active { background: var(--color-success-bg); box-shadow: none; }
 
 .ac-status-card-header {
   display: flex;
@@ -198,11 +278,13 @@
 }
 
 .ac-status-card.unassigned .ac-status-count { color: var(--color-text-muted); }
-.ac-status-card.l5 .ac-status-count { color: var(--color-danger-text); }
-.ac-status-card.l4 .ac-status-count { color: var(--color-pink-text); }
-.ac-status-card.l3 .ac-status-count { color: var(--color-warning-text); }
-.ac-status-card.l2 .ac-status-count { color: var(--color-info-text); }
-.ac-status-card.l1 .ac-status-count { color: var(--color-success-text); }
+/* Level counts stay the plain default text color until selected, matching
+   the card's own border/background no-color-by-default rule above. */
+.ac-status-card.l5.active .ac-status-count { color: var(--color-danger-text); }
+.ac-status-card.l4.active .ac-status-count { color: var(--color-pink-text); }
+.ac-status-card.l3.active .ac-status-count { color: var(--color-warning-text); }
+.ac-status-card.l2.active .ac-status-count { color: var(--color-info-text); }
+.ac-status-card.l1.active .ac-status-count { color: var(--color-success-text); }
 
 .ac-section-title {
   font-family: var(--font-heading);
@@ -289,6 +371,11 @@
 .ac-badge.gray { background: var(--color-open-bg); color: var(--color-text-muted); }
 .ac-badge.critical { border: 1px solid var(--color-danger-text); color: var(--color-danger-text); }
 .ac-badge.due { border: 1px solid var(--color-card-border); color: var(--color-text-muted); }
+
+/* Event-type badge on each investigation row (2026-09-08, per the user) —
+   same blue/teal grouping as eventTypeAccentClass elsewhere on this page. */
+.ac-badge.event-blue { background: var(--color-info-bg); color: var(--color-info-text); }
+.ac-badge.event-teal { background: var(--color-success-bg); color: var(--color-success-text); }
 
 .ac-pending-action-row {
   display: flex;
@@ -461,6 +548,13 @@
   border-bottom: 1px solid var(--color-card-border);
   vertical-align: middle;
 }
+
+/* Row hover tinted by the investigation's own event type (2026-09-08, per
+   the user) — scoped to .ac-inv-row specifically (not a plain `.ac-table
+   tbody tr:hover`), since .ac-table is also reused by UserManagementPage's
+   plain (non-event-typed) table. */
+.ac-inv-row.event-blue:hover { background: var(--color-info-bg); }
+.ac-inv-row.event-teal:hover { background: var(--color-success-bg); }
 
 .ac-inv-id {
   color: var(--color-text-muted);
