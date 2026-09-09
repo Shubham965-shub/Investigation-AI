@@ -14,7 +14,7 @@ async def fetch_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT u.id, u.username, u.password_hash, u.is_active, u.full_name, r.name AS role
+            SELECT u.id, u.username, u.password_hash, u.is_active, u.full_name, u.investigator_name, r.name AS role
             FROM athena_users u
             LEFT JOIN athena_roles r ON r.id = u.role_id
             WHERE u.username = $1
@@ -38,7 +38,8 @@ async def fetch_all_users() -> List[asyncpg.Record]:
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT u.id, u.username, u.full_name, r.name AS role, u.is_active, u.created_at, u.last_login
+            SELECT u.id, u.username, u.full_name, r.name AS role, u.is_active, u.created_at, u.last_login,
+                   u.investigator_name
             FROM athena_users u
             LEFT JOIN athena_roles r ON r.id = u.role_id
             ORDER BY u.id
@@ -59,19 +60,22 @@ async def fetch_role_id_by_name(role_name: str) -> Optional[int]:
         return await conn.fetchval("SELECT id FROM athena_roles WHERE name = $1", role_name)
 
 
-async def create_user(username: str, full_name: str, password_hash: str, role_id: int) -> int:
+async def create_user(
+    username: str, full_name: str, password_hash: str, role_id: int, investigator_name: Optional[str] = None
+) -> int:
     pool = get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(
             """
-            INSERT INTO athena_users (username, password_hash, role_id, full_name, is_active)
-            VALUES ($1, $2, $3, $4, TRUE)
+            INSERT INTO athena_users (username, password_hash, role_id, full_name, investigator_name, is_active)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
             RETURNING id
             """,
             username,
             password_hash,
             role_id,
             full_name,
+            investigator_name,
         )
 
 
@@ -79,6 +83,15 @@ async def update_user_role(user_id: int, role_id: int) -> bool:
     pool = get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute("UPDATE athena_users SET role_id = $1 WHERE id = $2", role_id, user_id)
+        return result == "UPDATE 1"
+
+
+async def update_user_investigator_name(user_id: int, investigator_name: Optional[str]) -> bool:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE athena_users SET investigator_name = $1 WHERE id = $2", investigator_name or None, user_id
+        )
         return result == "UPDATE 1"
 
 

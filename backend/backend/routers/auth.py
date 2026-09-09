@@ -51,10 +51,12 @@ from backend.db.auth_queries import (
     fetch_role_id_by_name,
     fetch_user_by_username,
     record_login,
+    update_user_investigator_name,
     update_user_role,
 )
 from backend.schemas.auth import (
     AdminCreateUserRequest,
+    AdminUpdateInvestigatorNameRequest,
     AdminUpdateUserRoleRequest,
     AdminUserListResponse,
     AdminUserRow,
@@ -96,7 +98,13 @@ def display_name_for_username(username: str) -> str:
     return " ".join(p.capitalize() if p.islower() else p for p in parts)
 
 
-def issue_token(username: str, user_id: int, roles: Optional[list[str]] = None, full_name: Optional[str] = None) -> str:
+def issue_token(
+    username: str,
+    user_id: int,
+    roles: Optional[list[str]] = None,
+    full_name: Optional[str] = None,
+    investigator_name: Optional[str] = None,
+) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": uuid_for_user_id(user_id),
@@ -108,6 +116,12 @@ def issue_token(username: str, user_id: int, roles: Optional[list[str]] = None, 
         "email": username,
         "name": full_name or display_name_for_username(username),
         "roles": roles or [],
+        # Investigator-role scoping hook (2026-09-09, per the user) — see
+        # schema.sql's athena_users.investigator_name comment. Embedded in
+        # the token so action_center.py's per-request scoping doesn't need
+        # its own DB round trip; only meaningful when "Investigator" is in
+        # roles above.
+        "investigator_name": investigator_name,
         "iat": now,
         "exp": now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES),
     }
@@ -156,6 +170,19 @@ def get_current_username(
     return _decode_token(credentials.credentials)
 
 
+# Used where a route needs more than just the username — e.g.
+# action_center.py's Investigator-role scoping needs `roles` and
+# `investigator_name` too. Re-decodes the token independently rather than
+# building on get_current_username, same pattern require_admin below already
+# uses.
+def get_current_payload(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    return _decode_token_payload(credentials.credentials)
+
+
 # Gate for the User Management endpoints below (2026-09-08, per the user) —
 # the first role-based authorization check in this codebase; every other
 # router only ever required a valid token (see module docstring), never a
@@ -183,7 +210,7 @@ async def login(request: LoginRequest) -> LoginResponse:
     if not bcrypt.checkpw(request.password.encode("utf-8"), user["password_hash"].encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
     roles = [user["role"]] if user["role"] else []
-    token = issue_token(user["username"], user["id"], roles, user["full_name"])
+    token = issue_token(user["username"], user["id"], roles, user["full_name"], user["investigator_name"])
     await record_login(user["id"])
     return LoginResponse(access_token=token, username=user["username"])
 
@@ -235,7 +262,9 @@ async def create_admin_user(request: AdminCreateUserRequest, _: str = Depends(re
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_UNKNOWN_ROLE_DETAIL)
     password_hash = bcrypt.hashpw(request.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     try:
-        user_id = await create_user(request.username, request.full_name, password_hash, role_id)
+        user_id = await create_user(
+            request.username, request.full_name, password_hash, role_id, request.investigator_name
+        )
     except asyncpg.exceptions.UniqueViolationError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_USERNAME_TAKEN_DETAIL)
     return AdminUserRow(
@@ -246,6 +275,7 @@ async def create_admin_user(request: AdminCreateUserRequest, _: str = Depends(re
         is_active=True,
         created_at=datetime.now(timezone.utc),
         last_login=None,
+        investigator_name=request.investigator_name,
     )
 
 
@@ -257,6 +287,20 @@ async def update_admin_user_role(
     if role_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_UNKNOWN_ROLE_DETAIL)
     updated = await update_user_role(user_id, role_id)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    rows = await fetch_all_users()
+    row = next((r for r in rows if r["id"] == user_id), None)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return AdminUserRow(**dict(row))
+
+
+@router.put("/admin/users/{user_id}/investigator-name", response_model=AdminUserRow)
+async def update_admin_user_investigator_name(
+    user_id: int, request: AdminUpdateInvestigatorNameRequest, _: str = Depends(require_admin)
+) -> AdminUserRow:
+    updated = await update_user_investigator_name(user_id, request.investigator_name or None)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     rows = await fetch_all_users()

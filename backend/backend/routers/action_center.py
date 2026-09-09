@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from backend.db.action_center_queries import (
     QE_TYPE_TO_STAT_LABEL,
@@ -14,6 +14,7 @@ from backend.db.action_center_queries import (
     fetch_open_investigations,
 )
 from backend.db.module_stage import MODULE_LABELS, next_module_label, stage_for
+from backend.routers.auth import get_current_payload
 from backend.schemas.action_center import (
     ActionCenterSummary,
     ChartBar,
@@ -244,9 +245,26 @@ async def get_action_center_summary(
         "should no longer appear in the normal/default view at all, only behind an explicit toggle). "
         "Stat cards/chart/pending actions are unaffected either way — they've always been open-only.",
     ),
+    claims: dict = Depends(get_current_payload),
 ) -> ActionCenterSummary:
     rows = await fetch_open_investigations()
     cancelled_rows = await fetch_cancelled_investigations()
+
+    # Investigator-role scoping (2026-09-09, per the user) — filtered here,
+    # before ANY aggregation below, so every derived number (KPI counts,
+    # status cards, event-type pills, pending actions, the table) is scoped
+    # to just this investigator's own rows, not only the table. own_investigator
+    # prefers the explicit investigator_name hook (schema.sql) and falls back
+    # to the token's own `name` claim (athena_users.full_name) — works
+    # automatically whenever an account's full_name already matches
+    # dim_investigator.investigator verbatim.
+    own_investigator: Optional[str] = None
+    if "Investigator" in (claims.get("roles") or []):
+        own_investigator = (claims.get("investigator_name") or claims.get("name") or "").strip()
+        own_investigator_ci = own_investigator.lower()
+        rows = [r for r in rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
+        cancelled_rows = [r for r in cancelled_rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
+
     today = datetime.date.today()
 
     enriched: List[Dict[str, Any]] = []
@@ -467,7 +485,7 @@ async def get_action_center_summary(
     # covers the full event population (open AND closed), unlike `enriched`
     # above which is open-investigations-only (see fetch_monthly_trend_rows).
     trend_months = _month_starts(_TREND_MONTHS, datetime.date.today())
-    trend_rows = [dict(r) for r in await fetch_monthly_trend_rows(trend_months[0])]
+    trend_rows = [dict(r) for r in await fetch_monthly_trend_rows(trend_months[0], own_investigator)]
     opened_monthly = _bucket_monthly(trend_rows, "date_opened", trend_months)
     opened_trend = MonthlyTrend(monthly=opened_monthly, trend_percent=_trend_percent(opened_monthly))
     closed_trend_by_label: Dict[str, MonthlyTrend] = {}

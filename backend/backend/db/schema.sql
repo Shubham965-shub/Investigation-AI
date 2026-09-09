@@ -39,6 +39,39 @@ ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS full_name TEXT;
 -- NULL for an account that has never logged in yet.
 ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
 
+-- New "Investigator" role (2026-09-09, per the user) — scoped so a signed-in
+-- Investigator only ever sees their OWN investigations in Action Center
+-- (routers/action_center.py's get_action_center_summary filters by this
+-- BEFORE any KPI/status-card/chart aggregation, so every derived number is
+-- scoped too, not just the table). Admin/User/SIT are unaffected — the
+-- scoping only activates when "Investigator" is in the JWT's roles claim.
+INSERT INTO athena_roles (name, description)
+VALUES ('Investigator', 'Can only view their own investigations in Action Center')
+ON CONFLICT (name) DO NOTHING;
+
+-- The "hook" linking an athena_users row to its real-world identity in the
+-- star schema (dim_investigator.investigator is a free-text name, not an
+-- FK-able id — there's no shared identity between the two systems). Set by
+-- an admin via User Management when creating/editing an Investigator-role
+-- user. When left NULL, action_center.py falls back to matching against the
+-- token's own `name` claim (athena_users.full_name) instead — works
+-- automatically whenever the account's full_name already matches
+-- dim_investigator.investigator verbatim, with this column as the explicit
+-- override for the cases where it doesn't (nicknames, formatting mismatches,
+-- etc).
+ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS investigator_name TEXT;
+
+-- New "CXO" role (2026-09-09, per the user) — reserved now for the upcoming
+-- CXO Dashboard (a new page, investigated from Figma but not yet built).
+-- No route/endpoint checks this role yet; added ahead of the build purely so
+-- it's assignable via User Management already. When the dashboard itself is
+-- built, its route/endpoint(s) must gate on "CXO" in the JWT's roles claim,
+-- same require_admin-style pattern already used for the admin-only User
+-- Management endpoints.
+INSERT INTO athena_roles (name, description)
+VALUES ('CXO', 'Executive role — will be scoped to the CXO Dashboard only once built')
+ON CONFLICT (name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS athena_api_call_trails (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES athena_users(id),

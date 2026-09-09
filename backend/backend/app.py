@@ -93,9 +93,16 @@ def create_app() -> FastAPI:
                     # silently drop them (issue_token's params default to
                     # none/derived), regressing the feedback service's
                     # attribution back to a guessed name the moment a token
-                    # first refreshes after login.
+                    # first refreshes after login. investigator_name carried
+                    # forward the same way (2026-09-09, per the user) — an
+                    # Investigator-role user would otherwise silently lose
+                    # their Action Center scoping on the first refresh.
                     response.headers[_REFRESHED_TOKEN_HEADER] = issue_token(
-                        payload["username"], user_id, payload.get("roles"), payload.get("name")
+                        payload["username"],
+                        user_id,
+                        payload.get("roles"),
+                        payload.get("name"),
+                        payload.get("investigator_name"),
                     )
 
         try:

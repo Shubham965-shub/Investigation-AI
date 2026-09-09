@@ -376,6 +376,13 @@ export function ActionCenterPage() {
   // the plain "User" role sees "Action Center" (when not viewing as a
   // specific investigator, which has its own title).
   const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
+  // Investigator role (2026-09-09, per the user) — backend already scopes
+  // every number in `summary` to just this investigator's own rows (see
+  // action_center.py's get_action_center_summary); the Open Investigations
+  // KPI card and the "All Investigators" filter dropdown are hidden here
+  // purely because they'd be redundant/meaningless for a role that only
+  // ever sees itself.
+  const isInvestigatorRole = roles.includes("Investigator");
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -389,6 +396,14 @@ export function ActionCenterPage() {
   // Market Complaint/no-filter use it for L5-L1 only, see assignmentFilter
   // below for their separate Assigned/Unassigned axis.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Reset on event-type change (2026-09-09, per the user) — e.g. selecting
+  // Unassigned while OOS is active and then switching to Deviation
+  // previously kept the OOS-era "unassigned" selection silently applied to
+  // Deviation's own cards/table. Same reset convention as assignmentFilter
+  // below.
+  useEffect(() => {
+    setStatusFilter(null);
+  }, [activeFilter]);
   // All/Assigned/Unassigned radio group, replacing the plain "Unassigned"
   // card for Deviation/Market Complaint/no-filter (2026-09-08, per the
   // user) — a genuinely independent filter dimension from level (statusFilter
@@ -498,7 +513,7 @@ export function ActionCenterPage() {
       <div className="ac-page-bg">
         <div className="ac-page">
           <div className="card">
-            <p className="card-title">Loading Action Center…</p>
+            <p className="card-title">Loading Dashboard…</p>
           </div>
         </div>
       </div>
@@ -716,23 +731,30 @@ export function ActionCenterPage() {
       {/* 5 equal-width KPI cards — Open Investigations plus one per event
           type, each with its own monthly bar chart + MoM trend (SIT
           Dashboard Figma, 2026-09-04, per the user) — replaces the old
-          single "Open Investigations" card + flat stat-pill row. */}
-      <div className="ac-kpi-row">
+          single "Open Investigations" card + flat stat-pill row. Open
+          Investigations itself is dropped entirely for the Investigator
+          role (2026-09-09, per the user) — it's a cross-investigator total,
+          meaningless once the whole page is already scoped to one person's
+          own investigations — so the row becomes 4 equal columns instead of
+          5 for that role. */}
+      <div className="ac-kpi-row" style={isInvestigatorRole ? { gridTemplateColumns: "repeat(4, 1fr)" } : undefined}>
         {/* Open Investigations resets back to the all-types default view
             (2026-09-07, per the user) — the other 4 cards scope down to one
             event type, this one clears that scope. */}
-        <div
-          className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
-          onClick={() => {
-            setActiveFilter(null);
-            setPage(1);
-          }}
-        >
-          <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
-          <div className="ac-kpi-card-count">{summary.total_investigations}</div>
-          <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
-          {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
-        </div>
+        {!isInvestigatorRole && (
+          <div
+            className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
+            onClick={() => {
+              setActiveFilter(null);
+              setPage(1);
+            }}
+          >
+            <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
+            <div className="ac-kpi-card-count">{summary.total_investigations}</div>
+            <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
+            {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
+          </div>
+        )}
         {eventTypeCounts.map((s) => (
           <div
             className={`ac-kpi-card ${eventTypeAccentClass(s.label)} ${activeFilter === s.label ? "active" : ""}`}
@@ -953,7 +975,7 @@ export function ActionCenterPage() {
                 defaultLabel="Product"
                 options={summary.filter_options.products}
               />
-              {!viewAsInvestigator && (
+              {!viewAsInvestigator && !isInvestigatorRole && (
                 <FilterSelect
                   className="ac-filter-pill"
                   value={investigatorFilter}
