@@ -1,0 +1,304 @@
+/* CXO Dashboard (2026-09-09) — ported from Figma (node D1-D4, file
+   vFYyxUjVvQ0ICGysDga50H), CXO-role only. Every number here is static mock
+   data (see CxoDashboardPage.tsx's DOMAIN_DATA) — nothing is wired to a
+   backend endpoint yet. */
+
+.cxo-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cxo-header-row h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.cxo-header-row p {
+  margin: 2px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.cxo-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-btn);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 7px 12px;
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.cxo-section-title {
+  margin: 0 0 16px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.cxo-domain-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.cxo-domain-card {
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cxo-domain-card.active.below {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.cxo-domain-card.active.on {
+  border-color: var(--color-success-border);
+  background: var(--color-success-bg);
+}
+
+.cxo-domain-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cxo-domain-value {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.cxo-domain-value.below { color: var(--color-warning-text); }
+.cxo-domain-value.on { color: var(--color-success-text); }
+
+.cxo-domain-caption {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.cxo-domain-badge {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 3px 8px;
+  border-radius: var(--radius-btn);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.cxo-domain-badge.below { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
+.cxo-domain-badge.on { background: var(--color-success-bg); color: var(--color-success-text); border: 1px solid var(--color-success-border); }
+
+/* Detail panel wraps the whole tab's content in the selected domain's own
+   tint (amber/green), matching the Figma's outer highlight border. */
+.cxo-detail-panel {
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.cxo-detail-panel.below { border-color: var(--color-warning-border); background: rgba(180, 83, 9, 0.03); }
+.cxo-detail-panel.on { border-color: var(--color-success-border); background: rgba(22, 163, 74, 0.03); }
+
+.cxo-chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.cxo-chart-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.cxo-chart-card + .cxo-chart-card {
+  margin-top: 0;
+}
+
+.cxo-chart-grid + .cxo-chart-grid {
+  margin-top: 16px;
+}
+
+.cxo-chart-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.cxo-chart-title-row h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.cxo-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.cxo-legend-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cxo-legend-swatch::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--swatch-color, currentColor);
+}
+
+.cxo-legend-swatch.dot::before {
+  border-radius: 50%;
+}
+
+.cxo-observation-box {
+  border: 1px solid var(--color-success-border);
+  background: var(--color-success-bg);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  margin-top: 16px;
+}
+
+.cxo-observation-box strong {
+  color: var(--color-success-text);
+}
+
+.cxo-anchor-row {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-card-border);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cxo-anchor-row .label {
+  font-weight: 700;
+  color: var(--color-text);
+  margin-right: 4px;
+}
+
+.cxo-anchor-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.cxo-anchor-sep {
+  color: var(--color-text-muted);
+}
+
+.cxo-heatmap-table, .cxo-register-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.cxo-heatmap-table th, .cxo-register-table th {
+  text-align: left;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.cxo-heatmap-table td, .cxo-register-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-card-border);
+  vertical-align: middle;
+}
+
+.cxo-heatmap-table td:not(:first-child) {
+  text-align: center;
+}
+
+.cxo-heatmap-cell {
+  display: inline-block;
+  min-width: 32px;
+  padding: 3px 10px;
+  border-radius: var(--radius-btn);
+  font-weight: 700;
+}
+
+.cxo-heatmap-cell.low { background: var(--color-success-bg); color: var(--color-success-text); }
+.cxo-heatmap-cell.moderate { background: var(--color-chart-cool-muted); color: var(--color-text); }
+.cxo-heatmap-cell.high { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.cxo-heatmap-cell.critical { background: var(--color-danger-bg); color: var(--color-danger-text); }
+
+.cxo-register-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-btn);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.cxo-register-type-badge.far { background: var(--color-accepted-bg); color: var(--color-accepted-text); }
+.cxo-register-type-badge.field-alert { background: var(--color-info-bg); color: var(--color-info-text); }
+.cxo-register-type-badge.recall { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.cxo-register-type-badge.assessment { background: var(--color-warning-bg); color: var(--color-warning-text); }
+
+.cxo-register-clock.urgent {
+  color: var(--color-danger-text);
+  font-weight: 700;
+}
+
+.cxo-owner-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cxo-owner-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-rail-active-bg);
+  color: var(--color-primary-text);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}

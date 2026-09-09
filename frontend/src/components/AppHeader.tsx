@@ -5,6 +5,7 @@ import athenaLogo from "../assets/icons/athena-logo.svg";
 import headerIcon1 from "../assets/icons/header-icon-1.svg";
 import headerIcon2 from "../assets/icons/header-icon-2.svg";
 import userManagementIcon from "../assets/icons/panel-team.svg";
+import cxoDashboardIcon from "../assets/icons/cxo-dashboard-icon.svg";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
@@ -89,6 +90,21 @@ export function AppHeader() {
             style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <img src={userManagementIcon} alt="" width={20} height={20} />
+          </button>
+        )}
+
+        {/* CXO-only (2026-09-09, per the user) — opens the CXO Dashboard.
+            Same UX-nicety-not-the-real-gate pattern as the User Management
+            button above; CxoDashboardPage checks the role itself too. */}
+        {roles.includes("CXO") && (
+          <button
+            type="button"
+            aria-label="CXO Dashboard"
+            title="CXO Dashboard"
+            onClick={() => navigate("/cxo-dashboard")}
+            style={{ background: "none", border: "none", width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <img src={cxoDashboardIcon} alt="" width={20} height={20} />
           </button>
         )}
 
