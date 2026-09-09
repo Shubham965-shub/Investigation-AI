@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query
@@ -155,6 +156,64 @@ def _bucket_for(open_investigation_status: Optional[str]) -> str:
     return _OPEN_STATUS_TO_BUCKET.get(open_investigation_status, "unassigned")
 
 
+# STOPGAP (2026-09-08, per the user): dim_product.product_key=620 is the
+# ETL's catch-all "couldn't resolve a product" bucket — its name_of_material
+# is literally the string "Not Applicable", and it's the single largest
+# product_key across fact_qms_event (1,038/7,576 rows, ~14% — confirmed live,
+# 2026-09-08), including rows (e.g. 505232) where the correct product
+# clearly already exists elsewhere in dim_product under a different key. That
+# ETL mapping is out of this app's control, so — until it's fixed upstream —
+# fall back to parsing the product name out of dim_event.title, whose format
+# is templated per event type:
+#   Market Complaint: "<Product>; B. No. <batch>; <complaint description>"
+#   OOS/OOT:           "...<test> ... B.No <batch> [-<code>[-<code>]] <Product>"
+# Deviation titles (audit/calibration/equipment findings) don't reliably
+# reference a specific product at all (confirmed against a live sample), so
+# they're intentionally left unhandled — returning None there rather than a
+# wrong guess.
+_MC_TITLE_PRODUCT_RE = re.compile(r"^(.*?)[;,]\s*B\.?\s*N\.?(?:o\.?)?\b", re.IGNORECASE)
+_OOS_OOT_BATCH_ANCHOR_RE = re.compile(r"(?:B\.?\s*N\.?(?:o\.?)?|for\s+batch)\s*[:\-]?\s*\S+(.*)$", re.IGNORECASE)
+# Stability-study shorthand ("06M", "18M", "ASL") that sits right before the
+# product name with no delimiter of its own (e.g. "-H4075-06M Alfacalcidol
+# Capsules...") — the dash/comma split below can't separate it from the
+# product name that follows, so it's stripped as a separate pass.
+_LEADING_STUDY_CODE_RE = re.compile(r"^(?:ASL|\d{1,3}M)\s+")
+
+
+def _extract_product_from_title(title: Optional[str], qe_type_label: str) -> Optional[str]:
+    if not title:
+        return None
+    if qe_type_label == "Market Complaint":
+        m = _MC_TITLE_PRODUCT_RE.match(title)
+        candidate = m.group(1).strip(" -") if m else None
+        return candidate or None
+    if qe_type_label in ("OOS", "OOT"):
+        m = _OOS_OOT_BATCH_ANCHOR_RE.search(title)
+        if not m:
+            return None
+        # Batch/stability-condition codes and the product name are all
+        # dash/comma-separated on the same line (e.g. "-H2560-ASL-
+        # Alfacalcidol Capsules..." or "-ASL, N25°C/ 60%RH, Icosapentethyl
+        # capsules 1g") — the product segment is reliably the longest one,
+        # unlike "last segment", which grabs a trailing short site/country
+        # code instead of the product on titles that have one (confirmed
+        # live against deviation_id 509110, where "last" wrongly returned
+        # "US" instead of the actual product before it).
+        parts = [p.strip() for p in re.split(r"[-,]", m.group(1)) if p.strip()]
+        if not parts:
+            return None
+        candidate = max(parts, key=len)
+        candidate = _LEADING_STUDY_CODE_RE.sub("", candidate)
+        return candidate or None
+    return None
+
+
+def _resolve_product(raw_product: Optional[str], title: Optional[str], qe_type_label: str) -> Optional[str]:
+    if raw_product and raw_product != "Not Applicable":
+        return raw_product
+    return _extract_product_from_title(title, qe_type_label) or raw_product
+
+
 @router.get("/summary", response_model=ActionCenterSummary)
 async def get_action_center_summary(
     site: Optional[str] = Query(None),
@@ -222,7 +281,9 @@ async def get_action_center_summary(
                 "investigator": r["investigator"],
                 "site": r["location"],
                 "department": r["department"],
-                "product": r["product"],
+                "product": _resolve_product(
+                    r["product"], r["title"], QE_TYPE_TO_STAT_LABEL.get(r["qe_type"], r["qe_type"] or "Unknown")
+                ),
                 "criticality": r["criticality"],
                 "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
@@ -260,7 +321,9 @@ async def get_action_center_summary(
                 "investigator": r["investigator"],
                 "site": r["location"],
                 "department": r["department"],
-                "product": r["product"],
+                "product": _resolve_product(
+                    r["product"], r["title"], QE_TYPE_TO_STAT_LABEL.get(r["qe_type"], r["qe_type"] or "Unknown")
+                ),
                 "criticality": r["criticality"],
                 "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
