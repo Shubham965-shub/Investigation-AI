@@ -153,9 +153,12 @@ function trendTone(trendPercent: number | null): "neutral" | "warm" | "cool" {
 
 // Left-edge accent color per event-type KPI card (SIT Dashboard Figma,
 // 2026-09-08, per the user) — static per event type, not tied to MoM trend
-// direction (unlike the mini bar chart's own coloring above).
-function eventTypeAccentClass(label: string): "event-blue" | "event-teal" {
-  return label === "Deviation" || label === "OOS" ? "event-blue" : "event-teal";
+// direction (unlike the mini bar chart's own coloring above). OOS got its
+// own deep-purple color (2026-09-08, per the user), split out of the blue
+// group it originally shared with Deviation.
+function eventTypeAccentClass(label: string): "event-blue" | "event-teal" | "event-purple" {
+  if (label === "OOS") return "event-purple";
+  return label === "Deviation" ? "event-blue" : "event-teal";
 }
 
 // Fixed pixel height of .ac-kpi-chart in ActionCenterPage.css — bar heights
@@ -190,10 +193,17 @@ function niceAxisMax(max: number, targetSteps = 4): number {
 // green/grey) is derived from the trend direction by default; pass
 // forceTone="neutral" to opt out (2026-09-07, per the user — Open
 // Investigations' own chart stays grey regardless of trend direction).
-function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutral") {
+// invertTrendColor swaps which arrow direction reads as good/bad (2026-09-08,
+// per the user) — every other card tracks "Closed / month", where more is
+// good (▲ green); Open Investigations tracks "Opened / month", where more
+// is bad, so ▲ should read red and ▼ green there instead.
+function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutral", invertTrendColor = false) {
   const tone = forceTone ?? trendTone(trend.trend_percent);
   const axisMax = niceAxisMax(Math.max(...trend.monthly.map((b) => b.count)));
   const heightFor = (count: number) => Math.max(2, Math.round((count / axisMax) * KPI_CHART_HEIGHT_PX));
+  const isDown = trend.trend_percent !== null && trend.trend_percent < 0;
+  const isUp = trend.trend_percent !== null && trend.trend_percent > 0;
+  const trendClass = isDown ? (invertTrendColor ? "up" : "down") : isUp ? (invertTrendColor ? "down" : "up") : "";
   return (
     <>
       <div className={`ac-kpi-chart ac-kpi-chart-${tone}`}>
@@ -211,8 +221,8 @@ function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutr
       <div className="ac-kpi-trend">
         <span>{caption}</span>
         {trend.trend_percent !== null && (
-          <span className={trend.trend_percent < 0 ? "down" : trend.trend_percent > 0 ? "up" : ""}>
-            {trend.trend_percent < 0 ? "▼" : trend.trend_percent > 0 ? "▲" : "—"} {Math.abs(trend.trend_percent)}% from last month
+          <span className={trendClass}>
+            {isDown ? "▼" : isUp ? "▲" : "—"} {Math.abs(trend.trend_percent)}% from last month
           </span>
         )}
       </div>
@@ -271,12 +281,14 @@ function renderAssignmentFilterCard(value: "all" | "assigned" | "unassigned", on
       <div className="ac-status-card-header">
         <span>Status</span>
       </div>
-      <div style={{ padding: "0 16px 14px" }}>
+      <div style={{ padding: "0 20px 20px" }}>
         {/* Single segmented pill, not 3 separate radio rows (2026-09-08,
             per the user) — same .ac-criticality-toggle look as the "All /
             Critical / Major-Minor" control in the filter bar above, for
-            visual consistency. */}
-        <div className="ac-criticality-toggle">
+            visual consistency. The "stretch" modifier fills this now-wider
+            card's width instead of staying a small inline-flex pill hugging
+            the left edge (2026-09-08, per the user). */}
+        <div className="ac-criticality-toggle stretch">
           {ASSIGNMENT_FILTER_OPTIONS.map((opt) => (
             <button type="button" key={opt.key} className={value === opt.key ? "active" : ""} onClick={() => onChange(opt.key)}>
               {opt.label}
@@ -719,7 +731,7 @@ export function ActionCenterPage() {
           <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
           <div className="ac-kpi-card-count">{summary.total_investigations}</div>
           <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
-          {renderKpiChart(summary.opened_trend, "Opened / month", "neutral")}
+          {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
         </div>
         {eventTypeCounts.map((s) => (
           <div
@@ -751,7 +763,14 @@ export function ActionCenterPage() {
           // in the branch below (2026-09-08, per the user).
           const levelOnlyCards = statusCards.filter((c) => c.key !== "unassigned");
           return (
-            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${statusCards.length}, 1fr)` }}>
+            <div
+              className="ac-status-row"
+              // Status gets 1.5x a level card's width (2026-09-08, per the
+              // user — dialed back from 2fr, which read as too big) so its
+              // segmented All/Assigned/Unassigned control has a bit more
+              // room to stretch out than a single level card's 1fr.
+              style={{ gridTemplateColumns: `1.5fr repeat(${levelOnlyCards.length}, 1fr)` }}
+            >
               {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
               {levelOnlyCards.map((card, idx) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter, idx === 0))}
             </div>
@@ -828,8 +847,32 @@ export function ActionCenterPage() {
           below (SIT Dashboard Figma, 2026-09-04, per the user) — previously
           all of this, plus the table itself, shared one card. */}
       <div className="ac-card">
-        <div className="ac-details-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Search + every filter now share one line, search shortened and
+            pinned to the left with the whole filter group shifted to its
+            right (2026-09-09, per the user) — previously the search bar
+            was its own full-width row below this one. */}
+        <div className="ac-details-header" style={{ flexWrap: "nowrap" }}>
+          {/* flex: 1 (2026-09-09, per the user) — expands to fill the space
+              up to the filter group instead of stopping at a short fixed
+              width, so the row reads as one unbroken line with no dead gap
+              between the search bar and the filters. */}
+          <div className="ac-search-row" style={{ marginBottom: 0, flex: 1 }}>
+            <div className="ac-search-input-wrap">
+              <img src={iconSearch} alt="" width={16} height={16} />
+              <input
+                className="ac-search-input"
+                placeholder="Search title, record ID, RCI ID, investigator, product..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <button type="button" className="ac-search-btn">Search</button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <div className="ac-criticality-toggle">
               <button
                 type="button"
@@ -878,85 +921,69 @@ export function ActionCenterPage() {
               )}
             </div>
             <CriticalityGuidelines eventType={activeFilter} />
-          </div>
-          <div className="ac-filters">
-            <FilterSelect
-              className="ac-filter-pill"
-              value={siteFilter}
-              onChange={(v) => {
-                setSiteFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="All Sites"
-              options={summary.filter_options.sites}
-              formatOption={formatSiteLabel}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={deptFilter}
-              onChange={(v) => {
-                setDeptFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="Dept"
-              options={summary.filter_options.departments}
-            />
-            <FilterSelect
-              className="ac-filter-pill"
-              value={productFilter}
-              onChange={(v) => {
-                setProductFilter(v);
-                setPage(1);
-              }}
-              defaultLabel="Product"
-              options={summary.filter_options.products}
-            />
-            {!viewAsInvestigator && (
+            <div className="ac-filters">
               <FilterSelect
                 className="ac-filter-pill"
-                value={investigatorFilter}
+                value={siteFilter}
                 onChange={(v) => {
-                  setInvestigatorFilter(v);
+                  setSiteFilter(v);
                   setPage(1);
                 }}
-                defaultLabel="All Investigators"
-                options={summary.filter_options.investigators}
-                formatOption={formatInvestigatorLabel}
+                defaultLabel="All Sites"
+                options={summary.filter_options.sites}
+                formatOption={formatSiteLabel}
               />
-            )}
-            {/* Button removed (2026-08-25, per the user: never show cancelled
-                deviations) — showCancelled/setShowCancelled and the
-                status: "cancelled" query branch are kept as-is below, just
-                unreachable with no way to toggle this on. */}
-            {false && (
-              <button
-                type="button"
-                className={`ac-filter-pill${showCancelled ? " active" : ""}`}
-                onClick={() => {
-                  setShowCancelled((v) => !v);
+              <FilterSelect
+                className="ac-filter-pill"
+                value={deptFilter}
+                onChange={(v) => {
+                  setDeptFilter(v);
                   setPage(1);
                 }}
-              >
-                {showCancelled ? "Showing Cancelled" : "Show Cancelled"}
-              </button>
-            )}
+                defaultLabel="Dept"
+                options={summary.filter_options.departments}
+              />
+              <FilterSelect
+                className="ac-filter-pill"
+                value={productFilter}
+                onChange={(v) => {
+                  setProductFilter(v);
+                  setPage(1);
+                }}
+                defaultLabel="Product"
+                options={summary.filter_options.products}
+              />
+              {!viewAsInvestigator && (
+                <FilterSelect
+                  className="ac-filter-pill"
+                  value={investigatorFilter}
+                  onChange={(v) => {
+                    setInvestigatorFilter(v);
+                    setPage(1);
+                  }}
+                  defaultLabel="All Investigators"
+                  options={summary.filter_options.investigators}
+                  formatOption={formatInvestigatorLabel}
+                />
+              )}
+              {/* Button removed (2026-08-25, per the user: never show cancelled
+                  deviations) — showCancelled/setShowCancelled and the
+                  status: "cancelled" query branch are kept as-is below, just
+                  unreachable with no way to toggle this on. */}
+              {false && (
+                <button
+                  type="button"
+                  className={`ac-filter-pill${showCancelled ? " active" : ""}`}
+                  onClick={() => {
+                    setShowCancelled((v) => !v);
+                    setPage(1);
+                  }}
+                >
+                  {showCancelled ? "Showing Cancelled" : "Show Cancelled"}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-
-        <div className="ac-search-row" style={{ marginBottom: 0 }}>
-          <div className="ac-search-input-wrap">
-            <img src={iconSearch} alt="" width={16} height={16} />
-            <input
-              className="ac-search-input"
-              placeholder="Search title, record ID, RCI ID, investigator, product..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <button type="button" className="ac-search-btn">Search</button>
         </div>
       </div>
 
@@ -1052,10 +1079,9 @@ export function ActionCenterPage() {
                     <td>
                       <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
                         <span className={`ac-badge ${eventTypeAccentClass(inv.event_type)}`}>{inv.event_type}</span>
+                        {/* Major/Minor no longer get a badge (2026-09-08, per the user) —
+                            only Critical is called out on the row. */}
                         {inv.criticality === "Critical" && <span className="ac-badge critical">Critical</span>}
-                        {inv.criticality && inv.criticality !== "Critical" && (
-                          <span className="ac-badge gray">{inv.criticality}</span>
-                        )}
                       </div>
                       <div className="ac-inv-id">{inv.id}{inv.rci_ids.length > 0 ? ` / ${inv.rci_ids.join(", ")}` : ""}</div>
                       <div className="ac-inv-title">{inv.title}</div>

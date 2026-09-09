@@ -85,6 +85,11 @@
 
 .ac-kpi-card.event-blue { --kpi-accent: var(--color-info-text); }
 .ac-kpi-card.event-teal { --kpi-accent: var(--color-primary); }
+/* OOS's own deep purple (2026-09-08, per the user), split out of the blue
+   group it previously shared with Deviation — reuses the existing "accepted"
+   purple tokens (Task Critique's "N Accepted" pill) rather than inventing a
+   new color family. */
+.ac-kpi-card.event-purple { --kpi-accent: var(--color-accepted-text); }
 
 /* Open Investigations always gets this subtle grey top-fade — permanent,
    not tied to whether it's the active/default view — instead of the
@@ -376,6 +381,7 @@
    same blue/teal grouping as eventTypeAccentClass elsewhere on this page. */
 .ac-badge.event-blue { background: var(--color-info-bg); color: var(--color-info-text); }
 .ac-badge.event-teal { background: var(--color-success-bg); color: var(--color-success-text); }
+.ac-badge.event-purple { background: var(--color-accepted-bg); color: var(--color-accepted-text); }
 
 .ac-pending-action-row {
   display: flex;
@@ -424,8 +430,15 @@
   flex-wrap: wrap;
 }
 
+/* Filter bar controls — toggle/pills/search — all share one height
+   (2026-09-09, per the user: they previously each sized to their own
+   padding/font-size and didn't line up). Set as an explicit height (not
+   just matching padding) so it holds regardless of each control's own
+   font-size. */
 .ac-criticality-toggle {
   display: inline-flex;
+  height: 38px;
+  box-sizing: border-box;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
   overflow: hidden;
@@ -435,7 +448,10 @@
   border: none;
   background: var(--color-surface);
   color: var(--color-text-muted);
-  padding: 5px 12px;
+  height: 100%;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
@@ -450,10 +466,32 @@
   color: #fafafa;
 }
 
+/* Status card's All/Assigned/Unassigned control only (2026-09-08, per the
+   user) — stretches the segmented pill to fill the card's now-doubled width
+   with evenly spaced, roomier buttons, instead of the compact inline-flex
+   pill the filter bar's own toggles use elsewhere on this page. */
+.ac-criticality-toggle.stretch {
+  display: flex;
+  width: 100%;
+  /* Status card's own control, deliberately taller/roomier than the filter
+     bar's 38px (see its own comment where it's declared) — opt back out of
+     the shared height above. */
+  height: auto;
+}
+
+.ac-criticality-toggle.stretch button {
+  flex: 1;
+  height: auto;
+  padding: 10px 16px;
+  text-align: center;
+}
+
 .ac-filter-pill {
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
-  padding: 7px 12px;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 12px;
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   background: var(--color-surface);
@@ -477,6 +515,7 @@
 
 .ac-search-input-wrap {
   flex: 1;
+  height: 38px;
   position: relative;
   display: flex;
   align-items: center;
@@ -489,9 +528,11 @@
 
 .ac-search-input {
   width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-btn);
-  padding: 10px 14px 10px 38px;
+  padding: 0 14px 0 38px;
   font-size: var(--font-size-base);
   background: var(--color-surface);
   color: var(--color-text);
@@ -502,6 +543,8 @@
   color: #fff;
   border: none;
   border-radius: var(--radius-btn);
+  height: 38px;
+  box-sizing: border-box;
   padding: 0 20px;
   font-weight: 700;
 }
@@ -555,6 +598,7 @@
    plain (non-event-typed) table. */
 .ac-inv-row.event-blue:hover { background: var(--color-info-bg); }
 .ac-inv-row.event-teal:hover { background: var(--color-success-bg); }
+.ac-inv-row.event-purple:hover { background: var(--color-accepted-bg); }
 
 .ac-inv-id {
   color: var(--color-text-muted);
