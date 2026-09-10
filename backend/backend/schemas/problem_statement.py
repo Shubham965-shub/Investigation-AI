@@ -21,6 +21,15 @@ class ProblemStatementGenerateResponse(BaseModel):
     problem_statement: str
 
 
+class ProblemStatementUpdateRequest(BaseModel):
+    """Manual edit to an already-generated problem statement (2026-09-10, per
+    the user) — previously session-only (see ProblemStatementRecord's own
+    docstring: "read-only for now"), lost on refresh/navigation with no
+    backend endpoint to persist it at all."""
+
+    problem_statement: str
+
+
 class SimilarInvestigation(BaseModel):
     """A historic investigation this one is based on/similar to, ranked by
     cosine similarity over ds's precomputed description embeddings
@@ -35,8 +44,9 @@ class SimilarInvestigation(BaseModel):
 class ProblemStatementRecord(BaseModel):
     """A real investigation record's Trackwise fields, hydrated from the STAR
     schema. problem_statement is None until one has been generated and
-    persisted to investigation_problem_statements (generated_content.sql);
-    read-only for now."""
+    persisted to investigation_problem_statements (generated_content.sql) —
+    editable via PUT /problem-statement/{record_id} (2026-09-10, per the
+    user) as long as locked_for_editing is False."""
 
     record_id: str
     event_type: PSEventType

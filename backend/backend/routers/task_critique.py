@@ -365,6 +365,18 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     if score_task is not None:
         task_score, score_breakdown, critique_failed = await score_task
         await set_task_score(report_id, task_score, score_breakdown, critique_failed)
+    elif not recommendations:
+        # BUGFIX (2026-09-10, per the user — confirmed live on record 507944):
+        # a non-final attempt whose critique genuinely came back with zero
+        # recommendations now locks immediately as "complete" (see
+        # critique_state.compute_upload_state's matching fix) instead of
+        # getting stuck with can_upload=False and nothing to accept/reject.
+        # No further upload or decision will ever happen for this task, so —
+        # same as rejecting every recommendation — it needs the same
+        # "score it now" trigger decide_recommendation already applies for
+        # that case, rather than sitting "complete" with no score.
+        task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_task_score(report_id, task_score, score_breakdown, critique_failed)
 
     sections = await _build_sections(deviation_id, docx_bytes)
     return _build_section_response(_find_task(sections, task_index))

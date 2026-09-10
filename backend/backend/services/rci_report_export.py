@@ -74,7 +74,11 @@ from __future__ import annotations
 
 import copy
 import io
+import logging
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -85,8 +89,11 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+from pypdf import PdfReader
 
 from backend.schemas.rci_report import RciReportSections
+
+logger = logging.getLogger(__name__)
 
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "assets" / "rci_report_template.docx"
 
@@ -434,38 +441,6 @@ def _ensure_row_count(table, first_data_row: int, count: int, template_row: Opti
     return list(table.rows)[first_data_row : first_data_row + target]
 
 
-# Splits sentence-per-idea narrative text into bullet lines for the two Executive
-# Summary fields (immediate_containment_action, determination_of_root_cause) whose own
-# prompt already asks for "each its own sentence" / "every distinct action" — the
-# underlying data is one string (shared with ds/frontend, not changed here), so the
-# list rendering happens only at export time. Splits on sentence-ending punctuation
-# followed by whitespace and a capital letter/open-paren, to avoid breaking on
-# mid-sentence abbreviations like "No." or "kW." in the common case — best-effort, not
-# used anywhere content is parsed back out, so an occasional over-split just reads as a
-# shorter bullet rather than a wrong one.
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
-
-
-def _bullet_lines(text: str) -> List[str]:
-    if not text:
-        return []
-    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s.strip()]
-    return [f"•\t{s}" for s in sentences]
-
-
-# OOS/OOT's own real reports render this same sentence-per-idea narrative
-# WITHOUT a bullet character at all — each sentence its own plain paragraph,
-# separated by blank spacing, confirmed across 3 real OOS reports at the raw
-# XML level (2026-08-28, per the user: formatting only, sourced from the "50
-# Historical Report" samples). Deviation/Market Complaint's own real reports
-# use literal "•" bullets for this same narrative, so this is a genuine
-# per-type formatting split, not a single shared convention.
-def _plain_lines(text: str) -> List[str]:
-    if not text:
-        return []
-    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s.strip()]
-
-
 # Initial Impact Assessment's Immediate Actions and Correction/Remedial
 # Action both already arrive as a list of distinct action strings (not one
 # blob needing sentence-splitting) — unlike the two Executive Summary
@@ -490,6 +465,38 @@ def _yesno(value: bool) -> str:
     return "Yes" if value else "No"
 
 
+def _insert_heading_paragraph(cursor: _Cursor, index: int, heading_text: str) -> None:
+    """Inserts a new bold, spaced-apart heading paragraph directly before
+    the paragraph at `index` (2026-09-10, per the user — Conclusion
+    Statement needed a real heading, not just an inline text prefix on its
+    content paragraph). Clones that paragraph's own XML first (so the
+    heading carries over the template's own font/size the same way
+    _set_bulleted_paragraphs' clones do), then overwrites its text/run
+    properties.
+
+    Bumps `cursor.offset` by 1 so the paragraph originally at `index` (now
+    one physical position later) and every subsequent _fill_* call still
+    resolve correctly — same accounting _set_bulleted_paragraphs itself
+    already relies on (see _Cursor's own docstring)."""
+    anchor = cursor.paragraph(index)
+    heading_p = copy.deepcopy(anchor._p)
+    anchor._p.addprevious(heading_p)
+    heading_para = Paragraph(heading_p, cursor.doc)
+    heading_para.paragraph_format.left_indent = 0
+    heading_para.paragraph_format.first_line_indent = 0
+    heading_para.paragraph_format.space_before = Pt(12)
+    heading_para.paragraph_format.space_after = Pt(6)
+    run = heading_para.runs[0] if heading_para.runs else heading_para.add_run()
+    for extra in list(heading_para.runs[1:]):
+        extra.text = ""
+    run.text = heading_text
+    run.bold = True
+    run.italic = False
+    run.font.color.rgb = RGBColor(0, 0, 0)
+    _apply_font(run)
+    cursor.offset += 1
+
+
 # ── 1. Executive Summary ────────────────────────────────────────────────
 
 def _fill_executive_summary(cursor: _Cursor, section, event_type: str, errors: dict) -> None:
@@ -507,20 +514,37 @@ def _fill_executive_summary(cursor: _Cursor, section, event_type: str, errors: d
     # among four types and the combined value doesn't disambiguate which one
     # a given record actually is.
     is_plain = event_type in ("OOS", "OOS/OOT")
-    lines_fn = _plain_lines if is_plain else _bullet_lines
+
+    # Every field is now a list of bullet-point strings, already split by
+    # the LLM (2026-09-10, per the user) — schemas/rci_report.py's
+    # ExecutiveSummarySection. Just needs the "•\t" prefix _set_bulleted_
+    # paragraphs' hanging-indent formatting expects (same convention
+    # _maybe_bullet already uses elsewhere in this file), not the sentence-
+    # splitting _bullet_lines/_plain_lines did when these were one string.
+    def lines_for(items: List[str]) -> List[str]:
+        return list(items) if is_plain else [f"•\t{item}" for item in items]
+
     # Paragraph 55 (section.summary — the short lead-in blurb before the
     # "Problem Description" heading) is deliberately left unpopulated
     # (2026-08-28, per the user) — it's a blank slot in the raw template
     # with no runs of its own, so leaving it blank means
     # _strip_guidance_runs removes it entirely rather than leaving a stray
     # empty line.
-    _set_paragraph_text(cursor, 59, section.problem_description)
-    _set_bulleted_paragraphs(cursor, 64, lines_fn(section.immediate_containment_action), hanging=not is_plain)
-    _set_bulleted_paragraphs(cursor, 71, lines_fn(section.determination_of_root_cause), hanging=not is_plain)
-    _set_paragraph_text(cursor, 74, section.root_cause_probable_cause_statement, clear_italic=True)
-    _set_paragraph_text(cursor, 80, section.impact_assessment)
-    _set_paragraph_text(cursor, 86, section.correction_conclusion_preventive_actions)
-    _set_paragraph_text(cursor, 87, f"Conclusion Statement: {section.conclusion_statement}")
+    _set_bulleted_paragraphs(cursor, 59, lines_for(section.problem_description), hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 64, lines_for(section.immediate_containment_action), hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 71, lines_for(section.determination_of_root_cause), hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 74, lines_for(section.root_cause_probable_cause_statement), clear_italic=True, hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 80, lines_for(section.impact_assessment), hanging=not is_plain)
+    _set_bulleted_paragraphs(cursor, 86, lines_for(section.correction_conclusion_preventive_actions), hanging=not is_plain)
+    # Conclusion Statement now gets its own bold, spaced-apart heading
+    # (2026-09-10, per the user) instead of an inline "Conclusion Statement: "
+    # text prefix on the same paragraph as its content — _insert_heading_
+    # paragraph inserts that heading directly before paragraph 87 and bumps
+    # cursor.offset, so this _set_bulleted_paragraphs call (still targeting
+    # "87") resolves to the original content paragraph, now one position
+    # later.
+    _insert_heading_paragraph(cursor, 87, "Conclusion Statement")
+    _set_bulleted_paragraphs(cursor, 87, lines_for(section.conclusion_statement), hanging=not is_plain)
 
 
 # ── 2. Description of Event ─────────────────────────────────────────────
@@ -963,16 +987,24 @@ def _insert_bookmark(paragraph: Paragraph, bookmark_id: int, name: str) -> None:
     p.insert(index + 1, end)
 
 
-def _add_page_breaks(cursor: _Cursor) -> None:
+def _add_page_breaks(cursor: _Cursor) -> List[str]:
     # Always called first, before any bulleted-paragraph expansion, so
     # cursor.offset is still 0 here — kept cursor-based anyway (rather than
     # taking `doc` directly) purely for signature consistency with every
     # other function in this file. Also plants each section's bookmark
     # here, at the same paragraph, for the same reason (offset is still 0).
+    # Returns each heading's own text, in the same order as
+    # _SECTION_BOOKMARK_NAMES — used by _compute_section_page_numbers to
+    # locate each section's real page in a rendered PDF (2026-09-10, per the
+    # user), so the search string always matches the template's actual
+    # wording even if it's edited later.
+    heading_texts: List[str] = []
     for bookmark_id, (index, name) in enumerate(zip(_SECTION_HEADING_INDICES, _SECTION_BOOKMARK_NAMES)):
         heading = cursor.paragraph(index)
         heading.paragraph_format.page_break_before = True
         _insert_bookmark(heading, bookmark_id, name)
+        heading_texts.append(heading.text.strip())
+    return heading_texts
 
 
 def _set_cell_pageref(cell, bookmark_name: str) -> None:
@@ -1025,11 +1057,86 @@ def _fill_index_page_numbers(cursor: _Cursor) -> None:
         _set_cell_pageref(table.rows[row_offset + 1].cells[3], name)
 
 
+def _normalize_for_search(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _compute_section_page_numbers(docx_bytes: bytes, heading_texts: List[str]) -> List[int]:
+    """Renders `docx_bytes` to PDF via headless LibreOffice and returns each
+    heading's real 1-based page number, in the same order as `heading_texts`
+    (2026-09-10, per the user) — python-docx itself never lays out text (no
+    font metrics, no line wrapping, no page breaks), so this is the only way
+    to get a page number that actually matches what opening the document
+    would show, rather than Word's own unresolved PAGEREF placeholder (see
+    _set_cell_pageref above, which this is meant to replace when it works).
+
+    Raises on ANY failure — soffice missing, conversion error/timeout, or a
+    heading that can't be located in the rendered PDF text. Callers MUST
+    catch broadly and fall back to the existing PAGEREF-field behavior
+    (build_rci_report_docx does this) rather than let a rendering hiccup
+    break the whole export.
+
+    Searches monotonically forward (each heading's search starts from the
+    page the previous one was found on, not page 0) — sections are always
+    filled in the same fixed top-to-bottom template order, so this can never
+    accidentally match a later section's heading against an earlier page.
+    """
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        raise RuntimeError("soffice/libreoffice not found on PATH")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        docx_path = Path(tmp_dir) / "report.docx"
+        docx_path.write_bytes(docx_bytes)
+        subprocess.run(
+            [soffice, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", tmp_dir, str(docx_path)],
+            check=True,
+            timeout=90,
+            capture_output=True,
+        )
+        pdf_path = docx_path.with_suffix(".pdf")
+        if not pdf_path.exists():
+            raise RuntimeError("soffice did not produce a PDF output file")
+
+        reader = PdfReader(str(pdf_path))
+        page_texts = [_normalize_for_search(page.extract_text() or "") for page in reader.pages]
+
+    page_numbers: List[int] = []
+    search_from = 0
+    for heading in heading_texts:
+        # First ~40 normalized chars — long enough to be a confident match,
+        # short enough to stay robust against minor PDF text-extraction
+        # glitches (odd spacing, ligatures) further into a longer heading.
+        needle = _normalize_for_search(heading)[:40]
+        if not needle:
+            raise RuntimeError(f"Empty heading text, cannot locate a page for it: {heading!r}")
+        found_at = next((i for i in range(search_from, len(page_texts)) if needle in page_texts[i]), None)
+        if found_at is None:
+            raise RuntimeError(f"Could not locate heading in the rendered PDF: {heading!r}")
+        page_numbers.append(found_at + 1)  # 1-based
+        search_from = found_at
+
+    return page_numbers
+
+
 def _enable_field_auto_update(doc) -> None:
+    # BUGFIX (2026-09-10, per the user): plain settings.append() put
+    # <w:updateFields> at the very end of <w:settings> — after every <w:rsid>
+    # element, which the OOXML schema (CT_Settings) places near the very end
+    # of its required child sequence, far later than where <w:updateFields>
+    # itself belongs (right after <w:characterSpacingControl>). Word treats
+    # <w:settings> as sequence-ordered and silently ignores/ejects an element
+    # sitting in the wrong slot rather than erroring — which is exactly why
+    # the TOC's PAGEREF cells and the footer's PAGE/NUMPAGES fields kept
+    # showing their unresolved "1" placeholder even after opening the file in
+    # real Word. Inserting as the very first child instead — the standard
+    # workaround for this exact problem — sidesteps the ordering question
+    # entirely; Word accepts <w:updateFields> as the leading child regardless
+    # of what schema position its neighbors expect.
     settings = doc.settings.element
     update_fields = OxmlElement("w:updateFields")
     update_fields.set(qn("w:val"), "true")
-    settings.append(update_fields)
+    settings.insert(0, update_fields)
 
 
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
@@ -1100,7 +1207,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     # order would resolve against the wrong paragraph.
     cursor = _Cursor(doc)
 
-    _add_page_breaks(cursor)
+    heading_texts = _add_page_breaks(cursor)
     _fill_index_page_numbers(cursor)
     _fill_header_table(doc, record_id, trackwise_fields)
     _fill_executive_summary(cursor, report.executive_summary, event_type, errors)
@@ -1132,4 +1239,32 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
 
     buffer = io.BytesIO()
     doc.save(buffer)
-    return buffer.getvalue()
+    docx_bytes = buffer.getvalue()
+
+    # Best-effort real pagination (2026-09-10, per the user): overwrites the
+    # Index table's PAGEREF fields (still there as-written above) with plain
+    # static page numbers computed by actually rendering the document via
+    # headless LibreOffice — correct the instant the file is opened, unlike
+    # the PAGEREF fields, which Word only recalculates on an explicit
+    # Ctrl+A/F9 refresh or Print Preview, never silently on open. Never
+    # allowed to break the export itself: any failure (soffice missing —
+    # e.g. this isn't the container image with libreoffice-writer installed
+    # — a conversion error/timeout, or a heading text that couldn't be
+    # located) just leaves the already-written PAGEREF fields in place,
+    # falling back to the pre-existing "needs a manual refresh" behavior.
+    try:
+        page_numbers = _compute_section_page_numbers(docx_bytes, heading_texts)
+        index_table = doc.tables[0]
+        for row_offset, page_number in enumerate(page_numbers):
+            _set_cell_text(index_table.rows[row_offset + 1].cells[3], str(page_number))
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        docx_bytes = buffer.getvalue()
+    except Exception:
+        logger.warning(
+            "Could not compute real RCI Report TOC page numbers via LibreOffice; "
+            "falling back to Word PAGEREF fields (needs a manual field refresh)",
+            exc_info=True,
+        )
+
+    return docx_bytes

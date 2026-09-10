@@ -6,6 +6,7 @@ import { Gauge } from "../components/charts/Gauge";
 import { FilterSelect } from "../components/FilterSelect";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
+import { formatLastUpdated } from "../utils/formatTimestamp";
 import {
   getAnalyticsSummary,
   type AnalyticsSummaryResponse,
@@ -652,6 +653,17 @@ export function AnalyticsPage() {
 
   return (
     <div className="an-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
+      {/* Top-right "last updated" stamp (2026-09-09, per the user) — same
+          convention/source as ActionCenterPage's own. No page title exists
+          here to pair it with, so it's its own right-aligned row above the
+          filter bar. */}
+      {formatLastUpdated(summary.last_updated_at) && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
+            {formatLastUpdated(summary.last_updated_at)}
+          </span>
+        </div>
+      )}
       <AnalyticsFilterBar
         siteFilter={siteFilter}
         setSiteFilter={setSiteFilter}

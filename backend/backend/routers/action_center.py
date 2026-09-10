@@ -35,21 +35,24 @@ _PENDING_ACTIONS_PER_ROW = 3
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
 
-# KPI card monthly bar chart + MoM trend (SIT Dashboard Figma, 2026-09-04,
-# per the user) — the 6 most recently COMPLETED calendar months, excluding
-# the current in-progress one, matching the Figma mock's own Mar-Aug window.
+# KPI card monthly bar chart + MoM trend — the current (in-progress) month
+# plus the 5 before it, 6 bars total (2026-09-10, per the user: the chart
+# should include the current month's data too, not stop at the last fully
+# completed one). The Figma mock's own Mar-Aug window (2026-09-04) predates
+# this — that window just happened to be 6 completed months, not a rule that
+# the current month must be excluded.
 _TREND_MONTHS = 6
 
 
 def _month_starts(n: int, today: datetime.date) -> List[datetime.date]:
-    """n calendar month-start dates, oldest first, ending with the most
-    recently completed month (e.g. run on 2026-09-04 with n=6 gives
-    Mar-Aug 2026, never a partial September)."""
+    """n calendar month-start dates, oldest first, ending with the CURRENT
+    (possibly partial) month (e.g. run on 2026-09-10 with n=6 gives
+    Apr-Sep 2026, September included even though it isn't over yet)."""
     months = []
     cursor = today.replace(day=1)
     for _ in range(n):
-        cursor = (cursor - datetime.timedelta(days=1)).replace(day=1)
         months.append(cursor)
+        cursor = (cursor - datetime.timedelta(days=1)).replace(day=1)
     return list(reversed(months))
 
 
@@ -249,6 +252,26 @@ async def get_action_center_summary(
 ) -> ActionCenterSummary:
     rows = await fetch_open_investigations()
     cancelled_rows = await fetch_cancelled_investigations()
+
+    # "Last updated" stamp for the page (2026-09-09, per the user) — grabbed
+    # from whichever fetched row has it first, before role-scoping narrows
+    # `rows` below; every row shares the same value (see the caveat further
+    # down), so this doesn't need its own query.
+    #
+    # BUGFIX (2026-09-10, per the user): pg_updated_at_timestamp is a plain
+    # TIMESTAMP column (no time zone) — asyncpg returns a naive datetime, and
+    # without tzinfo attached here, Pydantic serializes it with no "Z"/offset
+    # at all (confirmed: "2026-09-10T07:01:16.855860"). A JS Date parses an
+    # offset-less ISO string as the BROWSER'S OWN local time, not UTC — so
+    # the frontend's IST conversion was silently only correct for a viewer
+    # whose machine happened to already be set to IST, and wrong for anyone
+    # else. Confirmed live the raw value genuinely IS UTC (within ~22 minutes
+    # of the DB's own now(), which reports "UTC" as its session timezone) —
+    # not a guess — so tagging it here is a correction, not an assumption.
+    last_updated_at_raw = next(
+        (r["pg_updated_at_timestamp"] for r in (*rows, *cancelled_rows) if r["pg_updated_at_timestamp"]), None
+    )
+    last_updated_at = last_updated_at_raw.replace(tzinfo=datetime.timezone.utc) if last_updated_at_raw else None
 
     # Investigator-role scoping (2026-09-09, per the user) — filtered here,
     # before ANY aggregation below, so every derived number (KPI counts,
@@ -726,4 +749,5 @@ async def get_action_center_summary(
         chart=chart,
         investigations=investigations,
         filter_options=filter_options,
+        last_updated_at=last_updated_at,
     )

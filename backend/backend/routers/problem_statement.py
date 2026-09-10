@@ -13,6 +13,7 @@ from backend.schemas.problem_statement import (
     ProblemStatementGenerateRequest,
     ProblemStatementGenerateResponse,
     ProblemStatementRecord,
+    ProblemStatementUpdateRequest,
     SimilarInvestigation,
 )
 
@@ -66,6 +67,52 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         problem_statement=await fetch_problem_statement(deviation_id),
         stage=stage_for(row["status"]),
         locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
+        criticality=row["criticality"],
+    )
+
+
+@router.put("/{record_id}", response_model=ProblemStatementRecord)
+async def update_problem_statement(record_id: str, request: ProblemStatementUpdateRequest) -> ProblemStatementRecord:
+    """Persists a manual edit to an already-generated problem statement
+    (2026-09-10, per the user) — previously session-only (ProblemStatementPage.tsx's
+    onSaveEdit just called setProblemStatement(newText) with no backend call at
+    all), so an edit was silently lost on refresh/navigation and every
+    downstream module (Evidence Collection, RCI Plan, ...) kept seeing the
+    original generated text regardless of what was shown on screen here.
+
+    Same locked_for_editing rule GET already reports and generate_problem_statement
+    doesn't otherwise enforce at this layer — Evidence Collection having any real
+    data means the wizard has moved on, so upstream edits stop here (2026-08-21,
+    per the user, ProblemStatementRecord's own docstring)."""
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    row = await fetch_investigation_row(deviation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    event_type = resolved_event_type(row["qe_type"])
+    if event_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    if await fetch_evidence_items(deviation_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Evidence Collection has already started — the problem statement can no longer be edited.",
+        )
+
+    await save_problem_statement(deviation_id, request.problem_statement)
+
+    extended = event_type == "Market Complaint"
+    return ProblemStatementRecord(
+        record_id=record_id,
+        event_type=event_type,
+        trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=extended),
+        problem_statement=request.problem_statement,
+        stage=stage_for(row["status"]),
+        locked_for_editing=False,
         criticality=row["criticality"],
     )
 
