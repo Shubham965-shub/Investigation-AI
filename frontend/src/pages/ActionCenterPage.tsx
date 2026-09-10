@@ -552,7 +552,18 @@ export function ActionCenterPage() {
     };
   });
 
-  const visibleInvestigations = summary.investigations
+  // Record ID + RCI ID is a composite key for this table (2026-09-10, per
+  // the user) — a deviation_id with more than one rci_id now shows as one
+  // row PER rci_id instead of a single row listing all of them
+  // comma-joined. Only ever splits (never merges/drops): every other list
+  // (KPI cards, status cards, event-type counts) still reads directly off
+  // summary.investigations, so this doesn't inflate any of those real
+  // investigation-count totals — it's scoped to just this table's own rows.
+  const explodedInvestigations: InvestigationRowResponse[] = summary.investigations.flatMap((inv) =>
+    inv.rci_ids.length > 1 ? inv.rci_ids.map((rciId) => ({ ...inv, rci_ids: [rciId] })) : [inv]
+  );
+
+  const visibleInvestigations = explodedInvestigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
     .filter((inv) => !statusFilter || matchesStatusCard(inv, statusFilter))
     .filter((inv) => {
@@ -681,7 +692,7 @@ export function ActionCenterPage() {
       .join("")
       .toUpperCase();
     return (
-      <div className="ac-card" key={inv.id} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
+      <div className="ac-card" key={`${inv.id}-${inv.rci_ids[0] ?? ""}`} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
         <div className="ac-inv-card-header">
           <span className="ac-pending-card-id">{inv.id}</span>
           <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
@@ -1122,7 +1133,7 @@ export function ActionCenterPage() {
                 const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
                 return (
                   <tr
-                    key={inv.id}
+                    key={`${inv.id}-${inv.rci_ids[0] ?? ""}`}
                     className={`ac-inv-row ${eventTypeAccentClass(inv.event_type)}`}
                     onClick={() => setPreviewInvestigation(toPreview(inv))}
                     style={{ cursor: "pointer" }}
