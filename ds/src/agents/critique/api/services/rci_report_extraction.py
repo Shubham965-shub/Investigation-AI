@@ -6,6 +6,7 @@ The RCI report is a free-form Word document structured with headings. This modul
 scans body elements in document order to locate and extract the relevant sections.
 """
 
+import difflib
 import re
 from pathlib import Path
 from docx import Document
@@ -260,12 +261,50 @@ def _is_exec_summary_heading(text: str) -> bool:
 # document) based on how the generated RCI report itself renders this exact
 # field verbatim as "Conclusion Statement: {conclusion}" (see
 # rci_report_export.py's _fill_impact_assessment_batch_disposition), since
-# the uploaded RC & CAPA document shares the same template lineage. Revisit
-# this pattern once tested against a real document.
+# the uploaded RC & CAPA document shares the same template lineage.
+#
+# CONFIRMED BUG, now tested against a real document (2026-09-10, per the
+# user — record 507944's exported RCI report showed the same disposition
+# sentence twice in a row): this regex deliberately matches BOTH "Conclusion:"
+# and "Disposition:"/"Batch Disposition:" labels, since real templates use
+# either wording. A document that has BOTH a "Disposition:" line AND a
+# separate "Conclusion:" line restating the same decision — a real,
+# plausible authoring pattern, not a malformed document — trips this: the
+# FIRST label found sets collecting_impact_conclusion=True and strips its
+# own label; the SECOND label line then matches the "already collecting"
+# branch below instead (since that only checks the flag, not whether this
+# line is itself a fresh label match), which appends it WITHOUT stripping
+# the label — producing two near-duplicate sentences back to back.
+# _dedupe_near_duplicate_lines below is the fix: applied once at the end,
+# it drops any line that's a near-duplicate of one already kept, rather than
+# redesigning the "capture everything after the first label" collection
+# behavior itself (which real documents may still need, for a conclusion
+# that spans more than one paragraph).
 _IMPACT_CONCLUSION_LABEL_RE = re.compile(
     r"^\s*(?:conclusion(?:\s+statement)?|(?:batch\s+|product\s+)?disposition(?:\s+statement)?)\s*[:\-]",
     re.IGNORECASE,
 )
+
+_NEAR_DUPLICATE_THRESHOLD = 0.82
+
+
+def _dedupe_near_duplicate_lines(text: str) -> str:
+    """Drops any line that's a near-duplicate (fuzzy match, not just exact)
+    of a line already kept — e.g. "...safety , batch shall be released..."
+    vs "...safety and the batch shall be released..." are worded slightly
+    differently but say the same thing. Keeps the FIRST occurrence (already
+    label-stripped by the caller) and the original line order otherwise."""
+    lines = [line for line in text.split("\n") if line.strip()]
+    kept: list[str] = []
+    for line in lines:
+        normalized = line.strip().lower()
+        if any(
+            difflib.SequenceMatcher(None, normalized, kept_line.strip().lower()).ratio() >= _NEAR_DUPLICATE_THRESHOLD
+            for kept_line in kept
+        ):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 # ── Main extractor ─────────────────────────────────────────────────────────────
@@ -523,7 +562,7 @@ def extract_rci_report_sections(docx_path) -> dict:
     # Tidy up
     result["rc_conclusion_text"] = result["rc_conclusion_text"].strip()
     result["impact_assessment_text"] = result["impact_assessment_text"].strip()
-    result["impact_conclusion_text"] = result["impact_conclusion_text"].strip()
+    result["impact_conclusion_text"] = _dedupe_near_duplicate_lines(result["impact_conclusion_text"].strip())
     result["correction_remedial_text"] = result["correction_remedial_text"].strip()
     result["capa_overall_text"] = result["capa_overall_text"].strip()
     result["investigation_summary"] = result["investigation_summary"].strip()
