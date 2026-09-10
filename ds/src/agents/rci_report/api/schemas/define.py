@@ -8,19 +8,26 @@ from src.agents.rci_report.api.schemas.common import SourcedText
 class ExecutiveSummarySection(BaseModel):
     """Rollup of the 6 bullets confirmed in the real UI example. Pure synthesis —
     generated last (Wave 2), from every other section's already-finished output.
+
+    Every field is a list of bullet-point strings, not one prose string
+    (2026-09-10, per the user: broken into bullets for readability) — each
+    element is its own bullet, plain prose with no leading "-"/"•"/number
+    (the document/UI applies bullet formatting itself, see
+    executive_summary_system.yaml v2 and rci_report_export.py's
+    _fill_executive_summary).
     """
-    summary: str  # short rollup: product/batch, defect, root cause, key measurement
-    problem_description: str
-    immediate_containment_action: str
-    determination_of_root_cause: str  # HOW it was found (narrative), not the conclusion itself
-    root_cause_probable_cause_statement: str  # WHAT the cause is (short statement)
-    impact_assessment: str
-    correction_conclusion_preventive_actions: str  # merges Correction/Remedial + CAPA, per confirmed UI
+    summary: List[str]  # short rollup: product/batch, defect, root cause, key measurement — usually 1 bullet
+    problem_description: List[str]
+    immediate_containment_action: List[str]
+    determination_of_root_cause: List[str]  # HOW it was found (narrative), not the conclusion itself
+    root_cause_probable_cause_statement: List[str]  # WHAT the cause is (short statement)
+    impact_assessment: List[str]
+    correction_conclusion_preventive_actions: List[str]  # merges Correction/Remedial + CAPA, per confirmed UI
     # Added 2026-08-09: confirmed by two real reports (Deviation + MC) rendering a
     # final disposition bullet the Word templates never ask for in Executive Summary
     # — see GAPS.md. Sourced from ImpactAssessmentBatchDispositionSection.conclusion,
     # already in this prompt's context.
-    conclusion_statement: str
+    conclusion_statement: List[str]
 
 
 class DescriptionOfEventSection(BaseModel):

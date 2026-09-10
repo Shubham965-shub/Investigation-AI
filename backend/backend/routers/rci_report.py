@@ -119,7 +119,10 @@ async def generate_rci_report(record_id: str) -> RciReportRecord:
     # silently diverge.
     problem_statement = await fetch_problem_statement(deviation_id)
     if problem_statement and report.executive_summary:
-        report.executive_summary.problem_description = problem_statement
+        # Kept as one bullet, not split — this is the investigator's own
+        # verbatim-approved text (see comment above), not LLM-generated
+        # content this app should be re-segmenting on its own judgment.
+        report.executive_summary.problem_description = [problem_statement]
 
     await save_rci_report(
         deviation_id,

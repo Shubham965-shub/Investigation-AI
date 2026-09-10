@@ -302,6 +302,16 @@ export function TaskCritiquePage() {
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        // A long filename had no width ceiling of its own, so
+                        // it silently grew this whole column (and the
+                        // scorecard box riding along in it) to fit the text
+                        // instead of ellipsis/nowrap ever engaging
+                        // (2026-09-10, per the user) — capped independently
+                        // of the scorecard box above, which still sizes
+                        // itself naturally.
+                        maxWidth: 180,
+                        marginLeft: "auto",
+                        marginRight: "auto",
                       }}
                     >
                       {section.latest_report!.file_name}

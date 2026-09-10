@@ -14,6 +14,7 @@ import iconSearch from "../assets/icons/search.svg";
 import iconViewGrid from "../assets/icons/view-grid.png";
 import iconViewList from "../assets/icons/view-list.png";
 import iconRowArrow from "../assets/icons/row-arrow.svg";
+import { formatLastUpdated } from "../utils/formatTimestamp";
 import "./ActionCenterPage.css";
 
 // Only "Unassigned" has an icon (matches the SIT Dashboard Figma — the L1-L5
@@ -153,12 +154,14 @@ function trendTone(trendPercent: number | null): "neutral" | "warm" | "cool" {
 
 // Left-edge accent color per event-type KPI card (SIT Dashboard Figma,
 // 2026-09-08, per the user) — static per event type, not tied to MoM trend
-// direction (unlike the mini bar chart's own coloring above). OOS got its
-// own deep-purple color (2026-09-08, per the user), split out of the blue
-// group it originally shared with Deviation.
-function eventTypeAccentClass(label: string): "event-blue" | "event-teal" | "event-purple" {
-  if (label === "OOS") return "event-purple";
-  return label === "Deviation" ? "event-blue" : "event-teal";
+// direction (unlike the mini bar chart's own coloring above). Each of the 4
+// event types now has its own exact brand hex (2026-09-09, per the user),
+// replacing the earlier shared blue/teal/purple groupings.
+function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | "event-oot" | "event-mc" {
+  if (label === "OOS") return "event-oos";
+  if (label === "OOT") return "event-oot";
+  if (label === "Market Complaint") return "event-mc";
+  return "event-deviation";
 }
 
 // Fixed pixel height of .ac-kpi-chart in ActionCenterPage.css — bar heights
@@ -376,6 +379,13 @@ export function ActionCenterPage() {
   // the plain "User" role sees "Action Center" (when not viewing as a
   // specific investigator, which has its own title).
   const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
+  // Investigator role (2026-09-09, per the user) — backend already scopes
+  // every number in `summary` to just this investigator's own rows (see
+  // action_center.py's get_action_center_summary); the Open Investigations
+  // KPI card and the "All Investigators" filter dropdown are hidden here
+  // purely because they'd be redundant/meaningless for a role that only
+  // ever sees itself.
+  const isInvestigatorRole = roles.includes("Investigator");
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -389,6 +399,14 @@ export function ActionCenterPage() {
   // Market Complaint/no-filter use it for L5-L1 only, see assignmentFilter
   // below for their separate Assigned/Unassigned axis.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Reset on event-type change (2026-09-09, per the user) — e.g. selecting
+  // Unassigned while OOS is active and then switching to Deviation
+  // previously kept the OOS-era "unassigned" selection silently applied to
+  // Deviation's own cards/table. Same reset convention as assignmentFilter
+  // below.
+  useEffect(() => {
+    setStatusFilter(null);
+  }, [activeFilter]);
   // All/Assigned/Unassigned radio group, replacing the plain "Unassigned"
   // card for Deviation/Market Complaint/no-filter (2026-09-08, per the
   // user) — a genuinely independent filter dimension from level (statusFilter
@@ -498,7 +516,7 @@ export function ActionCenterPage() {
       <div className="ac-page-bg">
         <div className="ac-page">
           <div className="card">
-            <p className="card-title">Loading Action Center…</p>
+            <p className="card-title">Loading Dashboard…</p>
           </div>
         </div>
       </div>
@@ -674,7 +692,10 @@ export function ActionCenterPage() {
           <span className="ac-inv-tag">Start date: {inv.start_date ?? "—"}</span>
           <span className="ac-inv-tag">Due date: {inv.due_date ?? "—"}</span>
         </div>
-        {inv.investigator && (
+        {/* Redundant once cards are already grouped by investigator — that
+            group's own header already names them (2026-09-10, per the
+            user) — still shown when grouped by product or ungrouped. */}
+        {inv.investigator && groupBy !== "investigator" && (
           <div className="ac-inv-investigator-row">
             <span className="ac-inv-avatar">{initials}</span>
             <div>
@@ -705,34 +726,52 @@ export function ActionCenterPage() {
     <>
     <div className="ac-page-bg">
     <div className="ac-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
-      <h1 className="ac-title">
-        {viewAsInvestigator
-          ? `Action Center - Investigator View (${viewAsInvestigator})`
-          : showsSitDashboardTitle
-            ? "SIT Dashboard"
-            : "Action Center"}
-      </h1>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 className="ac-title">
+          {viewAsInvestigator
+            ? `Action Center - Investigator View (${viewAsInvestigator})`
+            : showsSitDashboardTitle
+              ? "SIT Dashboard"
+              : "Action Center"}
+        </h1>
+        {/* Top-right "last updated" stamp (2026-09-09, per the user) —
+            fact_qms_event.pg_updated_at_timestamp, the same single flat
+            bulk-load stamp already documented on InvestigationRow.updated_at
+            below. */}
+        {formatLastUpdated(summary.last_updated_at) && (
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
+            {formatLastUpdated(summary.last_updated_at)}
+          </span>
+        )}
+      </div>
 
       {/* 5 equal-width KPI cards — Open Investigations plus one per event
           type, each with its own monthly bar chart + MoM trend (SIT
           Dashboard Figma, 2026-09-04, per the user) — replaces the old
-          single "Open Investigations" card + flat stat-pill row. */}
-      <div className="ac-kpi-row">
+          single "Open Investigations" card + flat stat-pill row. Open
+          Investigations itself is dropped entirely for the Investigator
+          role (2026-09-09, per the user) — it's a cross-investigator total,
+          meaningless once the whole page is already scoped to one person's
+          own investigations — so the row becomes 4 equal columns instead of
+          5 for that role. */}
+      <div className="ac-kpi-row" style={isInvestigatorRole ? { gridTemplateColumns: "repeat(4, 1fr)" } : undefined}>
         {/* Open Investigations resets back to the all-types default view
             (2026-09-07, per the user) — the other 4 cards scope down to one
             event type, this one clears that scope. */}
-        <div
-          className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
-          onClick={() => {
-            setActiveFilter(null);
-            setPage(1);
-          }}
-        >
-          <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
-          <div className="ac-kpi-card-count">{summary.total_investigations}</div>
-          <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
-          {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
-        </div>
+        {!isInvestigatorRole && (
+          <div
+            className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
+            onClick={() => {
+              setActiveFilter(null);
+              setPage(1);
+            }}
+          >
+            <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
+            <div className="ac-kpi-card-count">{summary.total_investigations}</div>
+            <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
+            {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
+          </div>
+        )}
         {eventTypeCounts.map((s) => (
           <div
             className={`ac-kpi-card ${eventTypeAccentClass(s.label)} ${activeFilter === s.label ? "active" : ""}`}
@@ -758,9 +797,7 @@ export function ActionCenterPage() {
         const levelRow = statusCards.filter((c) => !topRowKeys.has(c.key));
         if (topRow.length <= 1) {
           // Deviation/Market Complaint/no filter: "Unassigned" is a radio
-          // group (All/Assigned/Unassigned) instead of a plain card here —
-          // OOS/OOT (topRow.length > 1) keeps the old plain card, untouched,
-          // in the branch below (2026-09-08, per the user).
+          // group (All/Assigned/Unassigned) instead of a plain card here.
           const levelOnlyCards = statusCards.filter((c) => c.key !== "unassigned");
           return (
             <div
@@ -776,10 +813,22 @@ export function ActionCenterPage() {
             </div>
           );
         }
+        // OOS/OOT: same Status pill substitution as above (2026-09-10, per
+        // the user), just sharing its row with Phase 1/Phase 2 instead of
+        // the L5-L1 cards — those still get their own row below, unchanged.
+        // Only 2 other cards share this row (vs. 5 in the Deviation/MC
+        // case above), so the same 1.5fr multiplier read as too wide here —
+        // dialed back to 1fr, even with Phase 1/Phase 2 (2026-09-10, per
+        // the user).
+        const topRowWithoutUnassigned = topRow.filter((c) => c.key !== "unassigned");
         return (
           <>
-            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${topRow.length}, 1fr)` }}>
-              {topRow.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter))}
+            <div
+              className="ac-status-row"
+              style={{ gridTemplateColumns: `1fr repeat(${topRowWithoutUnassigned.length}, 1fr)` }}
+            >
+              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
+              {topRowWithoutUnassigned.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter))}
             </div>
             <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${levelRow.length}, 1fr)` }}>
               {levelRow.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter))}
@@ -953,7 +1002,7 @@ export function ActionCenterPage() {
                 defaultLabel="Product"
                 options={summary.filter_options.products}
               />
-              {!viewAsInvestigator && (
+              {!viewAsInvestigator && !isInvestigatorRole && (
                 <FilterSelect
                   className="ac-filter-pill"
                   value={investigatorFilter}
@@ -996,19 +1045,21 @@ export function ActionCenterPage() {
           <div className="ac-view-toggle">
             <button
               type="button"
-              aria-label="Grid view"
-              className={viewMode === "grid" ? "active" : ""}
-              onClick={() => setViewMode("grid")}
-            >
-              <img src={iconViewGrid} alt="" width={20} height={20} />
-            </button>
-            <button
-              type="button"
               aria-label="List view"
               className={viewMode === "list" ? "active" : ""}
               onClick={() => setViewMode("list")}
             >
-              <img src={iconViewList} alt="" width={20} height={20} />
+              <img src={iconViewList} alt="" width={14} height={14} />
+              List View
+            </button>
+            <button
+              type="button"
+              aria-label="Card view"
+              className={viewMode === "grid" ? "active" : ""}
+              onClick={() => setViewMode("grid")}
+            >
+              <img src={iconViewGrid} alt="" width={14} height={14} />
+              Card View
             </button>
           </div>
         </div>
@@ -1052,7 +1103,7 @@ export function ActionCenterPage() {
                       <span style={{ marginLeft: 4, display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
                         <InfoTooltip label="How the due date is calculated">
                           <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
-                            Due date is 30 days from the start date for Deviation, OOS, and OOT events, and 55 days from the start date for Market Complaints.
+                            Due date is 30 days from initiation of event in TW for Deviation, OOS, and OOT events, and 55 days from initiation of event in TW for Market Complaints.
                           </p>
                         </InfoTooltip>
                       </span>

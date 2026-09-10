@@ -177,6 +177,13 @@ function RecommendationGroup({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      // Auto-open the reason prompt the moment every recommendation in this
+      // group is deselected (2026-09-10, per the user) — previously this
+      // only opened via the "Yes" button, so unchecking the last one left
+      // the user with no visible next step until they clicked it themselves.
+      if (pending.length > 0 && pending.every((r) => next.has(r.id))) {
+        setDeselectPrompt(true);
+      }
       return next;
     });
   }
@@ -747,12 +754,26 @@ export function RcCapaCritiquePage() {
                 </p>
               </div>
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-                {critique.summary ? (
+                {critique.summary && (
                   <div style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px" }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Summary Of the Report</p>
                     <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}><BoldText text={critique.summary} /></p>
                   </div>
-                ) : (
+                )}
+                {/* A genuinely zero-recommendation critique (no gaps found)
+                    now locks the whole report immediately (see
+                    db/critique_state.py's compute_upload_state) — say so
+                    explicitly instead of falling through to "Critique
+                    pending.", which previously fired here too and wrongly
+                    implied the critique hadn't run yet (2026-09-10, per the
+                    user). isComplete is only reachable via a real,
+                    already-persisted critique response at this point. */}
+                {critique.recommendations.length === 0 && isComplete && (
+                  <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-success-text)", fontWeight: 600 }}>
+                    ✓ No gaps identified — nothing further to review for this category.
+                  </p>
+                )}
+                {critique.recommendations.length === 0 && !isComplete && !critique.summary && (
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Critique pending.</p>
                 )}
 

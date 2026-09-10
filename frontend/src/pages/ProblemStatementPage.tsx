@@ -7,10 +7,11 @@ import {
   type EventType,
   type TrackwiseFields,
 } from "../constants/trackwiseFields";
-import { generateProblemStatement, getProblemStatementRecord } from "../api/dashboard";
+import { generateProblemStatement, getProblemStatementRecord, updateProblemStatement } from "../api/dashboard";
 import { ApiError } from "../api/client";
 import { RecordDetailsModal } from "../components/RecordDetailsModal";
 import { DbErrorModal } from "../components/DbErrorModal";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
 import copyIcon from "../assets/icons/copy-icon.svg";
 import chevronEntry from "../assets/icons/chevron-entry.svg";
@@ -49,6 +50,8 @@ export function ProblemStatementPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Shown while a saved edit's PUT is in flight (2026-09-10, per the user).
+  const [savingEdit, setSavingEdit] = useState(false);
   const [copied, setCopied] = useState(false);
   // Shown automatically any time the generated view appears — whether from
   // a fresh generation this session or landing on an already-generated
@@ -176,6 +179,8 @@ export function ProblemStatementPage() {
           </div>
         </div>
 
+        {error && <p className="error-banner">{error}</p>}
+
         <div className="footer-actions">
           <button type="button" className="btn-primary" onClick={handleCloseAndNext}>
             Close &amp; Next
@@ -190,14 +195,27 @@ export function ProblemStatementPage() {
           lockedForEditing={lockedForEditing}
           onClose={() => setShowSummaryModal(false)}
           onSaveEdit={(newText) => {
-            // Session-only — no backend endpoint yet to persist an edit to an
-            // already-generated problem statement.
+            // Optimistic — reverted on failure (2026-09-10, per the user:
+            // this was previously session-only, silently lost on
+            // refresh/navigation with no backend call at all). The
+            // GeneratingDialog below still shows for the actual round-trip
+            // so a save in flight is visibly happening, not silent.
+            const previous = problemStatement;
             setProblemStatement(newText);
+            setError(null);
+            setSavingEdit(true);
+            updateProblemStatement(rid, newText)
+              .catch((err) => {
+                setProblemStatement(previous);
+                setError(err instanceof ApiError ? String(err.detail) : "Failed to save the edited problem statement");
+              })
+              .finally(() => setSavingEdit(false));
           }}
           onSaveAndNext={handleCloseAndNext}
           onViewRecordDetails={() => setShowSummaryModal(false)}
         />
       )}
+      {savingEdit && <GeneratingDialog heading="Saving Problem Statement" message="Persisting your edit — this only takes a moment." />}
       </>
     );
   }

@@ -69,14 +69,17 @@ class ApprovalSection(BaseModel):
 # ── 1. Executive Summary / Description / Initial Impact (ds's define.py) ─
 
 class ExecutiveSummarySection(BaseModel):
-    summary: str
-    problem_description: str
-    immediate_containment_action: str
-    determination_of_root_cause: str
-    root_cause_probable_cause_statement: str
-    impact_assessment: str
-    correction_conclusion_preventive_actions: str
-    conclusion_statement: str
+    # Each field is a list of bullet-point strings, not one prose string
+    # (2026-09-10, per the user: broken into bullets for readability) —
+    # mirrors ds's own ExecutiveSummarySection (define.py) exactly.
+    summary: List[str]
+    problem_description: List[str]
+    immediate_containment_action: List[str]
+    determination_of_root_cause: List[str]
+    root_cause_probable_cause_statement: List[str]
+    impact_assessment: List[str]
+    correction_conclusion_preventive_actions: List[str]
+    conclusion_statement: List[str]
 
 
 class DescriptionOfEventSection(BaseModel):

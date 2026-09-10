@@ -591,6 +591,38 @@ function TextInput({
   return <input type={type} className="field-value" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} style={style} />;
 }
 
+// Auto-formats free-text date fields to DD/MM/YYYY as the user types
+// (2026-09-10, per the user) — these are plain text fields (CAPA/Correction
+// & Remedial due dates, CAPA Implementation Date), not a native
+// <input type="date">, whose own format follows the browser's locale, not
+// this app's chosen convention. Strips anything non-digit, caps at 8 digits
+// (DDMMYYYY), and inserts "/" after the day and month groups as they're
+// completed — so a user typing digits straight through lands on a
+// correctly-separated date without needing to type the slashes themselves.
+function formatDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  const day = digits.slice(0, 2);
+  const month = digits.slice(2, 4);
+  const year = digits.slice(4, 8);
+  return [day, month, year].filter(Boolean).join("/");
+}
+
+function DateTextInput({ value, onChange, style }: { value: string; onChange: (v: string) => void; style?: React.CSSProperties }) {
+  const editing = useContext(EditModeContext);
+  if (!editing) return <ReadOnlyValue value={value} />;
+  return (
+    <input
+      type="text"
+      className="field-value"
+      value={value}
+      placeholder="DD/MM/YYYY"
+      inputMode="numeric"
+      onChange={(e) => onChange(formatDateInput(e.target.value))}
+      style={style}
+    />
+  );
+}
+
 function TextArea({
   value,
   onChange,
@@ -680,11 +712,37 @@ function SourcedTextEditor({ label, value, onChange, bare }: { label: string; va
   );
 }
 
-function StringListEditor({ items, onChange, placeholder }: { items: string[]; onChange: (items: string[]) => void; placeholder?: string }) {
+function StringListEditor({
+  items,
+  onChange,
+  placeholder,
+  readOnlyStyle = "checklist",
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder?: string;
+  // "checklist" (default, unchanged) renders each read-only item as a
+  // checkmark row — right for action/criteria items elsewhere on this page.
+  // "bullets" renders a plain <ul><li> list instead (2026-09-10, per the
+  // user — Executive Summary's narrative bullets aren't checkable action
+  // items, so the checkmark styling read as wrong there).
+  readOnlyStyle?: "checklist" | "bullets";
+}) {
   const editing = useContext(EditModeContext);
   const [draft, setDraft] = useState("");
   if (!editing) {
     if (!items.length) return <ReadOnlyValue value="" />;
+    if (readOnlyStyle === "bullets") {
+      return (
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          {items.map((item, i) => (
+            <li key={i} style={{ fontSize: "var(--font-size-base)" }}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+    }
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {items.map((item, i) => (
@@ -1141,6 +1199,11 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.executive_summary} />
             ) : (
               <>
+                {/* Every field below is a list of bullet points, not one
+                    prose string (2026-09-10, per the user) — StringListEditor
+                    with readOnlyStyle="bullets" renders a real <ul><li> list
+                    in preview, matching rci_report_export.py's own real
+                    bulleted paragraphs (_fill_executive_summary). */}
                 {([
                   ["problem_description", "Problem Description"],
                   ["immediate_containment_action", "Immediate Containment Action"],
@@ -1149,24 +1212,35 @@ export function RciReportPage() {
                   ["impact_assessment", "Impact Assessment"],
                 ] as const).map(([field, label]) => (
                   <Field key={field} label={label}>
-                    <TextArea value={report.executive_summary![field]} onChange={(v) => setSectionField("executive_summary", field, v)} />
+                    <StringListEditor
+                      items={report.executive_summary![field]}
+                      onChange={(v) => setSectionField("executive_summary", field, v)}
+                      readOnlyStyle="bullets"
+                    />
                   </Field>
                 ))}
-                {/* conclusion_statement has no heading of its own in the
-                    exported document — it's a "Conclusion Statement: "
-                    -prefixed continuation paragraph appended right after
-                    correction_conclusion_preventive_actions, under that
-                    field's own heading (see rci_report_export.py's
-                    _fill_executive_summary, paragraphs 86/87). Not shown as
-                    its own field here; it's still written into the export
-                    (2026-09-02, per the user — not independently editable
-                    on this page). */}
                 <Field label="Correction, Corrective and Preventive Actions">
-                  <TextArea
-                    value={report.executive_summary.correction_conclusion_preventive_actions}
+                  <StringListEditor
+                    items={report.executive_summary.correction_conclusion_preventive_actions}
                     onChange={(v) => setSectionField("executive_summary", "correction_conclusion_preventive_actions", v)}
+                    readOnlyStyle="bullets"
                   />
                 </Field>
+                {/* Conclusion Statement gets its own bold, spaced-apart
+                    heading (2026-09-10, per the user) instead of the old
+                    inline "Conclusion Statement: " prefix appended to
+                    correction_conclusion_preventive_actions' own paragraph
+                    — matches rci_report_export.py's _insert_heading_paragraph,
+                    which does the same in the exported document. */}
+                <div style={{ marginTop: 20 }}>
+                  <Field label="Conclusion Statement">
+                    <StringListEditor
+                      items={report.executive_summary.conclusion_statement}
+                      onChange={(v) => setSectionField("executive_summary", "conclusion_statement", v)}
+                      readOnlyStyle="bullets"
+                    />
+                  </Field>
+                </div>
               </>
             )}
           </DocSection>
@@ -1503,7 +1577,7 @@ export function RciReportPage() {
                             <TextArea value={row.capa_description} rows={2} onChange={(v) => h.update(i, { capa_description: v })} />
                           </Field>
                           <Field label="CAPA Implementation Date">
-                            <TextInput value={row.capa_implementation_date} onChange={(v) => h.update(i, { capa_implementation_date: v })} />
+                            <DateTextInput value={row.capa_implementation_date} onChange={(v) => h.update(i, { capa_implementation_date: v })} />
                           </Field>
                           <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => h.remove(i)}>
                             Remove
@@ -2046,14 +2120,6 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.correction_remedial_action} />
             ) : (
               <>
-                <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--font-size-sm)" }}>
-                  <p style={{ margin: 0 }}>
-                    <strong>Correction:</strong> Action taken for an immediate fix that corrects the situation.
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Remedial action:</strong> An action taken to improve a situation to address or correct a non-conformance, and return the process, product, or materials to an acceptable state of control or quality.
-                  </p>
-                </div>
                 {(() => {
                   const list = report.correction_remedial_action!.items;
                   const h = listHelpers<ObservationStatusItem>("correction_remedial_action", "items", list);
@@ -2146,7 +2212,7 @@ export function RciReportPage() {
                               <TextInput value={item.responsibility ?? ""} onChange={(v) => h.update(i, { responsibility: v || null })} />
                             </Field>
                             <Field label="Due Date">
-                              <TextInput value={item.due_date} onChange={(v) => h.update(i, { due_date: v })} />
+                              <DateTextInput value={item.due_date} onChange={(v) => h.update(i, { due_date: v })} />
                             </Field>
                             <button type="button" className="btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => h.remove(i)}>
                               Remove
@@ -2184,7 +2250,7 @@ export function RciReportPage() {
                           <div key={i} style={{ display: "flex", gap: 8 }}>
                             <TextInput placeholder="Description" value={item.description} onChange={(v) => h.update(i, { description: v })} style={{ flex: 2 }} />
                             <TextInput placeholder="Responsibility" value={item.responsibility} onChange={(v) => h.update(i, { responsibility: v })} style={{ flex: 1 }} />
-                            <TextInput placeholder="Due Date" value={item.due_date} onChange={(v) => h.update(i, { due_date: v })} style={{ flex: 1 }} />
+                            <DateTextInput value={item.due_date} onChange={(v) => h.update(i, { due_date: v })} style={{ flex: 1 }} />
                             <button type="button" className="btn-outline" onClick={() => h.remove(i)}>
                               Remove
                             </button>
@@ -2226,7 +2292,7 @@ export function RciReportPage() {
                     <TextInput value={report.capa.extrapolation.responsibility} onChange={(v) => setNestedField("capa", "extrapolation", { responsibility: v })} />
                   </Field>
                   <Field label="Due Date">
-                    <TextInput value={report.capa.extrapolation.due_date} onChange={(v) => setNestedField("capa", "extrapolation", { due_date: v })} />
+                    <DateTextInput value={report.capa.extrapolation.due_date} onChange={(v) => setNestedField("capa", "extrapolation", { due_date: v })} />
                   </Field>
                 </div>
               </>

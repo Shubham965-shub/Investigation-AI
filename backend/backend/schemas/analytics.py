@@ -6,6 +6,7 @@ docstring for what's deliberately NOT here (IQ Score, CAPA hierarchy ranking).
 """
 from __future__ import annotations
 
+import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -87,3 +88,7 @@ class AnalyticsSummary(BaseModel):
     capa: CapaStatus
     failure_patterns: FailurePatterns
     filter_options: FilterOptions
+    # Same page-level "last updated" stamp as ActionCenterSummary's own field
+    # (2026-09-09, per the user) — see that field's docstring for the
+    # single-flat-bulk-load-stamp caveat this is built on.
+    last_updated_at: Optional[datetime.datetime] = None

@@ -279,6 +279,19 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     if attempt_number >= MAX_UPLOADS:
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
+    elif not (rc_conclusion["rc_recommendations"] + rc_conclusion["impact_recommendations"] + capa["recommendations"]):
+        # BUGFIX (2026-09-10, per the user — same fix as Task Critique's
+        # upload_task_report, for the identical shared rule in
+        # critique_state.compute_upload_state): a non-final attempt whose
+        # combined rc/impact/capa critique came back with zero
+        # recommendations across the board now locks immediately as
+        # "complete" instead of getting stuck with can_upload=False and
+        # nothing to accept/reject. No further upload or decision will ever
+        # happen for this report, so — same as rejecting every
+        # recommendation — it needs the same "score it now" trigger
+        # decide_rc_capa_recommendation already applies for that case.
+        rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
+        await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
     return await _build_state(record_id, deviation_id, row)
 

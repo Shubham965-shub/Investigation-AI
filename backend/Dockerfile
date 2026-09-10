@@ -20,6 +20,17 @@ RUN uv sync --locked --no-dev
 # ── Stage 2: Runtime ─────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+# Headless doc→PDF pagination for the RCI Report export's Table of Contents
+# page numbers (2026-09-10, per the user) — services/rci_report_export.py
+# shells out to `soffice --headless --convert-to pdf` to compute each
+# section's real page number, since python-docx itself never lays out text.
+# --no-install-recommends skips Impress/Calc/Draw/help files/GUI extras,
+# which aren't needed for headless Writer conversion; the apt list cleanup
+# after keeps the layer from carrying the package index around unused.
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y libreoffice-writer && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
 
 WORKDIR /app

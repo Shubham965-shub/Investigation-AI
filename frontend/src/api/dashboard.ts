@@ -61,6 +61,16 @@ export function getProblemStatementRecord(
   return getRecordOrNull<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`);
 }
 
+// Persists a manual edit to an already-generated problem statement
+// (2026-09-10, per the user) — previously session-only, lost on
+// refresh/navigation with no backend call at all.
+export function updateProblemStatement(
+  recordId: string,
+  problemStatement: string
+): Promise<ProblemStatementRecordResponse> {
+  return apiPut<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`, { problem_statement: problemStatement });
+}
+
 export interface SimilarInvestigation {
   deviation_id: number;
   title: string;
@@ -529,6 +539,10 @@ export interface ActionCenterSummaryResponse {
   chart: ChartBarResponse[];
   investigations: InvestigationRowResponse[];
   filter_options: FilterOptions;
+  // "Last updated" stamp shown top-right of the page (2026-09-09, per the
+  // user) — raw fact_qms_event.pg_updated_at_timestamp, an ISO datetime
+  // string once JSON-serialized. null only if the table is entirely empty.
+  last_updated_at: string | null;
 }
 
 export interface ActionCenterFilters {
@@ -632,6 +646,9 @@ export interface AnalyticsSummaryResponse {
   capa: CapaStatusResponse;
   failure_patterns: FailurePatternsResponse;
   filter_options: AnalyticsFilterOptions;
+  // Same "last updated" stamp as ActionCenterSummaryResponse (2026-09-09,
+  // per the user).
+  last_updated_at: string | null;
 }
 
 export interface AnalyticsFilters {
@@ -662,15 +679,18 @@ export interface SourcedTextItem {
   source: "trackwise" | "manual_entry_required" | "manual_entry_provided" | "synthesized";
 }
 
+// Each field is a list of bullet-point strings, not one prose string
+// (2026-09-10, per the user: broken into bullets for readability) — mirrors
+// the backend/ds ExecutiveSummarySection exactly.
 export interface ExecutiveSummarySection {
-  summary: string;
-  problem_description: string;
-  immediate_containment_action: string;
-  determination_of_root_cause: string;
-  root_cause_probable_cause_statement: string;
-  impact_assessment: string;
-  correction_conclusion_preventive_actions: string;
-  conclusion_statement: string;
+  summary: string[];
+  problem_description: string[];
+  immediate_containment_action: string[];
+  determination_of_root_cause: string[];
+  root_cause_probable_cause_statement: string[];
+  impact_assessment: string[];
+  correction_conclusion_preventive_actions: string[];
+  conclusion_statement: string[];
 }
 
 export interface DescriptionOfEventSection {

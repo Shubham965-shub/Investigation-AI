@@ -37,7 +37,7 @@ star_schema):
 from __future__ import annotations
 
 import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import asyncpg
 
@@ -183,21 +183,29 @@ FROM (
         f.date_opened,
         f.closed_on,
         e.module,
+        di.investigator,
         f.pg_updated_at_timestamp
     FROM fact_qms_event f
     JOIN dim_event e ON e.deviation_id = f.deviation_id
     LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key
+    LEFT JOIN dim_investigator di ON di.investigator_key = f.investigator_key
     WHERE f.date_opened >= $1 OR f.closed_on >= $1
     ORDER BY f.deviation_id, f.pg_updated_at_timestamp DESC NULLS LAST
 ) dedup
 WHERE module IS DISTINCT FROM 'Cancelled'
+  AND ($2::text IS NULL OR lower(trim(investigator)) = lower(trim($2)))
 """
 
 
-async def fetch_monthly_trend_rows(since: datetime.date) -> List[asyncpg.Record]:
+async def fetch_monthly_trend_rows(since: datetime.date, investigator: Optional[str] = None) -> List[asyncpg.Record]:
+    """investigator (2026-09-09, per the user): scopes the KPI charts' own
+    source query to one investigator, for the new Investigator role — a
+    separate query from _OPEN_INVESTIGATIONS_QUERY (see its own docstring),
+    so it needs this filter applied independently rather than inheriting it
+    from `enriched`."""
     pool = get_pool()
     async with pool.acquire() as conn:
-        return await conn.fetch(_MONTHLY_TREND_ROWS_QUERY, since)
+        return await conn.fetch(_MONTHLY_TREND_ROWS_QUERY, since, investigator)
 
 
 async def fetch_module_completion(deviation_ids: List[int]) -> Dict[int, int]:

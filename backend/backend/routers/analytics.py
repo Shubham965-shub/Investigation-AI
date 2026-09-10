@@ -168,6 +168,13 @@ async def get_analytics_summary(
 ) -> AnalyticsSummary:
     records = await fetch_analytics_rows()
     today = datetime.date.today()
+    # BUGFIX (2026-09-10, per the user) — see action_center.py's identical
+    # fix for the full explanation: pg_updated_at_timestamp is a naive
+    # TIMESTAMP (no tz), and without attaching UTC here explicitly, the
+    # frontend's IST conversion silently only worked for a viewer whose own
+    # machine happened to already be set to IST.
+    last_updated_at_raw = next((r["pg_updated_at_timestamp"] for r in records if r["pg_updated_at_timestamp"]), None)
+    last_updated_at = last_updated_at_raw.replace(tzinfo=datetime.timezone.utc) if last_updated_at_raw else None
 
     all_rows: List[Dict] = []
     for r in records:
@@ -285,4 +292,5 @@ async def get_analytics_summary(
         capa=capa,
         failure_patterns=failure_patterns,
         filter_options=filter_options,
+        last_updated_at=last_updated_at,
     )

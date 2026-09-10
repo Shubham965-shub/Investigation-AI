@@ -255,6 +255,14 @@ export function TaskCritiqueDetailPage() {
       const next = new Set(prev);
       if (next.has(recId)) next.delete(recId);
       else next.add(recId);
+      // Auto-open the reason prompt the moment every recommendation is
+      // deselected (2026-09-10, per the user) — previously this only opened
+      // via the "Yes" button, so unchecking the last one left the user with
+      // no visible next step until they clicked it themselves.
+      const pending = report!.recommendations.filter((r) => r.decision === "pending");
+      if (pending.length > 0 && pending.every((r) => next.has(r.id))) {
+        setDeselectPrompt(true);
+      }
       return next;
     });
   }
@@ -325,15 +333,37 @@ export function TaskCritiqueDetailPage() {
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
                     This report was accepted as final — no recommendations were generated for it.
                   </p>
-                ) : report.summary ? (
-                  <div style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px" }}>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Summary Of the Report</p>
-                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{report.summary}</p>
-                  </div>
                 ) : (
-                  <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
-                    Critique pending — the report has been uploaded and is awaiting AI review.
-                  </p>
+                  <>
+                    {report.summary && (
+                      <div style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-card-border)", borderRadius: 10, padding: "13px 17px" }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-base)" }}>Summary Of the Report</p>
+                        <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{report.summary}</p>
+                      </div>
+                    )}
+                    {/* A genuinely zero-recommendation critique (no gaps
+                        found) now locks the section immediately (see
+                        db/critique_state.py's compute_upload_state) — say so
+                        explicitly instead of showing nothing, or worse,
+                        falling through to the "pending" message below, which
+                        previously fired here too and wrongly implied the
+                        critique hadn't run yet (2026-09-10, per the user).
+                        section.locked is only reachable via a real,
+                        already-persisted critique response at this point
+                        (there's no "insert a placeholder, critique arrives
+                        later" step for this endpoint) — never a race with an
+                        in-flight upload. */}
+                    {report.recommendations.length === 0 && section.locked && (
+                      <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-success-text)", fontWeight: 600 }}>
+                        ✓ No gaps identified — this report fully addresses the task, nothing further to review.
+                      </p>
+                    )}
+                    {report.recommendations.length === 0 && !section.locked && !report.summary && (
+                      <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>
+                        Critique pending — the report has been uploaded and is awaiting AI review.
+                      </p>
+                    )}
+                  </>
                 )}
 
                 {!section.locked && report.recommendations.length > 0 && (

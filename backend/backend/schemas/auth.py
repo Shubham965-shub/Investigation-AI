@@ -44,6 +44,12 @@ class AdminUserRow(BaseModel):
     is_active: bool
     created_at: datetime
     last_login: Optional[datetime] = None
+    # The Investigator-role scoping "hook" (2026-09-09, per the user) — links
+    # this account to its dim_investigator.investigator identity. Only
+    # meaningful for Investigator-role accounts; harmless/unused otherwise.
+    # NULL means action_center.py falls back to matching full_name instead
+    # (see schema.sql's own comment on this column for the full rationale).
+    investigator_name: Optional[str] = None
 
 
 class AdminUserListResponse(BaseModel):
@@ -58,7 +64,15 @@ class AdminCreateUserRequest(BaseModel):
     full_name: str = Field(..., min_length=1)
     password: str = Field(..., min_length=8)
     role: str = Field(..., min_length=1)
+    investigator_name: Optional[str] = None
 
 
 class AdminUpdateUserRoleRequest(BaseModel):
     role: str = Field(..., min_length=1)
+
+
+class AdminUpdateInvestigatorNameRequest(BaseModel):
+    # Empty string clears it back to NULL (falls back to full_name matching)
+    # — not made Optional[str] = None, since a PUT body omitting the field
+    # entirely would be ambiguous with "clear it".
+    investigator_name: str = Field(default="")

@@ -94,11 +94,24 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
         }
 
     if not recs:
-        # Critique not back yet (or DS not wired up yet) — nothing to decide.
+        # BUGFIX (2026-09-10, per the user — confirmed live on record 507944:
+        # a 2nd attempt whose critique genuinely came back with zero
+        # recommendations got stuck permanently, not locked/complete but also
+        # not re-uploadable, with nothing to accept/reject since there was
+        # nothing to decide). By the time a report row exists here at all,
+        # its critique call already ran and was persisted in the SAME request
+        # that created it (routers/task_critique.py's upload_task_report /
+        # rc_capa_critique.py's equivalent — there is no separate "insert a
+        # placeholder now, the critique fills in later" step for either
+        # caller), so an empty list here means DS genuinely found nothing to
+        # flag, never "critique still pending" despite this branch's
+        # original comment assuming otherwise. Treated the same as "every
+        # recommendation rejected" below: the report is already good enough,
+        # so it locks as complete instead of leaving a dead end.
         return {
-            "status": "in_progress",
+            "status": "complete",
             "upload_count": upload_count,
-            "locked": False,
+            "locked": True,
             "can_upload": False,
             "next_upload_is_final": False,
             "latest": latest,

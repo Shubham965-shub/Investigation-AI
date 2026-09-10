@@ -1,6 +1,7 @@
 """Response shapes for the Action Center dashboard (GET /api/action-center/summary)."""
 from __future__ import annotations
 
+import datetime
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -126,3 +127,10 @@ class ActionCenterSummary(BaseModel):
     chart: List[ChartBar]
     investigations: List[InvestigationRow]
     filter_options: FilterOptions
+    # Page-level "last updated" stamp (2026-09-09, per the user) — the raw
+    # fact_qms_event.pg_updated_at_timestamp value (a single flat bulk-load
+    # stamp shared by every row, see the caveat where investigations are
+    # enriched), surfaced verbatim rather than truncated to a date like
+    # InvestigationRow.updated_at is. None only if the table itself is
+    # completely empty.
+    last_updated_at: Optional[datetime.datetime] = None

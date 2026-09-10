@@ -96,6 +96,23 @@
   --color-pink-bg: #fdf2f8;
   --color-pink-border: #f9a8d4;
   --color-pink-text: #db2777;
+  /* Action Center's 4 event-type accents (KPI card left border/dot, table
+     badge, row hover) — exact brand hex per event type given by the user
+     (2026-09-09), replacing the earlier shared blue/teal/purple groupings.
+     bg/border are the same hex at low opacity (no separate pastel token
+     exists for these exact colors), text/accent is the hex verbatim. */
+  --color-deviation-bg: rgba(0, 109, 192, 0.08);
+  --color-deviation-border: rgba(0, 109, 192, 0.35);
+  --color-deviation-text: #006dc0;
+  --color-oos-bg: rgba(1, 27, 171, 0.08);
+  --color-oos-border: rgba(1, 27, 171, 0.35);
+  --color-oos-text: #011bab;
+  --color-oot-bg: rgba(0, 192, 192, 0.12);
+  --color-oot-border: rgba(0, 192, 192, 0.4);
+  --color-oot-text: #00c0c0;
+  --color-mc-bg: rgba(8, 145, 178, 0.08);
+  --color-mc-border: rgba(8, 145, 178, 0.35);
+  --color-mc-text: #0891b2;
   /* KPI card mini bar-chart series (SIT Dashboard Figma, 2026-09-04) — each
      chart's 5 older bars are "muted", the most recent month is "strong".
      Sampled directly off the Figma mock: Open Investigations uses neutral
@@ -150,6 +167,22 @@
   --color-pink-bg: rgba(219, 39, 119, 0.12);
   --color-pink-border: rgba(219, 39, 119, 0.35);
   --color-pink-text: #f472b6;
+
+  /* Same 4 event-type accents as the light theme above, lightened for
+     contrast against a near-black background — the light theme's exact hex
+     is kept for the bg/border tint's own hue. */
+  --color-deviation-bg: rgba(0, 109, 192, 0.16);
+  --color-deviation-border: rgba(0, 109, 192, 0.45);
+  --color-deviation-text: #4da3e0;
+  --color-oos-bg: rgba(1, 27, 171, 0.2);
+  --color-oos-border: rgba(1, 27, 171, 0.5);
+  --color-oos-text: #6b7ce0;
+  --color-oot-bg: rgba(0, 192, 192, 0.16);
+  --color-oot-border: rgba(0, 192, 192, 0.45);
+  --color-oot-text: #33d6d6;
+  --color-mc-bg: rgba(8, 145, 178, 0.16);
+  --color-mc-border: rgba(8, 145, 178, 0.45);
+  --color-mc-text: #38b8d8;
 
   --color-chart-neutral-muted: #475569;
   --color-chart-neutral-strong: #cbd5e1;

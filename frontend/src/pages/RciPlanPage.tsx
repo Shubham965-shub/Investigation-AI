@@ -29,6 +29,21 @@ function tomorrowIso(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Default Target Date for any section that doesn't have one yet (2026-09-10,
+// per the user) — today + 5 WORKING days (Mon-Fri, weekends skipped, today
+// itself not counted as one of the 5), not just today+5 calendar days.
+// Always later than tomorrowIso()'s min, so it never violates that bound.
+function defaultDueDateIso(): string {
+  const d = new Date();
+  let remaining = 5;
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1);
+    const day = d.getDay(); // 0 = Sunday, 6 = Saturday
+    if (day !== 0 && day !== 6) remaining -= 1;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 // due_date is always a plain "yyyy-mm-dd" string (native <input type="date">'s
 // value format) — displayed as dd/mm/yyyy once locked/read-only (2026-08-18,
 // per the user). The editable native date input itself still renders
@@ -72,6 +87,12 @@ export function RciPlanPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushed, setPushed] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Surfaces a persistSections failure (2026-09-10, per the user — every
+  // section/subtask edit must actually be persisted, not just silently
+  // fail). Previously only logged to the console — the optimistic local
+  // setSections() update still made the edit LOOK saved on screen even when
+  // the backend call never went through, so a real failure was invisible.
+  const [persistError, setPersistError] = useState<string | null>(null);
   const [investigators, setInvestigators] = useState<string[]>([]);
   // "Explore Events" now lives only on this page's Problem Statement card,
   // not the RecordDetailsModal popup it used to share with Problem Statement
@@ -104,7 +125,17 @@ export function RciPlanPage() {
           setTrackwiseFields(rciRecord.trackwise_fields);
           setLockedForEditing(rciRecord.locked_for_editing ?? false);
           if (rciRecord.sections) {
-            setSections(rciRecord.sections);
+            // Any section still missing a Target Date gets the same
+            // computed default a fresh generate() gives every section below
+            // (2026-09-10, per the user) — covers plans generated before
+            // this default existed. Skipped once the plan is locked (Task
+            // Critique already started) — nothing should change on a frozen
+            // plan, defaulted or not.
+            const filled = rciRecord.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
+            setSections(filled);
+            if (!rciRecord.locked_for_editing && filled.some((s, i) => s.due_date !== rciRecord.sections![i].due_date)) {
+              persistSections(filled);
+            }
           }
           // The GET response's trackwise_fields already includes the
           // extended field set (Deviation Number, Date Opened, etc.) — pull
@@ -186,9 +217,16 @@ export function RciPlanPage() {
             : raw;
       }
       const response = await generateRciPlan(recordId!, { event_type: eventType!, trackwise_fields: mergedFields });
-      // Session-only display — the backend persists this (best-effort) as
-      // part of the generate call.
-      setSections(response.sections);
+      // Every freshly generated section defaults its Target Date to today +
+      // 5 working days (2026-09-10, per the user) rather than staying blank
+      // until someone picks one — still freely editable per-section
+      // afterward, same as the assignee convenience-default above.
+      const filled = response.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
+      setSections(filled);
+      // The generate call's own best-effort persist (mentioned above) ran
+      // before this default was computed, so push it through the normal
+      // persist path too rather than leaving the backend's copy blank.
+      persistSections(filled);
     } catch (err) {
       setError(err instanceof ApiError ? String(err.detail) : "Failed to generate RCI plan");
     } finally {
@@ -211,9 +249,16 @@ export function RciPlanPage() {
     if (!recordId) return;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
-      updateRciPlanSections(recordId, list).catch((err) => {
-        console.error("Failed to persist RCI plan sections", err);
-      });
+      updateRciPlanSections(recordId, list)
+        .then(() => setPersistError(null))
+        .catch((err) => {
+          console.error("Failed to persist RCI plan sections", err);
+          setPersistError(
+            err instanceof ApiError
+              ? String(err.detail)
+              : "Your last change wasn't saved — check your connection and try the edit again."
+          );
+        });
     }, 600);
   }
 
@@ -226,7 +271,7 @@ export function RciPlanPage() {
 
   function addSection() {
     if (!sections) return;
-    const newSection: RciSectionItem = { title: "", correlation: null, assignee: null, due_date: null, tasks: [] };
+    const newSection: RciSectionItem = { title: "", correlation: null, assignee: null, due_date: defaultDueDateIso(), tasks: [] };
     const newSections = [...sections, newSection];
     setSections(newSections);
     persistSections(newSections);
@@ -266,7 +311,16 @@ export function RciPlanPage() {
 
   function setSectionDueDate(index: number, dueDate: string) {
     if (!sections) return;
-    const newSections = sections.map((s, i) => (i === index ? { ...s, due_date: dueDate || null } : s));
+    // Same convenience-default bulk-fill as setSectionAssignee above
+    // (2026-09-10, per the user — due_date should get the same default
+    // treatment already given to assignee): the first-ever date picked on
+    // this plan also populates every other still-date-less section, freely
+    // editable per-section afterward, and never fires again once any
+    // section already has a real due_date.
+    const isFirstDueDate = !!dueDate && sections.every((s) => !s.due_date);
+    const newSections = sections.map((s, i) =>
+      i === index ? { ...s, due_date: dueDate || null } : isFirstDueDate ? { ...s, due_date: dueDate } : s
+    );
     setSections(newSections);
     persistSections(newSections);
   }
@@ -432,12 +486,17 @@ export function RciPlanPage() {
           This RCI Plan is read-only — Task Critique has already started on it.
         </p>
       )}
+      {persistError && <p className="error-banner">{persistError}</p>}
 
       {sections.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", fontSize: "var(--font-size-base)", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
           <span style={{ width: 20, flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0 }}>Task</span>
-          <span style={{ minWidth: 200 }}>Target Date</span>
+          {/* Right-aligned to match the now content-fit, right-aligned date
+              box beneath it (2026-09-10, per the user) — Investigator's
+              header/value are still both left-aligned, so only this one
+              changes. */}
+          <span style={{ width: 200, flexShrink: 0, textAlign: "right" }}>Target Date</span>
           <span style={{ minWidth: 200 }}>Investigator</span>
           <span style={{ width: 24, flexShrink: 0 }} />
         </div>
@@ -498,19 +557,27 @@ export function RciPlanPage() {
                     </>
                   )}
                 </div>
-                <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", minWidth: 200, boxSizing: "border-box" }}>
-                  {editMode && !lockedForEditing ? (
-                    <input
-                      type="date"
-                      min={minDueDate}
-                      value={section.due_date ?? ""}
-                      onChange={(e) => setSectionDueDate(index, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
-                    />
-                  ) : (
-                    <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
-                  )}
+                {/* Outer slot stays the same 200px width as the "Target Date"
+                    header above/the Investigator column beside it, so
+                    shrinking the actual date box to fit its content doesn't
+                    shift anything else in the row — the box itself is just
+                    right-aligned within that reserved width instead of
+                    stretching to fill it (2026-09-10, per the user). */}
+                <div style={{ width: 200, flexShrink: 0, display: "flex", justifyContent: "flex-end", boxSizing: "border-box" }}>
+                  <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", width: "fit-content", boxSizing: "border-box" }}>
+                    {editMode && !lockedForEditing ? (
+                      <input
+                        type="date"
+                        min={minDueDate}
+                        value={section.due_date ?? ""}
+                        onChange={(e) => setSectionDueDate(index, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ border: "none", background: "none", fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", padding: 0 }}
+                      />
+                    ) : (
+                      <span>{section.due_date ? formatDdMmYyyy(section.due_date) : "—"}</span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: editMode && !lockedForEditing ? "5px 7px" : "9px 13px", display: "flex", alignItems: "center", gap: 8, minWidth: 200, boxSizing: "border-box" }}>
                   {editMode && !lockedForEditing ? (

@@ -17,6 +17,7 @@ import { RcCapaCritiquePage } from "./pages/RcCapaCritiquePage";
 import { RciReportPage } from "./pages/RciReportPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
+import { CxoDashboardPage } from "./pages/CxoDashboardPage";
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/" element={<ActionCenterPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/user-management" element={<UserManagementPage />} />
+              <Route path="/cxo-dashboard" element={<CxoDashboardPage />} />
 
               <Route path="/records/:recordId" element={<Navigate to="problem-statement" replace />} />
               <Route path="/records/:recordId/problem-statement" element={<RecordShell currentStep="problem-statement" />}>

@@ -1,4 +1,4 @@
-active: v1
+active: v3
 versions:
   v1:
     description: Migrated from static .txt prompt
@@ -38,4 +38,97 @@ versions:
       - determination_of_root_cause and root_cause_probable_cause_statement are DIFFERENT fields (how it was found vs. what the cause is) — do not collapse them into the same content.
       - Return valid JSON only. No markdown fences, no extra text.
       - Every field is still REQUIRED even when its source section is missing — never leave a field blank. If missing, write the honest "not yet determined/finalized" placeholder described above instead of an empty string.
+      - Missing-section fallbacks by field: problem_description needs Description of Event; immediate_containment_action needs Initial Impact Assessment; determination_of_root_cause needs Investigation Task and/or Root Cause Conclusion; root_cause_probable_cause_statement needs Root Cause Conclusion; impact_assessment and conclusion_statement need Impact Assessment & Batch Disposition; correction_conclusion_preventive_actions needs Correction & Remedial Action and/or CAPA. The summary field should only state facts drawn from sections that ARE available — never assert a root cause, disposition, or CAPA that hasn't been established.
+  v2:
+    description: 'Every field is now a JSON array of bullet points instead of one
+      prose string (2026-09-10, per the user: broken into bullets for readability).
+      v1 already asked for "each as its own clause or sentence" — this just makes
+      that structure literal instead of leaving it embedded in one block of prose,
+      and lets the document/UI apply real bullet formatting per point instead of a
+      wall of text.'
+    created_at: '2026-09-10T00:00:00+00:00'
+    template: |
+      You are a senior pharmaceutical QA investigator drafting the Executive Summary of a Root Cause Investigation (RCI) report — the very last section drafted, after every other section is already finished.
+
+      You will be given the finished Description of Event, Initial Impact Assessment, Investigation Task, Root Cause Conclusion, Impact Assessment & Batch Disposition, Correction & Remedial Action, and CAPA sections of this same report. Your job is to ROLL UP their content into a faithful, full synthesis — this is a SYNTHESIS of what those sections already established, not a new re-derivation, but real reports render this as a near-complete restatement of the investigation's substance, not a thin abstract: preserve the source sections' sub-structure and depth (e.g. distinct lines of evidence, comparative findings, contributing factors) as SEPARATE BULLET POINTS, one per distinct fact/clause, rather than compressing them into a single bullet. Introduce no claim here that isn't already supported by the sections you were given.
+
+      Some of those sections may not have been available yet when you're asked to draft this — the input will explicitly list any that are missing. When a field's source section is missing, do NOT fabricate or infer its content and do NOT imply it is complete. Instead write a single short, honest placeholder bullet stating that item is pending (e.g. "Root cause has not yet been determined." or "Corrective and preventive actions have not yet been finalized."). When a field draws on two sections and only one is missing, use the section that IS available and add one brief bullet noting the other is pending, rather than omitting the field.
+
+      Draft exactly these 8 fields, each as a JSON array of bullet-point strings (not one combined string):
+      1. summary — a short top-line rollup of the single most decision-relevant facts: product/batch, the defect, the root cause, and any key measurement or finding that drove the conclusion. This field stays to 1 bullet (occasionally 2 for a genuinely two-part headline) — the fields below carry the full depth across multiple bullets.
+      2. problem_description — from Description of Event: what happened vs. what was expected, as separate bullets for each distinct fact (including any measurements, limits, or specifics from the source section), so a reader who skipped Description of Event still gets the full picture.
+      3. immediate_containment_action — from Initial Impact Assessment: one bullet per distinct immediate action taken (holding batch/area/equipment, QA notification, regulatory notification if applicable) — every action the source section lists gets its own bullet, not folded into one.
+      4. determination_of_root_cause — from Investigation Task and Root Cause Conclusion: one bullet per distinct investigation activity or key piece of evidence that led to the root cause. When the investigation identified multiple distinct lines of evidence or contributing factors (e.g. a process-trend observation, a comparative assessment across areas/equipment/batches, a timing- or duration-related factor, a measurement-methodology factor), give each its own bullet rather than folding them into one generic bullet — mirror the granularity of the source sections. Do NOT state the root cause conclusion itself here (that's the next field) — this field is about HOW it was found.
+      5. root_cause_probable_cause_statement — from Root Cause Conclusion: one bullet for the most likely underlying cause, WITHOUT the derivation detail (that was the previous field), plus one additional bullet per secondary/contributing cause the source section names, not just the single most-likely one.
+      6. impact_assessment — from Impact Assessment & Batch Disposition: one bullet per impact area the source section actually addresses (not only the headline one), covering product quality and patient safety impact with respect to the event and identified cause.
+      7. correction_conclusion_preventive_actions — from Correction & Remedial Action and CAPA: one bullet per distinct action — the action(s) taken to address the immediate issue, and the action(s) taken to eliminate the root cause and prevent recurrence — each described concretely (including any specific proposed change, e.g. a revised limit or procedure) rather than paraphrased down to a generic bullet. Cover both sections' content fully as separate bullets — do not drop detail just because they're combined into one Executive Summary field.
+      8. conclusion_statement — from Impact Assessment & Batch Disposition's own `conclusion` field: one bullet for the final product/batch disposition decision (release, hold, reject, rework) and its stated basis; add a second bullet only if there is a genuinely distinct second point (e.g. a condition attached to the disposition). This is a DIFFERENT field from `impact_assessment` above — that one is about patient-safety/quality impact, this one is the final disposition outcome.
+
+      Each bullet-point string is plain prose — do NOT prefix it with "-", "•", a number, or any other list marker; the document this feeds into applies its own bullet formatting to each array element.
+
+      OUTPUT SCHEMA:
+      {
+        "summary": ["...", ...],
+        "problem_description": ["...", ...],
+        "immediate_containment_action": ["...", ...],
+        "determination_of_root_cause": ["...", ...],
+        "root_cause_probable_cause_statement": ["...", ...],
+        "impact_assessment": ["...", ...],
+        "correction_conclusion_preventive_actions": ["...", ...],
+        "conclusion_statement": ["...", ...]
+      }
+
+      CRITICAL RULES:
+      - This is a rollup — never introduce a fact, number, or claim not already present in the finished sections you were given.
+      - This is a synthesis of the full report's substance, not a bare-bones abstract — match the level of detail and sub-structure the source sections actually contain (multiple bullets per field are expected and correct when the source material supports them). Only `summary` (field 1) stays to 1 bullet (2 at most) — every other field should carry real depth across as many bullets as the source material actually supports.
+      - determination_of_root_cause and root_cause_probable_cause_statement are DIFFERENT fields (how it was found vs. what the cause is) — do not collapse them into the same content.
+      - Each bullet is its own array element — plain prose, no leading "-"/"•"/number.
+      - Return valid JSON only. No markdown fences, no extra text.
+      - Every field is still REQUIRED even when its source section is missing — never leave a field's array empty. If missing, the array should contain exactly one honest "not yet determined/finalized" placeholder bullet, described above, instead of an empty array.
+      - Missing-section fallbacks by field: problem_description needs Description of Event; immediate_containment_action needs Initial Impact Assessment; determination_of_root_cause needs Investigation Task and/or Root Cause Conclusion; root_cause_probable_cause_statement needs Root Cause Conclusion; impact_assessment and conclusion_statement need Impact Assessment & Batch Disposition; correction_conclusion_preventive_actions needs Correction & Remedial Action and/or CAPA. The summary field should only state facts drawn from sections that ARE available — never assert a root cause, disposition, or CAPA that hasn't been established.
+  v3:
+    description: root_cause_probable_cause_statement tightened to exactly one concise,
+      precise line (2026-09-10, per the user, reviewed against real output on record
+      507944 — v2 let this field become a multi-bullet, multi- sentence elaboration,
+      when the whole point of this field vs. determination_of_root_cause is a short,
+      decisive best-fit statement). Every other field is untouched from v2.
+    created_at: '2026-09-10T00:00:00+00:00'
+    template: |
+      You are a senior pharmaceutical QA investigator drafting the Executive Summary of a Root Cause Investigation (RCI) report — the very last section drafted, after every other section is already finished.
+
+      You will be given the finished Description of Event, Initial Impact Assessment, Investigation Task, Root Cause Conclusion, Impact Assessment & Batch Disposition, Correction & Remedial Action, and CAPA sections of this same report. Your job is to ROLL UP their content into a faithful, full synthesis — this is a SYNTHESIS of what those sections already established, not a new re-derivation, but real reports render this as a near-complete restatement of the investigation's substance, not a thin abstract: preserve the source sections' sub-structure and depth (e.g. distinct lines of evidence, comparative findings, contributing factors) as SEPARATE BULLET POINTS, one per distinct fact/clause, rather than compressing them into a single bullet. Introduce no claim here that isn't already supported by the sections you were given.
+
+      Some of those sections may not have been available yet when you're asked to draft this — the input will explicitly list any that are missing. When a field's source section is missing, do NOT fabricate or infer its content and do NOT imply it is complete. Instead write a single short, honest placeholder bullet stating that item is pending (e.g. "Root cause has not yet been determined." or "Corrective and preventive actions have not yet been finalized."). When a field draws on two sections and only one is missing, use the section that IS available and add one brief bullet noting the other is pending, rather than omitting the field.
+
+      Draft exactly these 8 fields, each as a JSON array of bullet-point strings (not one combined string):
+      1. summary — a short top-line rollup of the single most decision-relevant facts: product/batch, the defect, the root cause, and any key measurement or finding that drove the conclusion. This field stays to 1 bullet (occasionally 2 for a genuinely two-part headline) — the fields below carry the full depth across multiple bullets.
+      2. problem_description — from Description of Event: what happened vs. what was expected, as separate bullets for each distinct fact (including any measurements, limits, or specifics from the source section), so a reader who skipped Description of Event still gets the full picture.
+      3. immediate_containment_action — from Initial Impact Assessment: one bullet per distinct immediate action taken (holding batch/area/equipment, QA notification, regulatory notification if applicable) — every action the source section lists gets its own bullet, not folded into one.
+      4. determination_of_root_cause — from Investigation Task and Root Cause Conclusion: one bullet per distinct investigation activity or key piece of evidence that led to the root cause. When the investigation identified multiple distinct lines of evidence or contributing factors (e.g. a process-trend observation, a comparative assessment across areas/equipment/batches, a timing- or duration-related factor, a measurement-methodology factor), give each its own bullet rather than folding them into one generic bullet — mirror the granularity of the source sections. Do NOT state the root cause conclusion itself here (that's the next field) — this field is about HOW it was found.
+      5. root_cause_probable_cause_statement — from Root Cause Conclusion: EXACTLY ONE bullet — a single, precise, concise sentence stating the model's best-fit root cause, WITHOUT the derivation detail (that was the previous field). This is the decisive answer to "what is the root cause", not a restatement of the investigation — keep it as short as the finding allows while still being specific (name the actual mechanism/factor, not a vague category). If the source material names secondary or contributing causes, do NOT list them as additional bullets here — either fold the single most load-bearing one into this one sentence if it's essential to naming the root cause, or leave it out entirely and trust that determination_of_root_cause above already covers that granularity. Never pad this field to more than one bullet.
+      6. impact_assessment — from Impact Assessment & Batch Disposition: one bullet per impact area the source section actually addresses (not only the headline one), covering product quality and patient safety impact with respect to the event and identified cause.
+      7. correction_conclusion_preventive_actions — from Correction & Remedial Action and CAPA: one bullet per distinct action — the action(s) taken to address the immediate issue, and the action(s) taken to eliminate the root cause and prevent recurrence — each described concretely (including any specific proposed change, e.g. a revised limit or procedure) rather than paraphrased down to a generic bullet. Cover both sections' content fully as separate bullets — do not drop detail just because they're combined into one Executive Summary field.
+      8. conclusion_statement — from Impact Assessment & Batch Disposition's own `conclusion` field: one bullet for the final product/batch disposition decision (release, hold, reject, rework) and its stated basis; add a second bullet only if there is a genuinely distinct second point (e.g. a condition attached to the disposition). This is a DIFFERENT field from `impact_assessment` above — that one is about patient-safety/quality impact, this one is the final disposition outcome.
+
+      Each bullet-point string is plain prose — do NOT prefix it with "-", "•", a number, or any other list marker; the document this feeds into applies its own bullet formatting to each array element.
+
+      OUTPUT SCHEMA:
+      {
+        "summary": ["...", ...],
+        "problem_description": ["...", ...],
+        "immediate_containment_action": ["...", ...],
+        "determination_of_root_cause": ["...", ...],
+        "root_cause_probable_cause_statement": ["<exactly one precise, concise sentence>"],
+        "impact_assessment": ["...", ...],
+        "correction_conclusion_preventive_actions": ["...", ...],
+        "conclusion_statement": ["...", ...]
+      }
+
+      CRITICAL RULES:
+      - This is a rollup — never introduce a fact, number, or claim not already present in the finished sections you were given.
+      - This is a synthesis of the full report's substance, not a bare-bones abstract — match the level of detail and sub-structure the source sections actually contain (multiple bullets per field are expected and correct when the source material supports them). `summary` (field 1) and `root_cause_probable_cause_statement` (field 5) are the two exceptions — both stay to exactly 1 bullet (summary occasionally 2, root_cause_probable_cause_statement NEVER more than 1) — every other field should carry real depth across as many bullets as the source material actually supports.
+      - determination_of_root_cause and root_cause_probable_cause_statement are DIFFERENT fields (how it was found vs. what the cause is, the latter in one line) — do not collapse them into the same content, and do not let the derivation detail from determination_of_root_cause bleed into root_cause_probable_cause_statement's single sentence.
+      - Each bullet is its own array element — plain prose, no leading "-"/"•"/number.
+      - Return valid JSON only. No markdown fences, no extra text.
+      - Every field is still REQUIRED even when its source section is missing — never leave a field's array empty. If missing, the array should contain exactly one honest "not yet determined/finalized" placeholder bullet, described above, instead of an empty array.
       - Missing-section fallbacks by field: problem_description needs Description of Event; immediate_containment_action needs Initial Impact Assessment; determination_of_root_cause needs Investigation Task and/or Root Cause Conclusion; root_cause_probable_cause_statement needs Root Cause Conclusion; impact_assessment and conclusion_statement need Impact Assessment & Batch Disposition; correction_conclusion_preventive_actions needs Correction & Remedial Action and/or CAPA. The summary field should only state facts drawn from sections that ARE available — never assert a root cause, disposition, or CAPA that hasn't been established.
