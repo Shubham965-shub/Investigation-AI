@@ -127,6 +127,49 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
         ]
 
 
+# SIT Dashboard's per-row "Remark" column. Keyed by (deviation_id, rci_id) —
+# NOT deviation_id alone — because a deviation with multiple RCI IDs renders
+# as multiple table rows (see ActionCenterPage.tsx's explodedInvestigations)
+# and each of those rows carries its own independent remark. rci_id "" here
+# means "this row has no RCI ID" (matches the frontend's own
+# `rci_ids[0] ?? ""` row-key convention); it's normalized to real SQL NULL
+# for storage/matching against investigation_remarks' NULLS NOT DISTINCT key
+# so the "no rci_id" case still upserts onto a single row instead of a new
+# one every save.
+async def fetch_remarks(deviation_ids: List[int]) -> Dict[int, Dict[str, str]]:
+    if not deviation_ids:
+        return {}
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                "SELECT deviation_id, rci_id, remark FROM investigation_remarks WHERE deviation_id = ANY($1::int[])",
+                deviation_ids,
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            return {}
+    result: Dict[int, Dict[str, str]] = {}
+    for r in rows:
+        result.setdefault(r["deviation_id"], {})[r["rci_id"] or ""] = r["remark"]
+    return result
+
+
+async def save_remark(deviation_id: int, rci_id: str, remark: str) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO investigation_remarks (deviation_id, rci_id, remark, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (deviation_id, rci_id) DO UPDATE
+                SET remark = EXCLUDED.remark, updated_at = now()
+            """,
+            deviation_id,
+            rci_id or None,
+            remark,
+        )
+
+
 async def save_problem_statement(deviation_id: int, problem_statement: str) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:

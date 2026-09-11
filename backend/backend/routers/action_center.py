@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.db.action_center_queries import (
     QE_TYPE_TO_STAT_LABEL,
@@ -13,8 +13,9 @@ from backend.db.action_center_queries import (
     fetch_monthly_trend_rows,
     fetch_open_investigations,
 )
+from backend.db.generated_content_queries import fetch_remarks, save_remark
 from backend.db.module_stage import MODULE_LABELS, next_module_label, stage_for
-from backend.routers.auth import get_current_payload
+from backend.routers.auth import get_current_payload, require_sit
 from backend.schemas.action_center import (
     ActionCenterSummary,
     ChartBar,
@@ -24,6 +25,7 @@ from backend.schemas.action_center import (
     MonthlyBar,
     MonthlyTrend,
     PendingAction,
+    RemarkUpdateRequest,
     StatusCard,
 )
 
@@ -154,6 +156,23 @@ _OPEN_STATUS_TO_BUCKET: Dict[str, str] = {
 
 def _fmt_date(d: Optional[datetime.date]) -> Optional[str]:
     return d.strftime("%d %b %Y") if d else None
+
+
+# fact_qms_event.due_date_display is the upstream-resolved due-date text
+# ("MM/DD/YYYY", or "MM/DD/YYYY(EXT)" when an extension applies) — this is
+# what must be shown to users, not the raw due_date column, per the user
+# (2026-09-11). No picking/coalescing between due_date/extended_due_date
+# happens here; this only reformats the date portion to this app's existing
+# due-date wording (_fmt_date's "%d %b %Y") and carries the "(EXT)" marker
+# through verbatim whenever the source text has it.
+def _fmt_due_date_display(due_date_display: Optional[str]) -> Optional[str]:
+    if not due_date_display:
+        return None
+    is_extended = due_date_display.endswith("(EXT)")
+    date_part = due_date_display[: -len("(EXT)")] if is_extended else due_date_display
+    parsed = datetime.datetime.strptime(date_part, "%m/%d/%Y").date()
+    formatted = _fmt_date(parsed)
+    return f"{formatted} (EXT)" if is_extended else formatted
 
 
 def _bucket_for(open_investigation_status: Optional[str]) -> str:
@@ -288,11 +307,32 @@ async def get_action_center_summary(
         rows = [r for r in rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
         cancelled_rows = [r for r in cancelled_rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
 
+    # "Remark" column — editable by SIT only, but VIEWABLE by SIT or Admin
+    # (2026-09-11, per the user, extending the original SIT-only visibility
+    # to Admin too). require_sit on the PUT endpoint below still gates
+    # editing to SIT alone — this only widens the read side. Fetched in bulk
+    # (one query, not per-row) and only for these two roles, both to avoid
+    # the pointless query for everyone else and as defense-in-depth so a
+    # response never carries remark text for a role that shouldn't see it.
+    can_view_remarks = bool({"SIT", "Admin"} & set(claims.get("roles") or []))
+    remarks_by_deviation: Dict[int, Dict[str, str]] = {}
+    if can_view_remarks:
+        all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
+        remarks_by_deviation = await fetch_remarks(all_deviation_ids)
+
     today = datetime.date.today()
 
     enriched: List[Dict[str, Any]] = []
     for r in rows:
-        due_date = r["due_date"].date() if r["due_date"] else None
+        due_date_display = _fmt_due_date_display(r["due_date_display"])
+        # Urgency sorting (days_until_due, below) must agree with the escalation
+        # bucket (open_investigation_status, upstream-computed) — both need the
+        # date actually in effect, i.e. the extension when one is set, not the
+        # original due_date, or "days until due" would disagree with a row's own
+        # Overdue/At Risk bucket. No display formatting happens off this value;
+        # that's due_date_display's job above.
+        effective_due_date = (r["extended_due_date"] or r["due_date"])
+        effective_due_date = effective_due_date.date() if effective_due_date else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
         # CAVEAT (2026-08-03, unresolved): pg_updated_at_timestamp is a single
         # flat bulk-load stamp — every row in fact_qms_event (7,246/7,246,
@@ -304,7 +344,7 @@ async def get_action_center_summary(
         # engineer before switching — don't trust this field's UI meaning
         # until that's resolved.
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
-        days_until_due = (due_date - today).days if due_date else None
+        days_until_due = (effective_due_date - today).days if effective_due_date else None
         days_since_opened = (today - date_opened).days if date_opened else 0
         # Table progress bar is driven by Trackwise's own module/state (via
         # module_stage.stage_for — the same "state change detection" mapping
@@ -326,9 +366,10 @@ async def get_action_center_summary(
                     r["product"], r["title"], QE_TYPE_TO_STAT_LABEL.get(r["qe_type"], r["qe_type"] or "Unknown")
                 ),
                 "criticality": r["criticality"],
+                "event_classification": r["event_classification"],
                 "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
-                "due_date": due_date,
+                "due_date_display": due_date_display,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
                 "days_until_due": days_until_due,
@@ -339,6 +380,7 @@ async def get_action_center_summary(
                 "module_risk_status": r["module_risk_status"],
                 "is_cancelled": r["module"] == _CANCELLED_MODULE_VALUE,
                 "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
+                "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
             }
         )
 
@@ -350,7 +392,7 @@ async def get_action_center_summary(
     # cards, or the progress chart (client-confirmed scope: table only).
     cancelled_enriched: List[Dict[str, Any]] = []
     for r in cancelled_rows:
-        due_date = r["due_date"].date() if r["due_date"] else None
+        due_date_display = _fmt_due_date_display(r["due_date_display"])
         date_opened = r["date_opened"].date() if r["date_opened"] else None
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None  # see caveat above
         cancelled_enriched.append(
@@ -366,13 +408,15 @@ async def get_action_center_summary(
                     r["product"], r["title"], QE_TYPE_TO_STAT_LABEL.get(r["qe_type"], r["qe_type"] or "Unknown")
                 ),
                 "criticality": r["criticality"],
+                "event_classification": r["event_classification"],
                 "oos_oot_phase": r["oos_oot_phase"],
                 "escalation_level": r["escalation_level"],
-                "due_date": due_date,
+                "due_date_display": due_date_display,
                 "date_opened": date_opened,
                 "updated_at": updated_at,
                 "bucket": _bucket_for(r["open_investigation_status"]),
                 "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
+                "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
             }
         )
 
@@ -642,7 +686,7 @@ async def get_action_center_summary(
         PendingAction(
             id=i["id"],
             title=i["title"],
-            due_date=_fmt_date(i["due_date"]),
+            due_date=i["due_date_display"],
             is_overdue=i["bucket"] == "overdue",
             is_unassigned=i["bucket"] == "unassigned",
             criticality=i["criticality"],
@@ -698,7 +742,7 @@ async def get_action_center_summary(
                 event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
                 investigator=i["investigator"],
                 start_date=_fmt_date(i["date_opened"]),
-                due_date=_fmt_date(i["due_date"]),
+                due_date=i["due_date_display"],
                 updated_at=_fmt_date(i["updated_at"]),
                 stage=0,
                 total_stages=len(MODULE_LABELS),
@@ -711,6 +755,8 @@ async def get_action_center_summary(
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
                 criticality=i["criticality"],
+                event_classification=i["event_classification"],
+                remarks=i["remarks"],
             )
             for i in cancelled_enriched
         ]
@@ -722,7 +768,7 @@ async def get_action_center_summary(
                 event_type=QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown"),
                 investigator=i["investigator"],
                 start_date=_fmt_date(i["date_opened"]),
-                due_date=_fmt_date(i["due_date"]),
+                due_date=i["due_date_display"],
                 updated_at=_fmt_date(i["updated_at"]),
                 stage=i["stage"],
                 total_stages=len(MODULE_LABELS),
@@ -735,6 +781,8 @@ async def get_action_center_summary(
                 escalation_level=i["escalation_level"],
                 oos_oot_phase=i["oos_oot_phase"],
                 criticality=i["criticality"],
+                event_classification=i["event_classification"],
+                remarks=i["remarks"],
             )
             for i in enriched
         ]
@@ -751,3 +799,27 @@ async def get_action_center_summary(
         filter_options=filter_options,
         last_updated_at=last_updated_at,
     )
+
+
+@router.put("/{record_id}/remark")
+async def update_investigation_remark(
+    record_id: str,
+    request: RemarkUpdateRequest,
+    _: str = Depends(require_sit),
+) -> Dict[str, str]:
+    """SIT Dashboard's "Remark" column (2026-09-11, per the user) — editable
+    (and visible, see get_action_center_summary's is_sit masking above) by
+    the SIT role only, enforced here via require_sit rather than just hidden
+    client-side. Keyed by (record_id, rci_id) — not record_id alone — since
+    a deviation with multiple RCI IDs renders as multiple table rows (see
+    ActionCenterPage.tsx's explodedInvestigations), each needing its own
+    independent remark; request.rci_id is "" for a row with none, matching
+    the frontend's own row-key convention.
+    """
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No investigation found for this record")
+
+    await save_remark(deviation_id, request.rci_id, request.remark)
+    return {"remark": request.remark}

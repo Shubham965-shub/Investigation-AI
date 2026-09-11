@@ -53,6 +53,15 @@ export interface ProblemStatementRecordResponse {
   // for Deviation/Market Complaint (2026-08-26, per the user: used by
   // Stepper to pick which SLA tier applies to this investigation).
   criticality?: string | null;
+  // dim_event.event_classification (2026-09-11, per the data engineer) — a
+  // separate, additive field, NOT a replacement for criticality above
+  // (which stays binary "Critical"/"Non-Critical"). "Critical" | "Major" |
+  // "Minor", or null for OOS/OOT (no Major/Minor concept), an unclassified
+  // Deviation/Complaint, or a Complaint marked "Not Applicable" (collapsed
+  // to null upstream). Shown as a tag on the Record Details header —
+  // "Critical" reuses the existing Critical badge look, "Major"/"Minor" get
+  // their own tag, null shows no tag at all.
+  event_classification?: string | null;
 }
 
 export function getProblemStatementRecord(
@@ -511,6 +520,19 @@ export interface InvestigationRowResponse {
   escalation_level: string | null;
   oos_oot_phase: "Phase 1" | "Phase 2" | null;
   criticality: string | null;
+  // dim_event.event_classification (2026-09-11, per the data engineer) — a
+  // separate, additive field from criticality above (which stays binary
+  // "Critical"/"Non-Critical"). "Critical" | "Major" | "Minor", or null for
+  // an OOS/OOT record (no Major/Minor concept exists for those types), an
+  // unclassified Deviation/Complaint, or a Complaint marked "Not
+  // Applicable" (collapsed to null upstream). Drives the Major/Minor/
+  // Non-Critical flag shown in front of the event-type badge.
+  event_classification: string | null;
+  // SIT Dashboard's "Remark" column — keyed by rci_id ("" for a row with
+  // none, matching rci_ids[0] above), since a deviation with multiple RCI
+  // IDs renders as multiple rows, each with its own independent remark.
+  // Only ever populated for a caller with the SIT role — {} otherwise.
+  remarks: Record<string, string>;
 }
 
 export interface FilterOptions {
@@ -579,6 +601,14 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   if (filters?.oosOotPhase) params.set("oos_oot_phase", filters.oosOotPhase);
   const qs = params.toString();
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
+}
+
+// SIT Dashboard's "Remark" column — editable by the SIT role only; the
+// backend enforces this too (403 for anyone else), this isn't just a UI
+// gate. rciId is "" for a row with no RCI ID, matching InvestigationRowResponse.remarks'
+// keying convention.
+export function updateInvestigationRemark(recordId: string, rciId: string, remark: string): Promise<{ remark: string }> {
+  return apiPut<{ remark: string }>(`/action-center/${recordId}/remark`, { rci_id: rciId, remark });
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────

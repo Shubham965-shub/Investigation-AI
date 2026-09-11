@@ -7,7 +7,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { CriticalityGuidelines } from "../components/CriticalityGuidelines";
 import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
-import { getActionCenterSummary, type ActionCenterSummaryResponse, type InvestigationRowResponse, type MonthlyTrend, type StatusCardResponse } from "../api/dashboard";
+import { getActionCenterSummary, updateInvestigationRemark, type ActionCenterSummaryResponse, type InvestigationRowResponse, type MonthlyTrend, type StatusCardResponse } from "../api/dashboard";
 import { useAuth } from "../auth/AuthContext";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
 import iconSearch from "../assets/icons/search.svg";
@@ -162,6 +162,21 @@ function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | 
   if (label === "OOT") return "event-oot";
   if (label === "Market Complaint") return "event-mc";
   return "event-deviation";
+}
+
+// Major/Minor/Non-Critical flag shown in front of the event-type badge
+// (2026-09-11, per the user) — driven by dim_event.event_classification,
+// the new data-engineer-provided field (see api/dashboard.ts). "Critical"
+// isn't handled here — that's still the existing red Critical badge shown
+// right after the event-type badge, driven by criticality; this flag only
+// covers the 3 cases that badge doesn't.
+function classificationFlag(inv: InvestigationRowResponse): { label: string; className: string } | null {
+  if (inv.event_classification === "Major") return { label: "Major", className: "classification-major" };
+  if (inv.event_classification === "Minor") return { label: "Minor", className: "classification-minor" };
+  if (!inv.event_classification && inv.criticality === "Non-Critical") {
+    return { label: "Non Critical", className: "classification-noncritical" };
+  }
+  return null;
 }
 
 // Fixed pixel height of .ac-kpi-chart in ActionCenterPage.css — bar heights
@@ -386,6 +401,16 @@ export function ActionCenterPage() {
   // purely because they'd be redundant/meaningless for a role that only
   // ever sees itself.
   const isInvestigatorRole = roles.includes("Investigator");
+  // "Remark" column (2026-09-11, per the user) — editable by SIT only, but
+  // viewable by SIT or Admin (widened from SIT-only visibility the same
+  // day, per the user); the backend enforces both independently (remarks is
+  // {} for anyone else, and the PUT endpoint 403s for non-SIT), this is
+  // just the UI-side gate.
+  const canViewRemarks = roles.includes("SIT") || roles.includes("Admin");
+  const canEditRemarks = roles.includes("SIT");
+  const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
+  const [remarkSaving, setRemarkSaving] = useState<Record<string, boolean>>({});
+  const [remarkErrors, setRemarkErrors] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -669,6 +694,26 @@ export function ActionCenterPage() {
     setPage(1);
   }
 
+  // SIT-only "Remark" column — autosaves on blur (no explicit Save button;
+  // this is a lightweight per-row notes field in a table, not a full-page
+  // edit like Problem Statement's). rowKey mirrors the table row's own
+  // composite key (`${inv.id}-${inv.rci_ids[0] ?? ""}`) so a deviation with
+  // multiple RCI IDs keeps each exploded row's draft independent.
+  async function saveRemark(inv: InvestigationRowResponse, rowKey: string, value: string) {
+    const rciId = inv.rci_ids[0] ?? "";
+    const previouslySaved = inv.remarks[rciId] ?? "";
+    if (value === previouslySaved) return;
+    setRemarkSaving((prev) => ({ ...prev, [rowKey]: true }));
+    setRemarkErrors((prev) => ({ ...prev, [rowKey]: "" }));
+    try {
+      await updateInvestigationRemark(inv.id, rciId, value);
+    } catch (err) {
+      setRemarkErrors((prev) => ({ ...prev, [rowKey]: err instanceof ApiError ? String(err.detail) : "Failed to save remark" }));
+    } finally {
+      setRemarkSaving((prev) => ({ ...prev, [rowKey]: false }));
+    }
+  }
+
   function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
     return {
       id: inv.id,
@@ -824,25 +869,26 @@ export function ActionCenterPage() {
             </div>
           );
         }
-        // OOS/OOT: same Status pill substitution as above (2026-09-10, per
-        // the user), just sharing its row with Phase 1/Phase 2 instead of
-        // the L5-L1 cards — those still get their own row below, unchanged.
-        // Only 2 other cards share this row (vs. 5 in the Deviation/MC
-        // case above), so the same 1.5fr multiplier read as too wide here —
-        // dialed back to 1fr, even with Phase 1/Phase 2 (2026-09-10, per
-        // the user).
+        // OOS/OOT: Phase 1/Phase 2 keep their own row above (unchanged); the
+        // Status pill now shares the L5-L1 row below instead, same as the
+        // Deviation/Market Complaint/no-filter layout above — with the same
+        // 1.5fr multiplier and dividerBefore rule marking it off from the
+        // level cards (2026-09-11, per the user).
         const topRowWithoutUnassigned = topRow.filter((c) => c.key !== "unassigned");
         return (
           <>
             <div
               className="ac-status-row"
-              style={{ gridTemplateColumns: `1fr repeat(${topRowWithoutUnassigned.length}, 1fr)` }}
+              style={{ gridTemplateColumns: `repeat(${topRowWithoutUnassigned.length}, 1fr)` }}
             >
-              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
               {topRowWithoutUnassigned.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter))}
             </div>
-            <div className="ac-status-row" style={{ gridTemplateColumns: `repeat(${levelRow.length}, 1fr)` }}>
-              {levelRow.map((card) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter))}
+            <div
+              className="ac-status-row"
+              style={{ gridTemplateColumns: `1.5fr repeat(${levelRow.length}, 1fr)` }}
+            >
+              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
+              {levelRow.map((card, idx) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter, idx === 0))}
             </div>
           </>
         );
@@ -1119,11 +1165,12 @@ export function ActionCenterPage() {
                         </InfoTooltip>
                       </span>
                     )}
-                    {sortColumn === col.key && (
+    {sortColumn === col.key && (
                       <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
                     )}
                   </th>
                 ))}
+                {canViewRemarks && <th>Remark</th>}
                 <th />
               </tr>
             </thead>
@@ -1131,9 +1178,11 @@ export function ActionCenterPage() {
               {pagedInvestigations.map((inv) => {
                 const percent = Math.round((inv.stage / inv.total_stages) * 100);
                 const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
+                const rowKey = `${inv.id}-${inv.rci_ids[0] ?? ""}`;
+                const remarkValue = remarkDrafts[rowKey] ?? inv.remarks[inv.rci_ids[0] ?? ""] ?? "";
                 return (
                   <tr
-                    key={`${inv.id}-${inv.rci_ids[0] ?? ""}`}
+                    key={rowKey}
                     className={`ac-inv-row ${eventTypeAccentClass(inv.event_type)}`}
                     onClick={() => setPreviewInvestigation(toPreview(inv))}
                     style={{ cursor: "pointer" }}
@@ -1141,8 +1190,15 @@ export function ActionCenterPage() {
                     <td>
                       <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
                         <span className={`ac-badge ${eventTypeAccentClass(inv.event_type)}`}>{inv.event_type}</span>
-                        {/* Major/Minor no longer get a badge (2026-09-08, per the user) —
-                            only Critical is called out on the row. */}
+                        {/* Major/Minor/Non-Critical flag reintroduced (2026-09-11,
+                            per the user) — driven by event_classification, the new
+                            data-engineer-provided field. Always rendered AFTER the
+                            event-type badge (2026-09-11, per the user), same as the
+                            existing Critical badge right below. */}
+                        {(() => {
+                          const flag = classificationFlag(inv);
+                          return flag && <span className={`ac-badge ${flag.className}`}>{flag.label}</span>;
+                        })()}
                         {inv.criticality === "Critical" && <span className="ac-badge critical">Critical</span>}
                       </div>
                       <div className="ac-inv-id">{inv.id}{inv.rci_ids.length > 0 ? ` / ${inv.rci_ids.join(", ")}` : ""}</div>
@@ -1177,6 +1233,26 @@ export function ActionCenterPage() {
                         )}
                       </div>
                     </td>
+                    {canViewRemarks && (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <textarea
+                          className="ac-remark-input"
+                          rows={2}
+                          placeholder={canEditRemarks ? "Add a remark…" : "No remark yet"}
+                          value={remarkValue}
+                          readOnly={!canEditRemarks}
+                          title={!canEditRemarks ? "Only the SIT role can edit remarks" : undefined}
+                          onChange={canEditRemarks ? (e) => setRemarkDrafts((prev) => ({ ...prev, [rowKey]: e.target.value })) : undefined}
+                          onBlur={canEditRemarks ? (e) => saveRemark(inv, rowKey, e.target.value) : undefined}
+                        />
+                        {canEditRemarks && remarkSaving[rowKey] && (
+                          <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>Saving…</p>
+                        )}
+                        {canEditRemarks && remarkErrors[rowKey] && (
+                          <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-danger-text)" }}>{remarkErrors[rowKey]}</p>
+                        )}
+                      </td>
+                    )}
                     <td>
                       <button
                         type="button"

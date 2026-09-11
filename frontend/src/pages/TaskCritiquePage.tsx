@@ -215,7 +215,7 @@ export function TaskCritiquePage() {
                     )}
                     {section.latest_report && (
                       <>
-                        <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, boxSizing: "border-box" }}>
+                        <div style={{ background: "var(--color-open-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, boxSizing: "border-box" }}>
                           <span style={{ fontSize: "var(--font-size-md)", color: "var(--color-text-faint)" }}>{section.assignee || "Unassigned"}</span>
                         </div>
                         <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", boxSizing: "border-box" }}>

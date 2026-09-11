@@ -73,7 +73,13 @@ SELECT
     r.rci_key AS rci_number,
     d.department,
     f.due_date,
-    e.criticality
+    e.criticality,
+    -- Plain column on dim_event itself — distinct from dim_event_classification
+    -- (`ec` below, an unrelated qe_type lookup table). "Critical"/"Major"/
+    -- "Minor" for Deviation/Complaint, or NULL for OOS/OOT (no Major/Minor
+    -- concept for those types) or an unclassified/"Not Applicable" record
+    -- (2026-09-11, per the data engineer).
+    e.event_classification
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
 LEFT JOIN dim_event_classification ec ON ec.event_classification_key = f.event_classification_key

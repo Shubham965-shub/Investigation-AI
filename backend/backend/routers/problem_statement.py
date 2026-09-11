@@ -68,6 +68,7 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         stage=stage_for(row["status"]),
         locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
         criticality=row["criticality"],
+        event_classification=row["event_classification"],
     )
 
 
@@ -114,6 +115,7 @@ async def update_problem_statement(record_id: str, request: ProblemStatementUpda
         stage=stage_for(row["status"]),
         locked_for_editing=False,
         criticality=row["criticality"],
+        event_classification=row["event_classification"],
     )
 
 

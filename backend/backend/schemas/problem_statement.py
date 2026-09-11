@@ -58,6 +58,17 @@ class ProblemStatementRecord(BaseModel):
     # (2026-08-26, per the user: used to pick which SLA tier the Stepper
     # shows for this specific investigation).
     criticality: Optional[str] = None
+    # dim_event.event_classification (2026-09-11, per the data engineer) — a
+    # separate, additive field, NOT a replacement for criticality above
+    # (which stays binary "Critical"/"Non-Critical" and is unaffected).
+    # Values: "Critical"/"Major"/"Minor" for Deviation/Complaint records, or
+    # None for an OOS/OOT record (no Major/Minor concept exists for those
+    # types), a Deviation/Complaint with no classification set yet, or a
+    # Complaint marked "Not Applicable" (deliberately collapsed to None
+    # upstream). Render "Critical" with the same tag/styling already used
+    # for Critical elsewhere; "Major"/"Minor" get their own (new) tag; None
+    # gets no tag at all, same as today.
+    event_classification: Optional[str] = None
     # How many modules Trackwise's own status implies are already done (see
     # src/db/module_stage.py) — lets the frontend show this module as
     # already-complete (read-only trackwise fields) even without a real
