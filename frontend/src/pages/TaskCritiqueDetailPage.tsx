@@ -489,20 +489,22 @@ export function TaskCritiqueDetailPage() {
               transform: "translate(-50%, -50%)",
               background: "var(--color-surface)",
               borderRadius: 10,
-              width: "min(560px, 92vw)",
-              padding: 24,
+              width: "min(760px, 92vw)",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              padding: 28,
               zIndex: 61,
               display: "flex",
               flexDirection: "column",
-              gap: 12,
+              gap: 14,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)" }}>Why were these recommendations deselected?</p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-md)" }}>Why were these recommendations deselected?</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-base)" }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", width: "35%" }}>Recommendation</th>
-                  <th style={{ textAlign: "left", padding: "6px 8px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)" }}>Reason</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", width: "40%" }}>Recommendation</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", border: "1px solid var(--color-card-border)", background: "var(--color-bg)" }}>Reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,17 +513,17 @@ export function TaskCritiqueDetailPage() {
                   .filter(({ r }) => r.decision === "pending" && uncheckedRecIds.has(r.id))
                   .map(({ r, num }, idx) => (
                     <tr key={r.id}>
-                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)", verticalAlign: "top" }}>
+                      <td style={{ padding: "10px 12px", border: "1px solid var(--color-card-border)", verticalAlign: "top" }}>
                         #{num}. {r.description}
                       </td>
-                      <td style={{ padding: "6px 8px", border: "1px solid var(--color-card-border)" }}>
+                      <td style={{ padding: "10px 12px", border: "1px solid var(--color-card-border)", verticalAlign: "top" }}>
                         <input
                           type="text"
                           className="field-value"
                           placeholder="Reason"
                           value={deselectReasons[r.id] ?? ""}
                           onChange={(e) => setDeselectReasons((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                          style={{ height: "auto", width: "100%", boxSizing: "border-box" }}
+                          style={{ height: "auto", width: "100%", boxSizing: "border-box", padding: "8px 10px" }}
                           autoFocus={idx === 0}
                         />
                       </td>

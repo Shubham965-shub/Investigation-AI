@@ -83,12 +83,39 @@ class InvestigationRow(BaseModel):
     # otherwise (including for OOS/OOT not yet phased). Drives the Unassigned
     # vs Unassigned – Phase 1 status-card split (see action_center.py).
     oos_oot_phase: Optional[str] = None
-    # dim_event.criticality — "Critical"/"Major"/"Minor". Already computed
-    # into `enriched`/`cancelled_enriched` for the page's own criticality
-    # filter, but wasn't previously surfaced on each row; now used for the
-    # investigation table's per-row criticality badge (2026-09-08, per the
-    # user).
+    # dim_event.criticality — CORRECTED (2026-09-11, per the data engineer):
+    # this column is binary, always exactly "Critical"/"Non-Critical" — the
+    # previous comment here claiming "Critical"/"Major"/"Minor" was wrong
+    # (confirmed via live query). Already computed into `enriched`/
+    # `cancelled_enriched` for the page's own criticality filter, but wasn't
+    # previously surfaced on each row; now used for the investigation
+    # table's per-row criticality badge (2026-09-08, per the user). For the
+    # actual Major/Minor tiering, see dim_event.event_classification instead
+    # (schemas/problem_statement.py's ProblemStatementRecord.event_classification).
     criticality: Optional[str] = None
+    # dim_event.event_classification (2026-09-11, per the data engineer) — a
+    # separate, additive field from criticality above. "Critical" | "Major" |
+    # "Minor", or None for an OOS/OOT record (no Major/Minor concept exists
+    # for those types), an unclassified Deviation/Complaint, or a Complaint
+    # marked "Not Applicable" (collapsed to None upstream). Drives the
+    # investigation table's Major/Minor/Non-Critical flag shown in front of
+    # the event-type badge (2026-09-11, per the user).
+    event_classification: Optional[str] = None
+    # SIT Dashboard's per-row "Remark" column (2026-09-11, per the user) — a
+    # free-text note tracking investigation activity, keyed by rci_id ("" for
+    # a row with none, matching rci_ids[0] above) since a deviation with
+    # multiple RCI IDs renders as multiple rows, each needing its own remark.
+    # Only ever populated for a caller with the SIT role — {} otherwise, even
+    # though the field always exists on the response shape (see
+    # routers/action_center.py's is_sit masking); editable via
+    # PUT /action-center/{record_id}/remark.
+    remarks: Dict[str, str] = Field(default_factory=dict)
+
+
+class RemarkUpdateRequest(BaseModel):
+    # "" means this row has no RCI ID — see InvestigationRow.remarks above.
+    rci_id: str = ""
+    remark: str
 
 
 class ChartBar(BaseModel):

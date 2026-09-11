@@ -202,6 +202,21 @@ def require_admin(
     return payload["username"]
 
 
+# Gate for the SIT Dashboard's "Remark" field (2026-09-11, per the user) —
+# editable by SIT only, same pattern as require_admin above. Deliberately
+# SIT-only, not SIT-or-Admin — the user's own words ("editable by SITs and
+# visible to SITs only") scope this to that one role.
+def require_sit(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> str:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    payload = _decode_token_payload(credentials.credentials)
+    if "SIT" not in (payload.get("roles") or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SIT role required")
+    return payload["username"]
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest) -> LoginResponse:
     user = await fetch_user_by_username(request.username)

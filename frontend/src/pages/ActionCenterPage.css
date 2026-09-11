@@ -377,6 +377,18 @@
 .ac-badge.critical { border: 1px solid var(--color-danger-text); color: var(--color-danger-text); }
 .ac-badge.due { border: 1px solid var(--color-card-border); color: var(--color-text-muted); }
 
+/* Major/Minor/Non-Critical flag, in front of the event-type badge
+   (2026-09-11, per the user) — dim_event.event_classification, driven by
+   classificationFlag() in ActionCenterPage.tsx. A light-blue-to-white
+   gradient across the 3 states (per the user): Major is the most saturated
+   (most severe of the 3 — Critical itself stays its own separate red
+   badge), Minor a lighter step, Non-Critical nearly white. Same blue hue
+   (#3b82f6) as --color-info-text throughout, just graduated background
+   opacity, so the 3 read as one ramp rather than 3 unrelated colors. */
+.ac-badge.classification-major { background: rgba(59, 130, 246, 0.32); color: var(--color-info-text); }
+.ac-badge.classification-minor { background: rgba(59, 130, 246, 0.16); color: var(--color-info-text); }
+.ac-badge.classification-noncritical { background: rgba(59, 130, 246, 0.06); color: var(--color-info-text); }
+
 /* Event-type badge on each investigation row — same 4 exact per-event-type
    colors as eventTypeAccentClass elsewhere on this page (2026-09-09, per
    the user). */
@@ -619,10 +631,44 @@
 /* Row hover tinted by the investigation's own event type (2026-09-08, per
    the user) — scoped to .ac-inv-row specifically (not a plain `.ac-table
    tbody tr:hover`), since .ac-table is also reused by UserManagementPage's
-   plain (non-event-typed) table. */
-.ac-inv-row.event-blue:hover { background: var(--color-info-bg); }
-.ac-inv-row.event-teal:hover { background: var(--color-success-bg); }
-.ac-inv-row.event-purple:hover { background: var(--color-accepted-bg); }
+   plain (non-event-typed) table.
+   [CORRECTED 2026-09-11, per the user] These referenced stale class names
+   (event-blue/event-teal/event-purple) that predate eventTypeAccentClass's
+   later rename to event-deviation/event-oos/event-oot/event-mc — none of
+   them ever actually matched a real row's className, so hover was a no-op
+   for every row. Reusing the same per-event-type background tokens the
+   badges already use keeps the hover tint and the badge color visually tied
+   to the same event type. */
+.ac-inv-row { transition: background-color 0.2s ease; }
+.ac-inv-row.event-deviation:hover { background: var(--color-deviation-bg); }
+.ac-inv-row.event-oos:hover { background: var(--color-oos-bg); }
+.ac-inv-row.event-oot:hover { background: var(--color-oot-bg); }
+.ac-inv-row.event-mc:hover { background: var(--color-mc-bg); }
+
+/* SIT Dashboard's "Remark" column (2026-09-11, per the user) — a small
+   free-text notes box per row, autosaved on blur (see ActionCenterPage.tsx's
+   saveRemark). */
+.ac-remark-input {
+  width: 100%;
+  min-width: 160px;
+  resize: vertical;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-card-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* Admin sees the column but can't edit it (2026-09-11, per the user) — a
+   plain read-only look, no resize handle inviting an edit attempt. */
+.ac-remark-input:read-only {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  resize: none;
+  cursor: default;
+}
 
 .ac-inv-id {
   color: var(--color-text-muted);

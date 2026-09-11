@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { Stepper, RECORD_STEPS, type StepStatus } from "./Stepper";
 import { getProblemStatementRecord } from "../api/dashboard";
@@ -22,6 +22,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
   const navigate = useNavigate();
   const [eventType, setEventType] = useState<string | undefined>(undefined);
   const [criticality, setCriticality] = useState<string | null | undefined>(undefined);
+  const [eventClassification, setEventClassification] = useState<string | null | undefined>(undefined);
 
   // Only used so the stepper can mark Interview Questionnaire "(Optional)"
   // for Market Complaint investigations, and pick which SLA tier applies —
@@ -35,6 +36,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
         if (!cancelled) {
           setEventType(record?.event_type);
           setCriticality(record?.criticality ?? null);
+          setEventClassification(record?.event_classification ?? null);
         }
       })
       .catch(() => {});
@@ -61,6 +63,17 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
 
   if (!recordId) return null;
 
+  // dim_event.event_classification tag (2026-09-11, per the data engineer)
+  // — "Critical" reuses the same red outline look Action Center's Critical
+  // badge uses; "Major"/"Minor" get a plain grey tag; null/anything else
+  // shows nothing, same as before this field existed.
+  const classificationTagStyle: CSSProperties | null =
+    eventClassification === "Critical"
+      ? { border: "1px solid var(--color-danger-text)", color: "var(--color-danger-text)" }
+      : eventClassification === "Major" || eventClassification === "Minor"
+      ? { background: "var(--color-open-bg)", color: "var(--color-text-muted)" }
+      : null;
+
   return (
     <div style={{ width: "100%", boxSizing: "border-box", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -74,9 +87,26 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
         </button>
         <div>
           <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>Investigation AI Assistant</p>
-          <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)" }}>
-            Record Details - Record ID - {recordId}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)" }}>
+              Record Details - Record ID - {recordId}
+            </p>
+            {classificationTagStyle && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  borderRadius: "var(--radius-btn)",
+                  padding: "3px 10px",
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: 600,
+                  ...classificationTagStyle,
+                }}
+              >
+                {eventClassification}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

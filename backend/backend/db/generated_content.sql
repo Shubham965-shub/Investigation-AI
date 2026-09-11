@@ -21,6 +21,28 @@ CREATE TABLE IF NOT EXISTS investigation_problem_statements (
     generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- SIT Dashboard's "Remark" column (2026-09-11, per the user) — a free-text
+-- note SITs use to track investigation activity, editable and visible to
+-- the SIT role only (see routers/action_center.py's require_sit and the
+-- remarks={} masking for non-SIT callers). One remark per TABLE ROW, not
+-- per deviation_id — a deviation with multiple RCI IDs renders as multiple
+-- rows (see ActionCenterPage.tsx's explodedInvestigations/composite-key
+-- work, 2026-09-10) and each of those rows needs its own independent
+-- remark, hence the (deviation_id, rci_id) composite key rather than
+-- deviation_id alone. rci_id is nullable for the case where a row genuinely
+-- has none — not assumed absent for any particular event type, just
+-- possible in general (2026-09-11, per the user) — NULLS NOT DISTINCT
+-- (PG16, confirmed live) makes that composite key behave as a real upsert
+-- target even when rci_id is NULL, instead of every NULL row silently
+-- comparing unequal to every other the way a plain UNIQUE would.
+CREATE TABLE IF NOT EXISTS investigation_remarks (
+    deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),
+    rci_id TEXT,
+    remark TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id)
+);
+
 CREATE TABLE IF NOT EXISTS investigation_evidence_items (
     id SERIAL PRIMARY KEY,
     deviation_id INTEGER NOT NULL REFERENCES dim_event(deviation_id),

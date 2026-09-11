@@ -323,7 +323,19 @@ CREATE TABLE IF NOT EXISTS public.dim_event (
           title TEXT,
           workflow_status TEXT,
           criticality TEXT,
-          open_investigation_status TEXT
+          open_investigation_status TEXT,
+          -- [CORRECTED 2026-09-11, per the data engineer] A plain column on
+          -- dim_event itself — NOT dim_event_classification (a different,
+          -- unrelated qe_type lookup table already joined elsewhere as
+          -- `ec`). Values: "Critical"/"Major"/"Minor" for Deviation/
+          -- Complaint records, or NULL for an OOS/OOT record (no Major/Minor
+          -- concept exists for those types), a Deviation/Complaint with no
+          -- classification set yet, or a Complaint marked "Not Applicable"
+          -- (deliberately collapsed to NULL). Confirmed live (2026-09-11):
+          -- NULL 4,173, Minor 2,340, Critical 385, Major 114. `criticality`
+          -- above is unrelated and stays binary ("Critical"/"Non-Critical")
+          -- — this is the separate, additive field for the Major/Minor tier.
+          event_classification TEXT
         );
 
 -- ── Fact table ───────────────────────────────────────────────────────────

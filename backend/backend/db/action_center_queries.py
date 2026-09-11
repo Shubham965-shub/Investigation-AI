@@ -68,12 +68,13 @@ QE_TYPE_TO_STAT_LABEL: Dict[str, str] = {
 OPEN_INVESTIGATIONS_SINCE = datetime.date(2026, 1, 1)
 
 _OPEN_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
+SELECT deviation_id, title, qe_type, due_date, due_date_display, extended_due_date, date_opened, investigator, location, department, product, criticality, event_classification, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.event_classification,
         e.oos_oot_phase,
         e.escalation_level,
         e.module,
@@ -81,6 +82,8 @@ FROM (
         e.open_investigation_status,
         ec.qe_type,
         f.due_date,
+        f.due_date_display,
+        f.extended_due_date,
         f.date_opened,
         di.investigator,
         loc.location,
@@ -125,12 +128,13 @@ async def fetch_open_investigations() -> List[asyncpg.Record]:
 # open-investigations-only. See action_center.py for how the two lists are
 # combined.
 _CANCELLED_INVESTIGATIONS_QUERY = """
-SELECT deviation_id, title, qe_type, due_date, date_opened, investigator, location, department, product, criticality, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
+SELECT deviation_id, title, qe_type, due_date, due_date_display, extended_due_date, date_opened, investigator, location, department, product, criticality, event_classification, oos_oot_phase, escalation_level, module, module_risk_status, open_investigation_status, pg_updated_at_timestamp, rci_ids
 FROM (
     SELECT DISTINCT ON (f.deviation_id)
         f.deviation_id,
         e.title,
         e.criticality,
+        e.event_classification,
         e.oos_oot_phase,
         e.escalation_level,
         e.module,
@@ -138,6 +142,8 @@ FROM (
         e.open_investigation_status,
         ec.qe_type,
         f.due_date,
+        f.due_date_display,
+        f.extended_due_date,
         f.date_opened,
         di.investigator,
         loc.location,
