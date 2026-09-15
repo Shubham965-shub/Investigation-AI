@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.db.action_center_queries import (
     QE_TYPE_TO_STAT_LABEL,
+    fetch_all_departments,
     fetch_cancelled_investigations,
     fetch_monthly_trend_rows,
     fetch_open_investigations,
@@ -179,6 +181,18 @@ def _bucket_for(open_investigation_status: Optional[str]) -> str:
     return _OPEN_STATUS_TO_BUCKET.get(open_investigation_status, "unassigned")
 
 
+# action_center_queries.py's investigator_by_rci is a jsonb column — asyncpg
+# returns it as a raw JSON string (no codec configured on this pool), not a
+# dict, and NULL (-> None here) when a deviation_id has no fact_qms_event row
+# with a non-null rci_key at all (2026-09-15 bugfix — see that file for the
+# full rationale: each rci_key can carry a genuinely different investigator
+# than the single row action_center_queries.py's dedup otherwise picks).
+def _parse_investigator_by_rci(raw: Optional[str]) -> Dict[str, str]:
+    if not raw:
+        return {}
+    return json.loads(raw)
+
+
 # STOPGAP (2026-09-08, per the user): dim_product.product_key=620 is the
 # ETL's catch-all "couldn't resolve a product" bucket — its name_of_material
 # is literally the string "Not Applicable", and it's the single largest
@@ -271,6 +285,7 @@ async def get_action_center_summary(
 ) -> ActionCenterSummary:
     rows = await fetch_open_investigations()
     cancelled_rows = await fetch_cancelled_investigations()
+    all_departments = await fetch_all_departments()
 
     # "Last updated" stamp for the page (2026-09-09, per the user) — grabbed
     # from whichever fetched row has it first, before role-scoping narrows
@@ -381,6 +396,7 @@ async def get_action_center_summary(
                 "is_cancelled": r["module"] == _CANCELLED_MODULE_VALUE,
                 "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
                 "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
+                "investigator_by_rci": _parse_investigator_by_rci(r["investigator_by_rci"]),
             }
         )
 
@@ -417,6 +433,7 @@ async def get_action_center_summary(
                 "bucket": _bucket_for(r["open_investigation_status"]),
                 "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
                 "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
+                "investigator_by_rci": _parse_investigator_by_rci(r["investigator_by_rci"]),
             }
         )
 
@@ -475,7 +492,10 @@ async def get_action_center_summary(
 
     filter_options = FilterOptions(
         sites=sorted({i["site"] for i in enriched if i["site"]}),
-        departments=sorted({i["department"] for i in enriched if i["department"]}),
+        # Static full list (2026-09-15, per the user) — unlike sites/products/
+        # investigators below, this is NOT scoped to "what's on an open
+        # investigation right now"; see fetch_all_departments's own comment.
+        departments=all_departments,
         products=sorted({i["product"] for i in enriched if i["product"]}),
         investigators=investigator_options,
     )
@@ -551,8 +571,22 @@ async def get_action_center_summary(
     # KPI cards' monthly bar chart + MoM trend — a separate query since it
     # covers the full event population (open AND closed), unlike `enriched`
     # above which is open-investigations-only (see fetch_monthly_trend_rows).
+    #
+    # [BUGFIX 2026-09-15, per the user] own_investigator only ever gets set
+    # for the real "Investigator" role (JWT-based) — it stayed None for
+    # "View as Investigator" (AppHeader.tsx's demo control, which just sends
+    # the same `investigator` query param the manual dropdown filter does),
+    # so the charts silently kept showing every investigator's data even
+    # while the table/KPI counts/pills were already correctly scoped to just
+    # one. Falling back to the `investigator` filter param (when it's a real
+    # name, not the "unassigned" sentinel, which this query has no concept
+    # of) makes both paths scope the charts the same way the rest of the
+    # page already does.
+    trend_investigator = own_investigator or (
+        investigator if investigator and investigator != _UNASSIGNED_INVESTIGATOR_FILTER else None
+    )
     trend_months = _month_starts(_TREND_MONTHS, datetime.date.today())
-    trend_rows = [dict(r) for r in await fetch_monthly_trend_rows(trend_months[0], own_investigator)]
+    trend_rows = [dict(r) for r in await fetch_monthly_trend_rows(trend_months[0], trend_investigator)]
     opened_monthly = _bucket_monthly(trend_rows, "date_opened", trend_months)
     opened_trend = MonthlyTrend(monthly=opened_monthly, trend_percent=_trend_percent(opened_monthly))
     closed_trend_by_label: Dict[str, MonthlyTrend] = {}
@@ -757,6 +791,7 @@ async def get_action_center_summary(
                 criticality=i["criticality"],
                 event_classification=i["event_classification"],
                 remarks=i["remarks"],
+                investigator_by_rci=i["investigator_by_rci"],
             )
             for i in cancelled_enriched
         ]
@@ -783,6 +818,7 @@ async def get_action_center_summary(
                 criticality=i["criticality"],
                 event_classification=i["event_classification"],
                 remarks=i["remarks"],
+                investigator_by_rci=i["investigator_by_rci"],
             )
             for i in enriched
         ]
