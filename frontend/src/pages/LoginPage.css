@@ -49,20 +49,62 @@
   font-family: var(--font-body);
 }
 
+.login-split-page {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Solid Strides-green brand half — same deep green as the app header
+   (--color-header-bg), just filling an entire half of the screen instead of
+   a small pill. */
+.login-brand-half {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-header-bg);
+  overflow: hidden;
+}
+
+/* Faint grid texture on the green half, mirroring the one on the form half
+   so both sides feel like one system rather than two unrelated panels. */
+.login-brand-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  pointer-events: none;
+  background-image: linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+}
+
+.login-form-half {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--color-bg);
+}
+
 .login-radar {
   display: none;
 }
 
-.login-brand-panel {
-  display: none;
-}
-
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
+  .login-split-page {
+    flex-direction: row;
+  }
+  .login-brand-half {
+    flex: 1;
+    min-height: 100vh;
+  }
+  .login-form-half {
+    flex: 1;
+    min-height: 100vh;
+  }
   .login-radar {
     display: block;
-  }
-  .login-brand-panel {
-    display: flex;
   }
 }
 

@@ -533,6 +533,17 @@ export interface InvestigationRowResponse {
   // IDs renders as multiple rows, each with its own independent remark.
   // Only ever populated for a caller with the SIT role — {} otherwise.
   remarks: Record<string, string>;
+  // [BUGFIX 2026-09-15] `investigator` above is just whichever single
+  // fact_qms_event row the backend's dedup happened to pick for this
+  // deviation_id — fine for a single-RCI investigation, but WRONG for one
+  // with multiple RCI IDs, since each rci_key can carry a genuinely
+  // different investigator (confirmed live: e.g. deviation 507894's two
+  // RCIs have two different investigators). Keyed by rci_id, same
+  // convention as remarks above — use this to look up the investigator for
+  // a specific exploded row (see ActionCenterPage.tsx's
+  // explodedInvestigations), falling back to `investigator` only when this
+  // map has no entry for that rci_id at all.
+  investigator_by_rci: Record<string, string | null>;
 }
 
 export interface FilterOptions {

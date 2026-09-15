@@ -166,14 +166,37 @@ function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | 
 
 // Major/Minor/Non-Critical flag shown in front of the event-type badge
 // (2026-09-11, per the user) — driven by dim_event.event_classification,
-// the new data-engineer-provided field (see api/dashboard.ts). "Critical"
-// isn't handled here — that's still the existing red Critical badge shown
-// right after the event-type badge, driven by criticality; this flag only
-// covers the 3 cases that badge doesn't.
+// the data-engineer-provided field (see api/dashboard.ts). "Critical" isn't
+// handled here — that's still the existing red Critical badge shown right
+// after the event-type badge, driven by criticality; this flag only covers
+// the 3 cases that badge doesn't.
+//
+// [BUGFIX 2026-09-15, per the user] The "Non Critical" fallback used to
+// fire for ANY null event_classification + Non-Critical criticality — but
+// per the data engineer's own spec, null means "OOS/OOT (no Major/Minor
+// concept exists for these types)" OR "a Deviation/Complaint with no
+// classification set yet" — those are NOT the same thing, and confirmed
+// live: 57/59 open Deviations and 46/46 open Complaints are null simply
+// because they haven't been classified, not because they're confirmed
+// non-critical. Showing "Non Critical" for those read as a 3rd real
+// category sitting alongside Major/Minor, when it should have been no tag
+// at all (matching Critical/Major/Minor being the only real categories for
+// Deviation/Complaint). Scoped the fallback to OOS/OOT only, where
+// Major/Minor never applies and criticality really is the only signal.
+//
+// [REVERTED 2026-09-15, per the user] A "not critical, not minor -> must be
+// Major" inference was tried and briefly added here, but confirmed wrong:
+// event_classification genuinely has its own distinct "Major" value stored
+// in the DB for both Deviation (61 records) and Market Complaint (60
+// records) across the full (not just open) dataset — null is a real,
+// separate "not yet classified" state, not a stand-in for Major. Badges
+// must only ever reflect the actual stored event_classification value, not
+// an inferred one.
 function classificationFlag(inv: InvestigationRowResponse): { label: string; className: string } | null {
   if (inv.event_classification === "Major") return { label: "Major", className: "classification-major" };
   if (inv.event_classification === "Minor") return { label: "Minor", className: "classification-minor" };
-  if (!inv.event_classification && inv.criticality === "Non-Critical") {
+  const isOosOrOot = inv.event_type === "OOS" || inv.event_type === "OOT";
+  if (!inv.event_classification && inv.criticality === "Non-Critical" && isOosOrOot) {
     return { label: "Non Critical", className: "classification-noncritical" };
   }
   return null;
@@ -584,8 +607,22 @@ export function ActionCenterPage() {
   // (KPI cards, status cards, event-type counts) still reads directly off
   // summary.investigations, so this doesn't inflate any of those real
   // investigation-count totals — it's scoped to just this table's own rows.
+  // [BUGFIX 2026-09-15] Each exploded row must show ITS OWN rci_id's
+  // investigator (investigator_by_rci, keyed by rci_id), not the single
+  // `investigator` value shared by every exploded row of the same
+  // deviation_id — that was the actual bug: two different RCIs under the
+  // same investigation can have two different investigators, and the old
+  // code showed whichever one the backend's dedup happened to pick for
+  // BOTH rows. Falls back to `investigator` only when the map has no entry
+  // at all for that rci_id (e.g. no rci_key on that underlying row).
   const explodedInvestigations: InvestigationRowResponse[] = summary.investigations.flatMap((inv) =>
-    inv.rci_ids.length > 1 ? inv.rci_ids.map((rciId) => ({ ...inv, rci_ids: [rciId] })) : [inv]
+    inv.rci_ids.length > 1
+      ? inv.rci_ids.map((rciId) => ({
+          ...inv,
+          rci_ids: [rciId],
+          investigator: rciId in inv.investigator_by_rci ? inv.investigator_by_rci[rciId] : inv.investigator,
+        }))
+      : [inv]
   );
 
   const visibleInvestigations = explodedInvestigations

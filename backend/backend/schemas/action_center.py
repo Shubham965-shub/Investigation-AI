@@ -110,6 +110,21 @@ class InvestigationRow(BaseModel):
     # routers/action_center.py's is_sit masking); editable via
     # PUT /action-center/{record_id}/remark.
     remarks: Dict[str, str] = Field(default_factory=dict)
+    # [BUGFIX 2026-09-15] `investigator` above is just whichever single
+    # fact_qms_event row action_center_queries.py's dedup happened to pick
+    # for this deviation_id — fine for a single-RCI investigation, but
+    # WRONG for one with multiple RCI IDs, since each rci_key can carry a
+    # genuinely different investigator_key (confirmed live: e.g. deviation
+    # 507894's two RCIs have two different investigators). The frontend
+    # explodes one row per rci_id (composite Record ID + RCI ID key), and
+    # each exploded row must show ITS OWN rci_id's investigator via this map
+    # (keyed by rci_id, same convention as remarks above) — not the single
+    # `investigator` value, which should only be used as a fallback for a
+    # rci_id this map has no entry for (e.g. no rci_key on that row at all).
+    # A row's investigator_key can itself be NULL (unassigned) — None here
+    # means "this rci_id exists but has no investigator assigned", distinct
+    # from a missing key (no map entry at all for that rci_id).
+    investigator_by_rci: Dict[str, Optional[str]] = Field(default_factory=dict)
 
 
 class RemarkUpdateRequest(BaseModel):
