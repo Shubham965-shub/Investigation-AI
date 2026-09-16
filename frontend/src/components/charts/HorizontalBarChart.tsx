@@ -1,14 +1,4 @@
-// Generic horizontal bar chart — supports a single value per row (with an
-// optional per-row color) or a two-segment stacked row (e.g. "With RC" /
-// "Probable RC"). Plain SVG, no charting library.
-//
-// Row labels wrap onto multiple lines instead of spilling past the label
-// column — SVG <text> doesn't wrap on its own, so long labels (product/
-// equipment names) used to just render past LABEL_WIDTH. wrapLabel() below
-// measures against an offscreen canvas so line breaks land where the text
-// actually is too wide, not a rough character-count guess; each row's
-// height then grows to fit however many lines its own label needs (the bar
-// itself stays a fixed BAR_HEIGHT, vertically centered in that row).
+// Generic horizontal bar chart — single value per row, or a two-segment stacked row. wrapLabel() measures against an offscreen canvas since SVG <text> doesn't wrap on its own.
 
 export interface HorizontalBarRow {
   label: string;
@@ -23,10 +13,7 @@ const LABEL_WIDTH = 130;
 const CHART_WIDTH = 660;
 const LABEL_FONT_SIZE = 12;
 const LABEL_LINE_HEIGHT = 14;
-// Measured with a generic sans-serif rather than the app's actual --font-
-// body — canvas 2d context can't resolve CSS custom properties, and a
-// slightly wider reference font just makes wrapping a bit conservative
-// (never causes overflow) rather than pixel-perfect.
+// Generic sans-serif, not the app's --font-body — canvas can't resolve CSS custom properties; a slightly wider font just makes wrapping conservative.
 const MEASURE_FONT = `${LABEL_FONT_SIZE}px Arial, Helvetica, sans-serif`;
 
 let measureCanvasCtx: CanvasRenderingContext2D | null = null;
@@ -39,10 +26,7 @@ function measureTextWidth(text: string): number {
   return measureCanvasCtx.measureText(text).width;
 }
 
-// Greedy word-wrap: keeps adding words to the current line while it still
-// fits maxWidth, starting a new line once it doesn't. A single word wider
-// than maxWidth on its own is left as its own (overflowing) line rather
-// than broken mid-word.
+// Greedy word-wrap; a single word wider than maxWidth is left as its own overflowing line rather than broken mid-word.
 function wrapLabel(label: string, maxWidth: number): string[] {
   const words = label.split(/\s+/).filter(Boolean);
   if (words.length === 0) return [label];

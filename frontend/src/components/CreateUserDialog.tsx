@@ -1,18 +1,9 @@
 import { useState } from "react";
 import modalClose from "../assets/icons/modal-close.svg";
 
-// .field-value's global height (calc(1.4em * 3 + 18px)) is fixed at 3 lines
-// tall, for the multi-line/grid text fields it was designed for elsewhere
-// (2026-09-08, per the user) — these are single-line inputs/a select, so
-// they don't need to obey that constraint; just override the height back
-// to the element's own natural size, keeping the rest of .field-value's
-// look (background/border/padding/font).
+// .field-value's global height is fixed at 3 lines for multi-line fields elsewhere; these are single-line, so reset height to natural size.
 const NORMAL_FIELD_STYLE = { height: "auto", overflowY: "visible" as const };
 
-// Full Name/Username(email)/Password/Role form — same modal chrome as
-// AddItemDialog (top-left title + top-right X, bordered body, bottom-right
-// Cancel/primary footer), just a 4-field form instead of a single name
-// field (2026-09-08, per the user — User Management's "Create User" action).
 export function CreateUserDialog({
   roles,
   submitting,

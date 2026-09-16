@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-// Stacked bar chart for "Status Of Open Investigations". Plain SVG, no
-// charting library. Each bar is clipped to a single rounded-top-only shape
-// so the stacked segments read as one continuous column with flush color
-// transitions — only the very top of the whole bar is rounded, matching
-// the approved Figma design. Colors are likewise fixed by that design.
+// Plain SVG stacked bar chart. Each bar is clipped to a rounded-top-only shape so stacked segments read as one continuous column.
 export interface StatusChartDatum {
   label: string;
   onTrack: number;
@@ -22,9 +18,7 @@ const CHART_HEIGHT = 160;
 const BAR_WIDTH = 48;
 const MIN_SLOT_WIDTH = 140;
 const CORNER_RADIUS = 4;
-// A label may be "\n"-joined (e.g. merged Problem Statement/Evidence
-// Collection/Interview Questionnaire bar) — each line renders as its own
-// <tspan>, stacked this many px apart.
+// A label may be "\n"-joined — each line renders as its own <tspan>, stacked this many px apart.
 const LABEL_LINE_HEIGHT = 14;
 
 function roundedTopRectPath(x: number, y: number, width: number, height: number, radius: number): string {
@@ -40,9 +34,7 @@ function roundedTopRectPath(x: number, y: number, width: number, height: number,
   ].join(" ");
 }
 
-// Picks a small set of evenly-spaced, round-number tick values (e.g.
-// 0/100/200/300/400) instead of one per integer — the latter is fine for
-// tiny totals but unreadable once real counts (e.g. 382) are plotted.
+// Picks evenly-spaced, round-number tick values instead of one per integer, which is unreadable for large counts.
 function niceTicks(maxValue: number, targetCount = 5): number[] {
   if (maxValue <= 0) return [0, 1, 2, 3, 4];
   const rawStep = maxValue / targetCount;
@@ -63,12 +55,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
-  // Measures the actual rendered width so the chart can fill it edge to
-  // edge — per the user (2026-07-31): bars keep a fixed physical width
-  // (BAR_WIDTH) and only the gap between them grows to fill the panel,
-  // rather than the whole chart (bars included) scaling up via the SVG's
-  // viewBox, which is what made it look oversized after the module bars
-  // were merged from 7 down to 4.
+  // Bars keep a fixed width (BAR_WIDTH); only the gap between them grows to fill the panel, so the chart doesn't scale up via viewBox and look oversized.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -116,8 +103,7 @@ export function StatusChart({ data }: { data: StatusChartDatum[] }) {
           const barTop = baseline - totalHeight;
           const clipId = `bar-clip-${i}`;
 
-          // Bottom to top: Delayed, At Risk, On Track — "On track" (blue) is
-          // always the topmost segment in the approved design.
+          // Bottom to top: Delayed, At Risk, On Track — On Track is always the topmost segment.
           const segments = [
             { key: "delayed", value: d.delayed, color: COLORS.delayed },
             { key: "atRisk", value: d.atRisk, color: COLORS.atRisk },

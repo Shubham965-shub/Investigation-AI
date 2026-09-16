@@ -1,13 +1,5 @@
-"""Analytics dashboard endpoint — GET /api/analytics/summary.
-
-Scope (2026-08-03, per the user): only sections that map cleanly onto real
-star-schema columns are computed here — Event, CAPA presence, Root Cause
-presence, and Failure Pattern frequency. Investigation Quality (IQ Score) and
-the CAPA L1-L5 hierarchy ranking have no backing data anywhere (verified
-against the live DB) and are intentionally left out of this response — the
-frontend keeps its mock data for those two sections until a real formula/
-mapping is defined.
-"""
+"""Analytics dashboard endpoint — GET /api/analytics/summary. IQ Score and the CAPA L1-L5
+hierarchy are omitted (no backing data exists); the frontend keeps mock data for those."""
 from __future__ import annotations
 
 import datetime
@@ -37,20 +29,12 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
 
-# root_cause_category free-text values that mean "explicitly could not be
-# assigned" rather than "not yet looked at" — excluded from both the
-# identified/not-identified split and the 6M breakdown below. Distinct
-# values verified against the live DB (2026-08-03).
+# Values meaning "explicitly could not be assigned", not "not yet looked at" — excluded from
+# the identified/not-identified split and the 6M breakdown below.
 _NON_ASSIGNABLE = {"Non Assignable", "Non-Assignable"}
 
-# Best-effort mapping of real root_cause_category values (verified against
-# the live DB, 39 distinct values total) onto the Figma mock's Ishikawa/6M
-# scheme (Man/Machine/Material/Method/Measurement/Mother Nature) — per the
-# user, keep the 6M labels rather than relabel the chart to real category
-# names. This is necessarily approximate: the real taxonomy doesn't actually
-# follow a 6M structure. Only categories with a clear conceptual fit are
-# mapped; anything else (including None and _NON_ASSIGNABLE) is left out of
-# the chart entirely rather than forced into a bucket.
+# Approximate mapping of real root_cause_category values onto the Ishikawa/6M scheme; categories
+# with no clear fit (including None and _NON_ASSIGNABLE) are left out rather than forced in.
 _ROOT_CAUSE_TO_6M: Dict[str, str] = {
     # Man — personnel/human-driven
     "Handling": "Man",
@@ -96,10 +80,7 @@ _6M_ORDER = ["Method", "Material", "Measurement", "Mother Nature", "Man", "Machi
 
 _MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-# dim_product.name_of_material/dim_equipment.instrument_equipment placeholder
-# values meaning "doesn't apply to this event" rather than a real product/
-# equipment name — verified as the single largest value for both columns on
-# the live DB (853/6,686 products, 2,256/6,686 equipment). Left in, they'd
+# Placeholder values meaning "doesn't apply", not a real product/equipment name — left in, they'd
 # dominate the frequency charts with a meaningless "N/A" bar.
 _NOT_APPLICABLE_VALUES = {"not applicable", "n/a", "na", "none"}
 
@@ -120,10 +101,7 @@ def _shift_month(d: datetime.date, delta: int) -> datetime.date:
 
 
 def _trend_pct(rows: List[Dict], today: datetime.date) -> Optional[float]:
-    """% change in newly-opened count, current month-to-date vs the same
-    elapsed-day window last month — e.g. on the 3rd, compares Aug 1-3
-    against Jul 1-3, not the (still-incomplete) full current month against
-    a full prior month, which would understate the current month unfairly."""
+    """% change vs the same elapsed-day window last month (e.g. on the 3rd, Aug 1-3 vs Jul 1-3), not a full-month comparison that would unfairly understate the current month."""
     this_start = _month_start(today)
     last_start = _shift_month(this_start, -1)
     last_end = last_start + (today - this_start)
@@ -149,11 +127,8 @@ def _build_event_card(key: str, label: str, rows: List[Dict], trend_rows: List[D
         closed=closed,
         overdue=overdue,
         overdue_pct=round(overdue / total * 100) if total else 0,
-        # Trend is always a fixed month-over-month comparison — computed
-        # from trend_rows (site/dept/product/equipment filters applied, but
-        # NOT the date-range preset), since applying a "last 30 days"-style
-        # preset to the same rows used for the comparison would exclude last
-        # month's data entirely and make the trend always show "no data".
+        # trend_rows excludes the date-range preset filter, or a "last 30 days"-style preset would
+        # exclude last month's data and the trend would always show "no data".
         trend_pct=_trend_pct(trend_rows, today),
     )
 
@@ -168,11 +143,8 @@ async def get_analytics_summary(
 ) -> AnalyticsSummary:
     records = await fetch_analytics_rows()
     today = datetime.date.today()
-    # BUGFIX (2026-09-10, per the user) — see action_center.py's identical
-    # fix for the full explanation: pg_updated_at_timestamp is a naive
-    # TIMESTAMP (no tz), and without attaching UTC here explicitly, the
-    # frontend's IST conversion silently only worked for a viewer whose own
-    # machine happened to already be set to IST.
+    # pg_updated_at_timestamp is a naive TIMESTAMP; without attaching UTC explicitly, the
+    # frontend's IST conversion only works for a viewer whose machine is already set to IST.
     last_updated_at_raw = next((r["pg_updated_at_timestamp"] for r in records if r["pg_updated_at_timestamp"]), None)
     last_updated_at = last_updated_at_raw.replace(tzinfo=datetime.timezone.utc) if last_updated_at_raw else None
 
@@ -194,10 +166,7 @@ async def get_analytics_summary(
             }
         )
 
-    # Dropdown options always reflect the full, unfiltered event population
-    # (see FilterOptions' docstring) — computed before any filter below is
-    # applied to `rows`. "Not Applicable"-style placeholders are excluded
-    # here too, same reasoning as the Failure Pattern frequency counts.
+    # Dropdown options reflect the full, unfiltered event population — computed before filtering.
     filter_options = FilterOptions(
         sites=sorted({r["site"] for r in all_rows if r["site"]}),
         departments=sorted({r["department"] for r in all_rows if r["department"]}),

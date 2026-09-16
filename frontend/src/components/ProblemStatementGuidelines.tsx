@@ -8,9 +8,7 @@ const POINTS = [
   <>Compare the <strong>actual result against the specification or standard</strong>.</>,
 ];
 
-// Only on the Problem Statement page itself (2026-08-13, per the user) —
-// content/formatting matches the provided guidelines screenshot verbatim,
-// not paraphrased.
+// Content matches the provided guidelines screenshot verbatim, not paraphrased.
 export function ProblemStatementGuidelines() {
   return (
     <InfoTooltip label="Problem statement guidelines">

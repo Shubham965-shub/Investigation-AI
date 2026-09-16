@@ -16,22 +16,13 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Sliding-expiry refresh — every request made with a still-valid token
- * gets a freshly re-issued one back (new full expiry window) via this
- * header, so an active session keeps extending instead of hard-expiring a
- * fixed time after login regardless of activity. Must run on every
- * request/response, ok or not. */
+// Sliding-expiry refresh: every request gets back a freshly re-issued token via this header, so an active session keeps extending instead of hard-expiring.
 function applyRefreshedToken(response: Response): void {
   const refreshed = response.headers.get("X-Refreshed-Token");
   if (refreshed) localStorage.setItem("auth_token", refreshed);
 }
 
-/** Shared by request<T>() and apiGetBlob() — on a 401 (missing/invalid/
- * expired token), the session is unrecoverable, so clear it and force a
- * fresh login instead of leaving the app stuck showing stale authenticated
- * UI. A full reload (not SPA navigate()) is deliberate: this is a plain
- * module with no router access, and a reload also clears any in-memory
- * state that assumed a valid session. */
+// On 401, clear the session and force a full reload to /login (not SPA navigate — this module has no router access, and a reload also clears stale in-memory state).
 async function handleErrorResponse(response: Response): Promise<never> {
   if (response.status === 401) {
     localStorage.removeItem("auth_token");
@@ -88,8 +79,7 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path, { method: "GET" });
 }
 
-/** For binary downloads (e.g. the RCI Plan .docx export) — bypasses
- * request<T>'s .json() parsing, which would throw on a real file body. */
+// For binary downloads (e.g. .docx exports) — bypasses request<T>'s .json() parsing, which would throw on a real file body.
 export async function apiGetBlob(path: string): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "GET",

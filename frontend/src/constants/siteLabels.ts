@@ -1,10 +1,4 @@
-// Display-only relabeling for Sites filter dropdowns — per the user
-// (2026-07-31, extended to Analytics 2026-08-03), dim_location's real value
-// "Oral Dosage Form" should show as "KRSG" in any site filter, without
-// changing the underlying value sent to the backend (site filtering still
-// matches against the real DB text) or anything else that reads it (e.g. a
-// table's own site column, if it's ever shown there). Shared by
-// ActionCenterPage and AnalyticsPage.
+// Display-only: dim_location's "Oral Dosage Form" shows as "KRSG" in filter dropdowns; the real value is still sent to the backend.
 const SITE_FILTER_LABEL_OVERRIDES: Record<string, string> = {
   "Oral Dosage Form": "KRSG",
 };

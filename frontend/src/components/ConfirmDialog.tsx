@@ -1,9 +1,5 @@
 import modalClose from "../assets/icons/modal-close.svg";
 
-// Generic "are you sure" confirmation modal — matches Figma node 1490-11504
-// ("Accept Evidence Collection?"). Used by Evidence Collection and Interview
-// Questionnaire's "Agree & Copy" button before locking the module and moving
-// to the next step.
 export function ConfirmDialog({
   title,
   message,
@@ -11,9 +7,7 @@ export function ConfirmDialog({
   onConfirm,
 }: {
   title: string;
-  // Optional (2026-08-21, per the user) — Evidence Collection/Interview
-  // Questionnaire's confirm dialogs no longer show a message, just the
-  // title; RCI Plan's still does.
+  // Optional — some callers show only the title, no message.
   message?: string;
   onCancel: () => void;
   onConfirm: () => void;

@@ -1,74 +1,7 @@
-"""Fills the company's real RCI Report Word template (assets/rci_report_template.docx)
-with a generated RCI report's data, for the RCI Report page's "Accept and Push to
-TW" download.
-
-Structure (confirmed via python-docx, 2026-08-25) — this template is almost
-entirely guidance paragraphs with a handful of blank lines to type an answer
-into, unlike RCI Plan's template which is built from fillable table cells
-throughout:
-
-  - Page header (doc.sections[0].header, appears on every page — a single
-    un-linked section, confirmed): a 4x4 table — row 0 is the repeated
-    title banner; rows 1-3 are label/value pairs (Product/Material Name,
-    Product/material Code, Parent record number, RCI record number,
-    Batch(es)/AR No. involved, Date of initiation). Parent record number is
-    the deviation id (`record_id`), RCI record number is the genuine
-    TrackWise RCI id (`trackwise_fields["RCI Number"]` — dim_rci.rci_key,
-    confirmed distinct from the deviation id elsewhere in this app).
-  - Table 0 (13x4): the INDEX/table-of-contents — left untouched (page
-    numbers aren't tracked anywhere in this app).
-  - Executive Summary (body paragraphs, no table): 6 named sub-headings
-    (Problem Description / Immediate containment action / Determination of
-    root cause / Root Cause-Probable Cause statement / Impact Assessment /
-    Correction-CAPA), each followed by one or more blank paragraphs to fill.
-    ExecutiveSummarySection has 8 fields (adds `summary` and
-    `conclusion_statement`, neither of which has its own heading) — `summary`
-    goes in the first blank before "Problem Description", and
-    `conclusion_statement` shares the last sub-heading's blank block (there
-    are 6 blank paragraphs there, more than enough for both fields).
-  - Table 1 (7x2): Description of Event, one row per field — clean 1:1 map.
-  - Table 2 / Table 3: Initial Impact Assessment's material/product and
-    equipment impact lists.
-  - Table 4: History Review's prior-events rows.
-  - Table 5 (3x1): Root Cause conclusion — row 1 is the narrative, row 2 is
-    "Category: / Subcategory:".
-  - Correction/Remedial Action: `items`/`additional_notes` go in the blank
-    paragraphs right after the heading (no table here — the template
-    originally had a 2x1 table with grey-italic definitions of the two
-    terms; removed entirely per the user, 2026-08-28, since it wasn't
-    fillable and left dead space above the actual content).
-  - Table 6/7/8: CAPA actions / interim controls / extrapolation.
-  - Table 9: CAPA effectiveness check plan.
-  - Table 10 (8x2): Annexures — always present (pass-through, never None).
-  - Table 11 (6x5): Approval — fixed role rows (Prepared by/Investigator,
-    Reviewed by/HOD, /QA, /SIT, Approved by/Head-QA); always present
-    (pass-through, never None) — filled by matching `role` to these labels.
-
-No slot exists anywhere in this template for RiskAssessmentSection (it's
-absent from the INDEX table too — this template predates/doesn't cover the
-Market-Complaint-only risk scoring workflow). Rather than inventing new
-document structure the company hasn't approved, its content is appended
-into the same blank paragraph as Impact Assessment's optional
-MC/OOS-specific fields, clearly labeled, so it's still visible rather than
-silently dropped.
-
-Every section field on RciReportSections is Optional — ds skips a section
-(leaving it None) when a required TrackWise field was blank or a dependency
-section itself failed (2026-08-24 finding, `errors` dict explains why). Per
-the user (2026-08-25): a null section must show up AS SUCH in the document,
-not leave the reader guessing whether it was overlooked. One clear note is
-written at that section's first slot (`errors[section_key]` if present,
-else a generic line) — the rest of that section's slots are left at the
-template's own default (blank/guidance), rather than repeating the note
-everywhere, since one clear flag per section is enough.
-
-We fill this exact template in place (matching rci_plan_export.py's own
-convention) so all of its original borders/merges/styling survive untouched.
-Unlike that template, this one's own runs already have no explicit font set
-(theme default throughout, confirmed via every existing run's `font.name`
-being None) — so a freshly created run reusing an existing run's formatting
-never introduces a font mismatch here, and no Times-New-Roman forcing is
-needed the way RCI Plan's export required.
+"""Fills the RCI Report Word template (assets/rci_report_template.docx) in place, preserving its borders/merges/styling.
+Template: header table (record/RCI ids); table 0 = index/TOC; Executive Summary is body paragraphs (no table), 6 sub-headings; table 1 = Description of Event; tables 2/3 = Initial Impact material/equipment; table 4 = History Review; table 5 = Root Cause conclusion; Correction/Remedial Action is paragraphs, no table; tables 6/7/8 = CAPA actions/interim/extrapolation; table 9 = CAPA effectiveness; table 10 = Annexures; table 11 = Approval (fixed role rows).
+RiskAssessmentSection has no template slot — appended into Impact Assessment's trailing paragraph instead, clearly labeled.
+Every RciReportSections field is Optional; a None section gets one clear note at its first slot (from `errors`) rather than being left ambiguous.
 """
 from __future__ import annotations
 
@@ -99,18 +32,7 @@ TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "assets" / "rci_report_
 
 MISSING_NOTE_FALLBACK = "This section could not be generated — the related TrackWise field(s) aren't filled."
 
-# The template's own headings/guidance/table text almost all explicitly set
-# 11pt (confirmed run-by-run, 2026-08-25) even though the document's Normal
-# style itself defaults to 12pt Times New Roman — a run we create fresh
-# (cell.text=, add_run(), add_paragraph()) sets neither, so it would
-# silently inherit that 12pt style default and read as a different size
-# from every answer sitting right next to it, despite both resolving to the
-# same font family. Forced explicitly on every run this file touches so
-# every generated font/size/heading/in-table text matches the template's
-# own convention exactly (2026-08-25, per the user). Table content is
-# additionally locked to 10pt, one step down from body content's 11pt
-# (2026-08-25, per the user), matching how a real Word table's contents
-# commonly run a point smaller than the surrounding body text.
+# Template text is 11pt despite the doc's Normal style defaulting to 12pt — a fresh run would silently inherit 12pt, so force it explicitly. Table content is one step down at 10pt.
 FONT_NAME = "Times New Roman"
 FONT_SIZE = Pt(11)
 TABLE_FONT_SIZE = Pt(10)
@@ -125,17 +47,7 @@ def _missing_note(errors: dict, key: str) -> str:
     return f"[{errors.get(key) or MISSING_NOTE_FALLBACK}]"
 
 
-# C0/C1 control characters (except tab/LF/CR, which are legal XML text) — not
-# legal in XML 1.0 text content. Found live (2026-09-01, record 505542): a
-# generated CAPA action description contained a raw 0x13 control character
-# sitting exactly where the source text's own en-dash ("33 – 64 Amps") was
-# clearly intended, which python-docx/lxml raises ValueError on instead of
-# silently dropping. This is a defensive backstop at the point text is
-# actually written into the document — not a fix for wherever the stray
-# character came from (LLM output has been observed to occasionally emit
-# one; a copy-pasted source document could just as easily carry one) — so
-# any current or future source of an invalid character degrades to
-# "silently stripped" rather than crashing the export.
+# C0/C1 control chars aren't legal XML 1.0 text and lxml raises on them (seen live: a stray 0x13 where an en-dash was meant) — strip defensively at write time.
 _INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]")
 
 
@@ -153,28 +65,7 @@ def _set_cell_text(cell, text: str) -> None:
 
 
 class _Cursor:
-    """Wraps `doc` with a running paragraph-index offset.
-
-    Every hardcoded body-paragraph index in this file (55, 59, 64, ...) is
-    the position in the RAW TEMPLATE, before any content is filled in. That
-    was always exactly right as long as every fill only ever REPLACED a
-    paragraph's text in place — but bulleted multi-item content (Executive
-    Summary's two fields, Initial Impact Assessment/Correction & Remedial's
-    action lists) now expands one template slot into several real
-    paragraphs (`_set_bulleted_paragraphs`), so that every bullet gets its
-    own genuine hanging indent — the only way to have both a bullet's own
-    line start flush AND its wrapped continuation line indent under the
-    text at once (2026-08-28, per the user — Word's hanging indent only
-    recognizes one "first line" per paragraph, so multiple bullets sharing
-    one paragraph via soft breaks can never get this right for all of them
-    simultaneously). Once a slot grows from 1 paragraph to N, every
-    subsequent lookup in the ORIGINAL template's numbering is off by
-    (N - 1) real paragraphs now sitting in the document ahead of it. This
-    cursor is threaded through every _fill_* function instead of the bare
-    `doc`, so `.paragraph(index)` always resolves against the template
-    index PLUS whatever's been inserted so far, and `.doc` is still
-    available for `.tables[N]` (tables aren't affected — inserting body
-    paragraphs never shifts a table's own position in `doc.tables`)."""
+    """Wraps `doc` with a running paragraph-index offset — hardcoded indices are the RAW TEMPLATE's positions, but expanding a slot into several real paragraphs (_set_bulleted_paragraphs) shifts every later index by (N-1). `.paragraph(index)` resolves against template index + offset; `.doc` still works for `.tables[N]` since tables aren't affected."""
 
     def __init__(self, doc):
         self.doc = doc
@@ -184,39 +75,12 @@ class _Cursor:
         return Paragraph(self.doc.element.body[index + self.offset], self.doc)
 
 
-# Left/hanging indent + matching custom tab stop used by every REAL
-# multi-paragraph bulleted list this file builds (_set_bulleted_paragraphs)
-# — the same value for all three, so a bullet's own "•" sits flush at the
-# paragraph's un-hung position, the tab after it lands EXACTLY where the
-# hanging indent pulls wrapped/continuation lines to, and every bulleted
-# section in the document uses one consistent indent depth.
+# Shared hanging indent + matching tab stop so a bullet's "•" sits flush and wrapped continuation lines land at the same indent everywhere.
 _BULLET_HANG = Pt(18)
 
 
 def _set_paragraph_text(cursor: _Cursor, index: int, text: str, clear_italic: bool = False) -> None:
-    """Reuses the first run's formatting (list-level, any other non-font
-    properties) so this paragraph's existing style carries over, clearing
-    any other runs so no template guidance text lingers alongside the real
-    answer. Font/size are always forced (see FONT_NAME/FONT_SIZE above), not
-    just carried over, since a genuinely blank paragraph's fresh run has
-    neither set. `clear_italic` is for the couple of slots where the real
-    answer replaces a paragraph that WAS the guidance text itself (e.g. Root
-    Cause/Probable Cause statement) — per the user, 2026-08-25, the answer
-    must read as real content, not still look like an italicized instruction.
-    Also blackens the run's color — that same guidance styling is grey as
-    well as italic, and clearing only italic left the real answer still
-    grey (2026-08-28, per the user).
-
-    left_indent/first_line_indent are normalized to 0 the same way
-    _set_paragraph_lines already does — this template's blank slots for
-    single-text answers carry the same kind of ad hoc, inconsistent indent
-    values (e.g. left=709 on one slot, left=11 hanging=295 on another) that
-    caused the earlier bulleted-content indentation bug, and it recurs here
-    too: real generated text long enough to WORD-WRAP across multiple lines
-    (not just multi-item lists joined by soft breaks) hits the exact same
-    hanging-indent mismatch between a paragraph's first line and its wrapped
-    continuation lines (2026-08-28, per the user: "it still indents
-    improperly" — found in Problem Description's own wrapped text)."""
+    """Reuses the first run's formatting, clearing the rest so no guidance text lingers; font/size are always force-set since a blank paragraph's run has neither. `clear_italic` also blackens color, for slots where the answer replaces guidance text itself (which is grey+italic). left/first_line indent reset to 0 — the template's ad hoc indent values otherwise mismatch a wrapped line against its own first line."""
     text = _xml_safe(text)
     para = cursor.paragraph(index)
     para.paragraph_format.left_indent = 0
@@ -238,31 +102,7 @@ def _set_paragraph_text(cursor: _Cursor, index: int, text: str, clear_italic: bo
 
 
 def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic: bool = False) -> None:
-    """Like _set_paragraph_text, but joins multiple lines with real line
-    breaks (not just a delimiter) so multi-item narrative content (findings,
-    history rows, checklists) actually reads as a list in the document.
-    NOT used for real "•" bulleted lists any more — those need their own
-    real paragraph per item so hanging indent works (_set_bulleted_paragraphs)
-    — this stays for content that was never bulleted in any real report
-    (History Review, Investigation Task, Impact Assessment, Risk Assessment;
-    see each field's own call site) and already builds its own "" blank
-    entries where a gap is wanted.
-
-    A line is normally a plain string, but may instead be a `(text, bold)`
-    tuple — e.g. the Investigation Task checklist's "N. <6M factor>" group
-    headings (2026-08-26, per the user: "bold the 6M parameters so it is
-    clear where each of those sections starts"). Bold is a run-level
-    property, not something that can vary within one run's own text, so
-    each line beyond the first gets its own new run instead of all sharing
-    the paragraph's original single run via add_break()/add_text().
-
-    left_indent/first_line_indent are normalized to 0 (2026-08-28, per the
-    user) — this template's blank slots each carry their own unrelated ad
-    hoc indent value (e.g. a 578-twip hanging indent here, a 142-twip left
-    indent there), which caused the same hanging-indent-vs-wrapped-line
-    mismatch _set_paragraph_text already documents, for content that was
-    never bulleted in the first place — there's no caller here for whom
-    leaving that stray indentation in place is correct."""
+    """Like _set_paragraph_text, but joins lines with real line breaks for narrative content never bulleted in any real report (History Review, Investigation Task, etc). A line may be a `(text, bold)` tuple — bold is run-level, so each such line gets its own run. left/first_line indent reset to 0, same reason as _set_paragraph_text."""
     def _split(line):
         text, bold = line if isinstance(line, tuple) else (line, False)
         return _xml_safe(text), bold
@@ -274,10 +114,7 @@ def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic:
         para.paragraph_format.first_line_indent = 0
 
     first_run = para.runs[0] if para.runs else para.add_run()
-    # Clear any other pre-existing template runs (leftover guidance
-    # fragments) before adding our own new runs below — otherwise the loop
-    # below would end up appending to a paragraph whose later cleanup would
-    # need to skip over its own freshly-added runs.
+    # Clear other pre-existing template runs before adding new ones below.
     for extra in list(para.runs[1:]):
         extra.text = ""
 
@@ -292,13 +129,7 @@ def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic:
         text, bold = _split(line)
         run = para.add_run()
         run.add_break()
-        # NOT run.add_text(text) — see _set_bulleted_paragraphs' own comment
-        # on the same issue: an embedded "\t" inserted this way is a literal
-        # tab CHARACTER inside the <w:t> text node (a small fixed-width
-        # space when Word renders it), not a real <w:tab/> tab-stop jump.
-        # None of this function's own callers currently emit "\t" inside a
-        # line, but splitting on it here anyway costs nothing and keeps this
-        # function safe if one ever does.
+        # add_text() would insert a literal tab character, not a real <w:tab/> tab-stop jump — split and use add_tab() instead.
         for i, part in enumerate(text.split("\t")):
             if i > 0:
                 run.add_tab()
@@ -311,38 +142,9 @@ def _set_paragraph_lines(cursor: _Cursor, index: int, lines: List, clear_italic:
 
 
 def _set_bulleted_paragraphs(cursor: _Cursor, index: int, lines: List[str], clear_italic: bool = False, hanging: bool = True) -> None:
-    """One genuine paragraph per item, not one paragraph with soft-broken
-    lines (2026-08-28, per the user: "for bullet point next line, should be
-    indented like the first point/sentence"). Word's hanging indent only
-    recognizes one "first line" per PARAGRAPH — with multiple items sharing
-    one paragraph, every item after the first one is itself just "another
-    line" of that same paragraph, so it either (a) gets pulled back to the
-    bullet position too (misaligning it from the wrapped continuation of its
-    own text — the bug fixed 2026-08-26 by flattening indent to 0), or (b)
-    gets indented to the text position (fixing the wrap-alignment but
-    re-breaking (a)). A real separate paragraph per item sidesteps the
-    conflict entirely: EVERY item gets its own fresh "first line" and its
-    own genuine wrapped-continuation lines, correctly indented — exactly
-    like a real Word list, because this now IS one.
-
-    `hanging=True` (the "•\t"-prefixed callers, from `_bullet_lines`/
-    `_maybe_bullet`'s Deviation branch) applies the hanging indent + a
-    matching tab stop, so the bullet sits pulled back and both its own text
-    and any wrapped continuation land at the same indented position.
-    `hanging=False` (the plain, unbulleted callers — OOS's own real reports
-    render these sentences with no bullet AND no indent at all, confirmed at
-    the raw-XML level, still as separate paragraphs) keeps everything flush
-    left instead — this function is still the right one to call for that
-    case too, since real OOS reports use separate paragraphs per sentence,
-    not one paragraph with soft breaks.
-
-    Clones the anchor paragraph's own XML per extra item (so template
-    run/paragraph properties like font size carry over identically to every
-    clone, then get overridden the same way _set_paragraph_text/_lines
-    already do) and inserts each clone directly after the previous one —
-    increments `cursor.offset` by (item count - 1) so every subsequent
-    _fill_* call still resolves against the template's original numbering
-    correctly (see _Cursor's own docstring)."""
+    """One genuine paragraph per item (not soft-broken lines in one paragraph) — Word's hanging indent only recognizes one "first line" per paragraph, so each item needs its own to indent wrapped continuation lines correctly.
+    `hanging=True` applies the hanging indent + tab stop for bulleted content; `hanging=False` keeps items flush left (real OOS reports use unbulleted separate paragraphs).
+    Clones the anchor paragraph's XML per extra item and bumps `cursor.offset` by (item count - 1), same accounting as _Cursor."""
     lines = [_xml_safe(line) for line in lines if line]
     para = cursor.paragraph(index)
     if hanging:
@@ -353,19 +155,13 @@ def _set_bulleted_paragraphs(cursor: _Cursor, index: int, lines: List[str], clea
     else:
         para.paragraph_format.left_indent = 0
         para.paragraph_format.first_line_indent = 0
-    # Word's own default paragraph-to-paragraph spacing already reads as a
-    # blank line between items once each is a real paragraph (no manual
-    # double-break needed the way the shared-paragraph approach required).
     para.paragraph_format.space_after = Pt(10)
 
     def _fill_one(target_para: Paragraph, text: str) -> None:
         run = target_para.runs[0] if target_para.runs else target_para.add_run()
         for extra in list(target_para.runs[1:]):
             extra.text = ""
-        # Splitting on "\t" and calling add_tab() explicitly, same reasoning
-        # as _set_paragraph_lines — run.text=/add_run(text) do NOT translate
-        # an embedded tab character into a real <w:tab/> element, only the
-        # oxml-level run-content APIs used here do.
+        # run.text= doesn't translate an embedded tab into a real <w:tab/> element — split and add_tab() explicitly.
         run.text = ""
         for i, part in enumerate(text.split("\t")):
             if i > 0:
@@ -392,21 +188,7 @@ def _set_bulleted_paragraphs(cursor: _Cursor, index: int, lines: List[str], clea
 
 
 def _strip_guidance_runs(doc) -> None:
-    """Removes every italic run from every top-level body paragraph — this
-    template consistently styles pure guidance/instructional text as italic
-    (confirmed run-by-run), including runs that trail directly after a
-    heading within the SAME paragraph (e.g. "Determination of root cause/
-    probable cause: Provide a brief summary..." — the heading label itself
-    is plain, only the trailing instruction is italic). Per the user
-    (2026-08-25): "remove the small italic guidance texts. they are to be
-    replaced by the content" — the two slots this file overwrites in place
-    (Root Cause/Probable Cause statement, Impact Assessment's Conclusion
-    Statement — the guidance paragraph itself IS the answer slot there, no
-    separate blank exists) already have their own run's italic cleared
-    before this runs, via _set_paragraph_text's clear_italic, so the real
-    content they now hold survives this pass untouched. A paragraph left
-    with nothing in it once its only run(s) were guidance is removed
-    entirely rather than leaving a stray empty line."""
+    """Removes every italic run from every top-level body paragraph — this template styles pure guidance text as italic. Slots overwritten in place already had clear_italic applied, so real content survives untouched. A paragraph left empty is removed entirely."""
     for child in list(doc.element.body):
         if child.tag != qn("w:p"):
             continue
@@ -419,11 +201,7 @@ def _strip_guidance_runs(doc) -> None:
 
 
 def _ensure_row_count(table, first_data_row: int, count: int, template_row: Optional[int] = None) -> List[Any]:
-    """Adjusts `table` so it has exactly `max(count, 1)` data rows starting
-    at `first_data_row` — cloning `template_row` (defaults to
-    `first_data_row`) to grow, or dropping trailing rows to shrink. Always
-    keeps at least one row: a single blank/"N/A" row reads better than a
-    headers-only table when a list is genuinely empty. Returns the data rows."""
+    """Adjusts `table` to exactly `max(count, 1)` data rows, cloning/dropping as needed. Always keeps at least one row — a blank/"N/A" row reads better than headers-only. Returns the data rows."""
     if template_row is None:
         template_row = first_data_row
     current = len(table.rows) - first_data_row
@@ -441,16 +219,7 @@ def _ensure_row_count(table, first_data_row: int, count: int, template_row: Opti
     return list(table.rows)[first_data_row : first_data_row + target]
 
 
-# Initial Impact Assessment's Immediate Actions and Correction/Remedial
-# Action both already arrive as a list of distinct action strings (not one
-# blob needing sentence-splitting) — unlike the two Executive Summary
-# fields above, so this just prefixes each existing item rather than
-# reusing _bullet_lines/_plain_lines. Real reports show Deviation
-# consistently bulleting both of these sections (2/2 samples each);
-# OOS/OOT/Market Complaint stay plain (2026-08-28, per the user, sourced
-# from the "50 Historical Report" samples — OOT's own 2 samples were split
-# 1 bulleted/1 plain on each section, so it defaults to plain here rather
-# than being forced either way on weak evidence).
+# Real reports bullet these sections only for Deviation; OOS/OOT/Market Complaint stay plain (OOT samples were mixed, so defaults to plain on weak evidence).
 def _maybe_bullet(lines: List[str], event_type: str) -> List[str]:
     if event_type != "Deviation":
         return lines
@@ -466,18 +235,7 @@ def _yesno(value: bool) -> str:
 
 
 def _insert_heading_paragraph(cursor: _Cursor, index: int, heading_text: str) -> None:
-    """Inserts a new bold, spaced-apart heading paragraph directly before
-    the paragraph at `index` (2026-09-10, per the user — Conclusion
-    Statement needed a real heading, not just an inline text prefix on its
-    content paragraph). Clones that paragraph's own XML first (so the
-    heading carries over the template's own font/size the same way
-    _set_bulleted_paragraphs' clones do), then overwrites its text/run
-    properties.
-
-    Bumps `cursor.offset` by 1 so the paragraph originally at `index` (now
-    one physical position later) and every subsequent _fill_* call still
-    resolve correctly — same accounting _set_bulleted_paragraphs itself
-    already relies on (see _Cursor's own docstring)."""
+    """Inserts a new bold, spaced-apart heading paragraph directly before the paragraph at `index`, cloning its XML first. Bumps `cursor.offset` by 1, same accounting as _Cursor."""
     anchor = cursor.paragraph(index)
     heading_p = copy.deepcopy(anchor._p)
     anchor._p.addprevious(heading_p)
@@ -503,46 +261,21 @@ def _fill_executive_summary(cursor: _Cursor, section, event_type: str, errors: d
     if section is None:
         _set_paragraph_text(cursor, 55, _missing_note(errors, "executive_summary"))
         return
-    # OOS specifically renders this narrative as plain unbulleted sentences
-    # (0 real bullets across 3 real OOS reports checked at the raw-XML
-    # level) — every other event type uses some form of bulleted formatting:
-    # Deviation and OOT both use genuine Word bullets extensively (2 samples
-    # each), Market Complaint uses literal "•" characters (1 sample
-    # checked) — now rendered as a real bulleted paragraph list either way
-    # (_set_bulleted_paragraphs). "OOS/OOT" (the combined literal) is
-    # grouped with plain OOS here since OOS is the one confirmed exception
-    # among four types and the combined value doesn't disambiguate which one
-    # a given record actually is.
+    # OOS (and the combined "OOS/OOT") renders this narrative as plain unbulleted sentences; every other event type bullets it.
     is_plain = event_type in ("OOS", "OOS/OOT")
 
-    # Every field is now a list of bullet-point strings, already split by
-    # the LLM (2026-09-10, per the user) — schemas/rci_report.py's
-    # ExecutiveSummarySection. Just needs the "•\t" prefix _set_bulleted_
-    # paragraphs' hanging-indent formatting expects (same convention
-    # _maybe_bullet already uses elsewhere in this file), not the sentence-
-    # splitting _bullet_lines/_plain_lines did when these were one string.
+    # Each field is a list of bullet-point strings from the LLM — just needs the "•\t" prefix _set_bulleted_paragraphs expects.
     def lines_for(items: List[str]) -> List[str]:
         return list(items) if is_plain else [f"•\t{item}" for item in items]
 
-    # Paragraph 55 (section.summary — the short lead-in blurb before the
-    # "Problem Description" heading) is deliberately left unpopulated
-    # (2026-08-28, per the user) — it's a blank slot in the raw template
-    # with no runs of its own, so leaving it blank means
-    # _strip_guidance_runs removes it entirely rather than leaving a stray
-    # empty line.
+    # Paragraph 55 (section.summary) is deliberately left unpopulated — a blank slot with no runs, so _strip_guidance_runs removes it entirely.
     _set_bulleted_paragraphs(cursor, 59, lines_for(section.problem_description), hanging=not is_plain)
     _set_bulleted_paragraphs(cursor, 64, lines_for(section.immediate_containment_action), hanging=not is_plain)
     _set_bulleted_paragraphs(cursor, 71, lines_for(section.determination_of_root_cause), hanging=not is_plain)
     _set_bulleted_paragraphs(cursor, 74, lines_for(section.root_cause_probable_cause_statement), clear_italic=True, hanging=not is_plain)
     _set_bulleted_paragraphs(cursor, 80, lines_for(section.impact_assessment), hanging=not is_plain)
     _set_bulleted_paragraphs(cursor, 86, lines_for(section.correction_conclusion_preventive_actions), hanging=not is_plain)
-    # Conclusion Statement now gets its own bold, spaced-apart heading
-    # (2026-09-10, per the user) instead of an inline "Conclusion Statement: "
-    # text prefix on the same paragraph as its content — _insert_heading_
-    # paragraph inserts that heading directly before paragraph 87 and bumps
-    # cursor.offset, so this _set_bulleted_paragraphs call (still targeting
-    # "87") resolves to the original content paragraph, now one position
-    # later.
+    # Conclusion Statement gets its own bold heading; _insert_heading_paragraph bumps cursor.offset so this call (still "87") hits the original content paragraph.
     _insert_heading_paragraph(cursor, 87, "Conclusion Statement")
     _set_bulleted_paragraphs(cursor, 87, lines_for(section.conclusion_statement), hanging=not is_plain)
 
@@ -581,13 +314,8 @@ def _fill_initial_impact_assessment(cursor: _Cursor, section, event_type: str, e
     for i, (row, item) in enumerate(zip(rows, impacts)):
         _set_cell_text(row.cells[0], str(i + 1))
         _set_cell_text(row.cells[1], item.material_product_batch)
-        # cells[2]'s template header is "Batch Number" — now a genuine
-        # structured field (2026-09-03, per the user), not stage text filling
-        # a column its header doesn't name.
         _set_cell_text(row.cells[2], item.batch_number)
-        # cells[3]'s template header is "Action taken (Hold/Quarantined etc.)" — lead
-        # with the actual hold/quarantine status rather than burying it after the
-        # impact classification, which isn't a "Hold/Quarantined etc." action at all.
+        # cells[3] header is "Action taken (Hold/Quarantined etc.)" — lead with hold status, not the impact classification which isn't such an action.
         hold_status = f"On hold: {_sourced(item.quantity_on_hold)}" if _sourced(item.quantity_on_hold) else "No hold/quarantine action recorded"
         action = f"{hold_status} (Qty involved: {item.quantity_involved}; Impact: {item.type_of_impact})"
         _set_cell_text(row.cells[3], action)
@@ -638,11 +366,7 @@ def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
     lines = [
         section.search_scope_note,
         f"Lookback period: {section.lookback_months} months.",
-        # Trust the table's own row data over ds's no_similar_events_found
-        # flag — the two have been observed to disagree (flag true while
-        # rows is non-empty), which would otherwise show this line right
-        # next to a table full of actual historical events (2026-09-02,
-        # per the user).
+        # Trust the table's own rows over ds's no_similar_events_found flag — the two have been observed to disagree.
         "No similar events found in the lookback window." if section.no_similar_events_found and not section.rows else "",
         section.closing_narrative,
         f"Batches manufactured: {section.batches_manufactured_note}" if section.batches_manufactured_note else "",
@@ -653,29 +377,9 @@ def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
 # ── 5. Investigation Task ───────────────────────────────────────────────
 
 def _fill_investigation_task(cursor: _Cursor, section, errors: dict):
-    """Section 5 (Investigation Task) — three explicit parts, in display
-    order (2026-09-01, per the user): task_summary, why_why_analysis, then
-    root_cause_identification. Fishbone/Fault Tree/Flowchart were dropped
-    entirely this same date — Why-Why Analysis is now the only RCA method
-    this section ever demonstrates.
-
-    Only task_summary and the why_why_analysis header line are written into
-    paragraph 132 here; the Why-Why chain itself (a real Word table) and
-    root_cause_identification (a new trailing paragraph) are appended by
-    _insert_why_why_table_and_grounding, which must run after every other
-    _fill_* call since it inserts new top-level body elements. Returns the
-    paragraph-132 element captured at THIS point in the pipeline (while
-    cursor.offset reflects only what earlier sections have already
-    inserted), so that later call can anchor off it correctly regardless of
-    how much cursor.offset grows from sections filled afterward.
-
-    Paragraph 132's own style in the template is "Heading 1" — inherited
-    from the "Investigation tasks:" heading and its italic guidance
-    paragraphs right above it (confirmed via python-docx), unlike every
-    other section's blank (e.g. Executive Summary's, "Normal"/"List
-    Paragraph"). Left as-is, real content here renders as an oversized bold
-    heading instead of body text — reset explicitly so this reads like the
-    rest of the document.
+    """Section 5: task_summary, why_why_analysis, then root_cause_identification, in that order — Why-Why is the only RCA method this section demonstrates.
+    Only task_summary/why_why header go into paragraph 132 here; the Why-Why table and root_cause_identification are appended later by _insert_why_why_table_and_grounding (must run after every other _fill_* call). Returns the paragraph-132 element captured now so that later call can anchor off it regardless of subsequent cursor.offset growth.
+    Paragraph 132's template style is "Heading 1" (inherited from the section heading above it), unlike every other section's blank — reset to "Normal" so real content doesn't render as an oversized heading.
     """
     cursor.paragraph(132).style = "Normal"
 
@@ -683,14 +387,7 @@ def _fill_investigation_task(cursor: _Cursor, section, errors: dict):
         _set_paragraph_text(cursor, 132, _missing_note(errors, "investigation_task"))
         return None
 
-    # Grouped under a numbered "N. <6M factor>" heading (per the reference
-    # export, 2026-08-26) whenever `task.six_m_factor` changes — every
-    # task's own `tick` is already "<group>.<item>" (e.g. "1.1", "1.2",
-    # "2.1"), so the group number is read straight off it rather than
-    # tracked separately, guaranteeing they can't drift apart. A blank line
-    # precedes every task line (including the first one under a new
-    # heading) but not the heading itself, which follows the previous
-    # group's last task directly — matches the reference exactly.
+    # Grouped under a "N. <6M factor>" heading whenever six_m_factor changes; group number is read off task.tick ("<group>.<item>") so they can't drift apart.
     lines = [section.task_summary.overview, ""]
     last_group: Optional[str] = None
     for task in section.task_summary.tasks:
@@ -711,21 +408,8 @@ def _fill_investigation_task(cursor: _Cursor, section, errors: dict):
 
 
 def _insert_why_why_table_and_grounding(doc, section, anchor) -> None:
-    """Inserts the Why-Why Analysis table right after the Investigation Task
-    paragraph, then a new paragraph holding root_cause_identification's
-    grounding evidence right after that table (2026-09-01, per the user —
-    root_cause_identification now comes AFTER the why-why analysis, not
-    before it, and Fishbone/Fault Tree/Flowchart demonstrations are gone).
-
-    MUST run after every other _fill_* call in build_rci_report_docx: this is
-    the first place in this file that inserts a brand-new top-level element
-    into doc.element.body rather than mutating an existing paragraph/table/
-    row in place, or growing a table's own bulleted-paragraph run via
-    cursor.offset (which every later _fill_* call already accounts for).
-    `anchor` is the actual paragraph-132 element _fill_investigation_task
-    captured at the point that section ran, not re-derived from a fixed
-    index here, so it stays valid no matter how much cursor.offset grew from
-    sections filled afterward.
+    """Inserts the Why-Why Analysis table after the Investigation Task paragraph, then root_cause_identification's grounding evidence after that table.
+    MUST run after every other _fill_* call — first place in this file that inserts a brand-new top-level body element rather than mutating in place. `anchor` is the actual element captured earlier, so it stays valid regardless of later cursor.offset growth.
     """
     if section is None or anchor is None:
         return
@@ -804,11 +488,7 @@ def _fill_impact_assessment_batch_disposition(cursor: _Cursor, section, risk_sec
         lines = []
         for field_name, label in _IMPACT_SUBSECTION_LABELS:
             sub = getattr(section, field_name)
-            # Every subsection renders, applicable or not (2026-09-01, per the
-            # user) — a subsection marked not applicable was still considered
-            # and ruled out, with its own narrative saying why; silently
-            # omitting it left a reader unable to tell "considered, ruled
-            # out" apart from "never considered at all."
+            # Renders even when not applicable — otherwise a reader can't tell "considered, ruled out" from "never considered."
             lines.append(f"{label}: {sub.narrative}")
             if field_name == "impact_on_affected_batches" and sub.batch_shipper_table:
                 for row in sub.batch_shipper_table:
@@ -825,9 +505,7 @@ def _fill_impact_assessment_batch_disposition(cursor: _Cursor, section, risk_sec
         if section.impact_justification:
             extra_lines.append(f"Impact Justification: {section.impact_justification}")
 
-    # No slot exists anywhere in this template for Risk Assessment (see
-    # module docstring) — appended here, clearly labeled, rather than
-    # silently dropped.
+    # No template slot for Risk Assessment — appended here, clearly labeled, rather than silently dropped.
     if risk_section is None:
         extra_lines.append(f"Risk Assessment: {_missing_note(errors, 'risk_assessment')}")
     else:
@@ -935,27 +613,10 @@ def _fill_capa_effectiveness_check_plan(cursor: _Cursor, section, errors: dict) 
         _set_cell_text(row.cells[4], item.responsibility)
 
 
-# Body-paragraph indices of every major heading in the real template — a
-# page break is forced immediately before each one so every section starts
-# on its own page (2026-08-25, per the user), matching how a real printed/
-# reviewed investigation report is organized. In heading order: Executive
-# Summary, Description of Event, Initial Impact Assessment, Summary of
-# Historical Review, Investigation Task, Root Cause conclusion, Impact
-# Assessment & Conclusion, Correction and/or Remedial Action, Corrective &
-# Preventive Action (CAPA), CAPA Effectiveness Check Plan, List of
-# Annexures, Report Approval. Risk Assessment has no heading of its own
-# (see module docstring) so it isn't included. Indices are fixed at the
-# TEMPLATE's own layout, not affected by _strip_guidance_runs (which only
-# ever removes pure-guidance paragraphs, never a heading).
+# Body-paragraph indices of every major heading (template's own layout, fixed order) — a page break is forced before each so every section starts on its own page. Risk Assessment has no heading of its own, so it isn't included.
 _SECTION_HEADING_INDICES = [53, 92, 95, 110, 128, 133, 163, 172, 176, 185, 192, 195]
 
-# One bookmark name per heading above, same order — lets the Index table's
-# "Page No." column (table 0, rows 1-12) reference each section's real
-# on-page location via a PAGEREF field, rather than staying blank forever
-# (2026-09-02, per the user: page numbers "aren't tracked anywhere in this
-# app" was a known, deliberate gap until now — python-docx itself can't
-# compute a page number since it never paginates the document, but Word
-# can and does, once it opens the file and recalculates fields).
+# One bookmark per heading above, same order — lets the Index table's "Page No." column reference each section via a PAGEREF field (Word resolves these on open; python-docx can't paginate).
 _SECTION_BOOKMARK_NAMES = [
     "sec_executive_summary",
     "sec_description_of_event",
@@ -988,16 +649,8 @@ def _insert_bookmark(paragraph: Paragraph, bookmark_id: int, name: str) -> None:
 
 
 def _add_page_breaks(cursor: _Cursor) -> List[str]:
-    # Always called first, before any bulleted-paragraph expansion, so
-    # cursor.offset is still 0 here — kept cursor-based anyway (rather than
-    # taking `doc` directly) purely for signature consistency with every
-    # other function in this file. Also plants each section's bookmark
-    # here, at the same paragraph, for the same reason (offset is still 0).
-    # Returns each heading's own text, in the same order as
-    # _SECTION_BOOKMARK_NAMES — used by _compute_section_page_numbers to
-    # locate each section's real page in a rendered PDF (2026-09-10, per the
-    # user), so the search string always matches the template's actual
-    # wording even if it's edited later.
+    # Called first, before any bulleted-paragraph expansion, so cursor.offset is still 0. Also plants each section's bookmark here for the same reason.
+    # Returns heading texts (same order as _SECTION_BOOKMARK_NAMES) so _compute_section_page_numbers can locate each in a rendered PDF even if wording changes.
     heading_texts: List[str] = []
     for bookmark_id, (index, name) in enumerate(zip(_SECTION_HEADING_INDICES, _SECTION_BOOKMARK_NAMES)):
         heading = cursor.paragraph(index)
@@ -1008,12 +661,7 @@ def _add_page_breaks(cursor: _Cursor) -> List[str]:
 
 
 def _set_cell_pageref(cell, bookmark_name: str) -> None:
-    """Replaces a table cell's content with a Word PAGEREF field pointing at
-    `bookmark_name`. Word (not python-docx, which never paginates a
-    document) computes and fills in the real page number the moment it
-    opens the file, since _enable_field_auto_update below forces every
-    field to recalculate on open — "1" here is only ever the unresolved
-    placeholder python-docx itself leaves behind."""
+    """Replaces a cell's content with a Word PAGEREF field pointing at `bookmark_name`; Word computes the real page number on open ("1" is just the unresolved placeholder)."""
     cell.text = ""
     paragraph = cell.paragraphs[0]
     p = paragraph._p
@@ -1062,24 +710,9 @@ def _normalize_for_search(text: str) -> str:
 
 
 def _compute_section_page_numbers(docx_bytes: bytes, heading_texts: List[str]) -> List[int]:
-    """Renders `docx_bytes` to PDF via headless LibreOffice and returns each
-    heading's real 1-based page number, in the same order as `heading_texts`
-    (2026-09-10, per the user) — python-docx itself never lays out text (no
-    font metrics, no line wrapping, no page breaks), so this is the only way
-    to get a page number that actually matches what opening the document
-    would show, rather than Word's own unresolved PAGEREF placeholder (see
-    _set_cell_pageref above, which this is meant to replace when it works).
-
-    Raises on ANY failure — soffice missing, conversion error/timeout, or a
-    heading that can't be located in the rendered PDF text. Callers MUST
-    catch broadly and fall back to the existing PAGEREF-field behavior
-    (build_rci_report_docx does this) rather than let a rendering hiccup
-    break the whole export.
-
-    Searches monotonically forward (each heading's search starts from the
-    page the previous one was found on, not page 0) — sections are always
-    filled in the same fixed top-to-bottom template order, so this can never
-    accidentally match a later section's heading against an earlier page.
+    """Renders `docx_bytes` to PDF via headless LibreOffice and returns each heading's real 1-based page number, since python-docx never lays out text/paginates.
+    Raises on any failure — callers MUST catch broadly and fall back to PAGEREF-field behavior rather than let a rendering hiccup break the export.
+    Searches monotonically forward from the previous heading's page, since sections are always filled in the same fixed order.
     """
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
@@ -1104,9 +737,7 @@ def _compute_section_page_numbers(docx_bytes: bytes, heading_texts: List[str]) -
     page_numbers: List[int] = []
     search_from = 0
     for heading in heading_texts:
-        # First ~40 normalized chars — long enough to be a confident match,
-        # short enough to stay robust against minor PDF text-extraction
-        # glitches (odd spacing, ligatures) further into a longer heading.
+        # First ~40 normalized chars: long enough for a confident match, short enough to stay robust to PDF text-extraction glitches further in.
         needle = _normalize_for_search(heading)[:40]
         if not needle:
             raise RuntimeError(f"Empty heading text, cannot locate a page for it: {heading!r}")
@@ -1120,19 +751,7 @@ def _compute_section_page_numbers(docx_bytes: bytes, heading_texts: List[str]) -
 
 
 def _enable_field_auto_update(doc) -> None:
-    # BUGFIX (2026-09-10, per the user): plain settings.append() put
-    # <w:updateFields> at the very end of <w:settings> — after every <w:rsid>
-    # element, which the OOXML schema (CT_Settings) places near the very end
-    # of its required child sequence, far later than where <w:updateFields>
-    # itself belongs (right after <w:characterSpacingControl>). Word treats
-    # <w:settings> as sequence-ordered and silently ignores/ejects an element
-    # sitting in the wrong slot rather than erroring — which is exactly why
-    # the TOC's PAGEREF cells and the footer's PAGE/NUMPAGES fields kept
-    # showing their unresolved "1" placeholder even after opening the file in
-    # real Word. Inserting as the very first child instead — the standard
-    # workaround for this exact problem — sidesteps the ordering question
-    # entirely; Word accepts <w:updateFields> as the leading child regardless
-    # of what schema position its neighbors expect.
+    # settings.append() puts <w:updateFields> after <w:rsid>, the wrong OOXML schema slot — Word silently ejects it there instead of erroring. Inserting as the first child sidesteps the ordering requirement entirely.
     settings = doc.settings.element
     update_fields = OxmlElement("w:updateFields")
     update_fields.set(qn("w:val"), "true")
@@ -1173,9 +792,7 @@ def _fill_approval(cursor: _Cursor, section) -> None:
 
 
 def _tw_text(trackwise_fields: Dict[str, Any], *keys: str) -> str:
-    """First non-empty TrackWise field among `keys`, stringified — values
-    here can be a plain string, a list (joined), or a number
-    (dim_rci.rci_key, unlike every other TrackWise field, is an int)."""
+    """First non-empty TrackWise field among `keys`, stringified — values may be a plain string, a list (joined), or a number (dim_rci.rci_key is an int)."""
     for key in keys:
         value = trackwise_fields.get(key)
         if isinstance(value, list):
@@ -1198,13 +815,7 @@ def _fill_header_table(doc, record_id: str, trackwise_fields: Dict[str, Any]) ->
 def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], report: RciReportSections, event_type: str) -> bytes:
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
-    # Threaded through every _fill_* call below instead of the bare `doc` —
-    # see _Cursor's own docstring. Sections run in the SAME top-to-bottom
-    # order they appear in the document, which is required: each section
-    # that expands a bulleted list into several real paragraphs
-    # (_set_bulleted_paragraphs) grows cursor.offset immediately, so every
-    # later call already sees the correct shift; a call running out of
-    # order would resolve against the wrong paragraph.
+    # Sections MUST run in the same top-to-bottom order they appear in the document — each one that expands into several paragraphs grows cursor.offset immediately, so a call running out of order would resolve against the wrong paragraph.
     cursor = _Cursor(doc)
 
     heading_texts = _add_page_breaks(cursor)
@@ -1223,17 +834,10 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     _fill_annexures(cursor, report.annexures)
     _fill_approval(cursor, report.approval)
 
-    # Must run after every _fill_* call above — inserts new body elements,
-    # which would shift every later fixed body-paragraph/table index still
-    # relied on above (see _insert_why_why_table_and_grounding's own
-    # docstring).
+    # Must run after every _fill_* call above — inserts new body elements, which would shift every fixed index still relied on above.
     _insert_why_why_table_and_grounding(doc, report.investigation_task, investigation_task_anchor)
 
-    # Must run last — reads the document's final paragraph structure
-    # directly (not by index), so it's unaffected by however much
-    # cursor.offset grew, but every _fill_* call above still needs its own
-    # target paragraph to exist with its original guidance runs intact
-    # until it's actually written.
+    # Must run last — reads final paragraph structure directly, not by index; each _fill_* call above still needs its guidance runs intact until written.
     _strip_guidance_runs(doc)
     _enable_field_auto_update(doc)
 
@@ -1241,17 +845,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     doc.save(buffer)
     docx_bytes = buffer.getvalue()
 
-    # Best-effort real pagination (2026-09-10, per the user): overwrites the
-    # Index table's PAGEREF fields (still there as-written above) with plain
-    # static page numbers computed by actually rendering the document via
-    # headless LibreOffice — correct the instant the file is opened, unlike
-    # the PAGEREF fields, which Word only recalculates on an explicit
-    # Ctrl+A/F9 refresh or Print Preview, never silently on open. Never
-    # allowed to break the export itself: any failure (soffice missing —
-    # e.g. this isn't the container image with libreoffice-writer installed
-    # — a conversion error/timeout, or a heading text that couldn't be
-    # located) just leaves the already-written PAGEREF fields in place,
-    # falling back to the pre-existing "needs a manual refresh" behavior.
+    # Best-effort real pagination: overwrites the Index table's PAGEREF fields with static page numbers from an actual LibreOffice render — correct on open, unlike PAGEREF which needs a manual refresh. Any failure just leaves the PAGEREF fields in place.
     try:
         page_numbers = _compute_section_page_numbers(docx_bytes, heading_texts)
         index_table = doc.tables[0]

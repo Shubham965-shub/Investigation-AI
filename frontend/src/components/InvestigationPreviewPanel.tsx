@@ -15,15 +15,9 @@ import stepNotStartedIcon from "../assets/icons/panel-step-notstarted.svg";
 import badgeNotStartedIcon from "../assets/icons/panel-badge-notstarted.svg";
 import unassignedIcon from "../assets/icons/panel-unassigned.svg";
 
-// Matches the approved Figma "Action Center_right_Sheet" panel (node 1229:39035 / 1229:39560).
-// Step descriptions/labels are still fabricated from that design's sample
-// content (no backend for per-step metadata yet). The investigation
-// team/assignee display, however, uses the real investigator actually
-// assigned to this investigation (investigation.investigator, sourced from
-// GET /action-center/summary) — no more hardcoded team roster.
+// Step descriptions/labels are placeholder text — no backend for per-step metadata yet. Investigator display uses the real assignee from GET /action-center/summary.
 
-// Matches AppHeader's rendered height so the panel/backdrop never covers
-// the persistent Strides/Athena header.
+// Matches AppHeader's rendered height so the panel/backdrop never covers it.
 const HEADER_HEIGHT = 83;
 
 export interface PreviewInvestigation {
@@ -94,10 +88,7 @@ export function InvestigationPreviewPanel({
       <div
         onClick={onClose}
         style={{
-          // Covers the full viewport, including the header's own strip —
-          // the header sits below this backdrop while the panel is open
-          // (see AppHeader.tsx's zIndex 30 < this 40), so it dims along
-          // with the rest of the page instead of staying fully bright.
+          // zIndex 40 > AppHeader's 30, so the backdrop dims the header strip too while the panel is open.
           position: "fixed",
           top: 0,
           left: 0,

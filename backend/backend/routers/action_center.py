@@ -39,19 +39,12 @@ _PENDING_ACTIONS_PER_ROW = 3
 
 _EVENT_TYPE_ORDER = ["Deviation", "OOS", "OOT", "Market Complaint"]
 
-# KPI card monthly bar chart + MoM trend — the current (in-progress) month
-# plus the 5 before it, 6 bars total (2026-09-10, per the user: the chart
-# should include the current month's data too, not stop at the last fully
-# completed one). The Figma mock's own Mar-Aug window (2026-09-04) predates
-# this — that window just happened to be 6 completed months, not a rule that
-# the current month must be excluded.
+# 6 bars: the current (in-progress) month plus the 5 before it — not just fully completed months.
 _TREND_MONTHS = 6
 
 
 def _month_starts(n: int, today: datetime.date) -> List[datetime.date]:
-    """n calendar month-start dates, oldest first, ending with the CURRENT
-    (possibly partial) month (e.g. run on 2026-09-10 with n=6 gives
-    Apr-Sep 2026, September included even though it isn't over yet)."""
+    """n calendar month-start dates, oldest first, including the current (possibly partial) month."""
     months = []
     cursor = today.replace(day=1)
     for _ in range(n):
@@ -66,11 +59,8 @@ def _bucket_monthly(rows: List[Dict[str, Any]], date_key: str, months: List[date
         d = row.get(date_key)
         if d is None:
             continue
-        # fact_qms_event.date_opened/closed_on are TIMESTAMPs (datetime, with
-        # a time-of-day component), not plain dates — .date() first, or
-        # .replace(day=1) below would produce a datetime that never equals
-        # (or hashes equal to) the plain `date` keys in `counts`, silently
-        # zeroing every bucket (confirmed live, 2026-09-04).
+        # TIMESTAMPs need .date() first, or they'd never equal the plain `date` keys in
+        # `counts`, silently zeroing every bucket.
         if isinstance(d, datetime.datetime):
             d = d.date()
         month_start = d.replace(day=1)
@@ -84,40 +74,15 @@ def _trend_percent(monthly: List[MonthlyBar]) -> Optional[int]:
         return None
     return round((monthly[-1].count - monthly[-2].count) / monthly[-2].count * 100)
 
-# Sentinel the Investigator filter uses to mean "no investigator assigned" —
-# per the user (2026-07-31). Sent/received as a plain investigator= query
-# value, same as a real name, just matched against a null/blank investigator
-# instead of an equality check. Unlikely enough to collide with a real name
-# that no extra guarding is needed.
+# Sentinel meaning "no investigator assigned", sent/received as a plain investigator= value.
 _UNASSIGNED_INVESTIGATOR_FILTER = "__unassigned__"
 
-# Chart-only grouping (per the user, 2026-07-31): Problem Statement, Evidence
-# Collection and Interview Questionnaire — the first 3 of MODULE_LABELS —
-# are merged into a single bar, labelled with all 3 names stacked one below
-# the other (see StatusChart.tsx's "\n"-split rendering). MODULE_LABELS
-# itself is untouched — it still drives stage_for()/next_module_label() and
-# the Investigation Details "X/6 steps" progress fraction, which must keep
-# counting all 6 real modules individually.
+# Chart-only grouping: these three merge into one stacked-label bar. MODULE_LABELS itself stays
+# untouched — it still drives stage_for()/next_module_label() and the "X/6 steps" fraction.
 _CHART_MERGED_GROUP = ["Problem Statement", "Evidence Collection", "Interview Questionnaire"]
 _CHART_MERGED_LABEL = "\n".join(_CHART_MERGED_GROUP)
 
-# dim_event.module (Trackwise's own current-stage field, renamed from
-# `status` on 2026-07-27 — see project memory: star_schema) mapped to the
-# chart's module labels, per the backend engineer (2026-07-28): the chart is
-# meant to show open investigations segmented by their real current module.
-# Matched case/whitespace-insensitively (see the .strip().lower() call below)
-# since dim_event.module's real text already drifted once mid-project without
-# a corresponding etl_table_metadata timestamp change — both the original
-# verbose lowercase values (2026-07-24/27) and the shorter Title Case values
-# (2026-07-28: "RCI Report", "RCI Plan", "RC & CAPA Critique") are kept here
-# for resilience against a future revert. "problem statement"/"evidence
-# collection" haven't been observed in live data under either spelling yet —
-# confirm the exact text with the engineer once real rows reach those stages.
-# "root cause and capa critique"/"RC & CAPA Critique" -> "Task Critique"
-# confirmed by the engineer (2026-07-28) as a graph-only clumping — it's
-# actually a separate module in its own right, just grouped into the Task
-# Critique bar for this chart specifically; don't treat the two as the same
-# module anywhere else.
+# Maps dim_event.module to chart labels, matched case/whitespace-insensitively since the text has drifted between an older lowercase form and a newer Title Case one; "RC & CAPA Critique" -> "Task Critique" is a chart-only grouping, a separate module everywhere else.
 _MODULE_TEXT_TO_LABEL: Dict[str, str] = {
     "problem statement": "Problem Statement",
     "evidence collection": "Evidence Collection",
@@ -129,25 +94,19 @@ _MODULE_TEXT_TO_LABEL: Dict[str, str] = {
     "rci report": "RCI Report",
 }
 
-# Not a real module stage — cancelled investigations are excluded from the
-# progress chart entirely and shown as a "Cancelled" pill instead of a
-# progress bar in the investigations table (backend engineer, 2026-07-28).
+# Cancelled investigations aren't a real module stage — excluded from the progress chart and
+# shown as a "Cancelled" pill instead of a progress bar in the table.
 _CANCELLED_MODULE_VALUE = "Cancelled"
 
-# dim_event.module_risk_status -> which of the chart's 3 stacked series a row
-# counts toward. "Unknown" has no series to fall into today; it has only ever
-# been observed alongside module=None, which is already excluded from the
-# chart (no label to bucket into), so it never actually needs a bucket.
+# module_risk_status -> which of the chart's 3 stacked series a row counts toward. "Unknown" has
+# no series, but only ever co-occurs with module=None, which is already excluded from the chart.
 _MODULE_RISK_TO_KEY: Dict[str, str] = {
     "Closed": "on_track",
     "At Risk": "at_risk",
     "Delayed": "delayed",
 }
 
-# dim_event.open_investigation_status -> the dashboard's internal bucket key.
-# Replaces the day-threshold heuristic previously used as a placeholder here
-# (see project memory: star_schema) — per the backend engineer (2026-07-28),
-# the 4-card/6-card status views should read this column directly.
+# open_investigation_status -> the dashboard's internal bucket key.
 _OPEN_STATUS_TO_BUCKET: Dict[str, str] = {
     "Unassigned": "unassigned",
     "On Track": "on_track",
@@ -160,13 +119,8 @@ def _fmt_date(d: Optional[datetime.date]) -> Optional[str]:
     return d.strftime("%d %b %Y") if d else None
 
 
-# fact_qms_event.due_date_display is the upstream-resolved due-date text
-# ("MM/DD/YYYY", or "MM/DD/YYYY(EXT)" when an extension applies) — this is
-# what must be shown to users, not the raw due_date column, per the user
-# (2026-09-11). No picking/coalescing between due_date/extended_due_date
-# happens here; this only reformats the date portion to this app's existing
-# due-date wording (_fmt_date's "%d %b %Y") and carries the "(EXT)" marker
-# through verbatim whenever the source text has it.
+# due_date_display is the upstream-resolved due-date text ("MM/DD/YYYY", or "MM/DD/YYYY(EXT)"
+# when extended) — shown as-is (reformatted), no picking between due_date/extended_due_date here.
 def _fmt_due_date_display(due_date_display: Optional[str]) -> Optional[str]:
     if not due_date_display:
         return None
@@ -181,39 +135,18 @@ def _bucket_for(open_investigation_status: Optional[str]) -> str:
     return _OPEN_STATUS_TO_BUCKET.get(open_investigation_status, "unassigned")
 
 
-# action_center_queries.py's investigator_by_rci is a jsonb column — asyncpg
-# returns it as a raw JSON string (no codec configured on this pool), not a
-# dict, and NULL (-> None here) when a deviation_id has no fact_qms_event row
-# with a non-null rci_key at all (2026-09-15 bugfix — see that file for the
-# full rationale: each rci_key can carry a genuinely different investigator
-# than the single row action_center_queries.py's dedup otherwise picks).
+# investigator_by_rci is jsonb; asyncpg returns it as a raw JSON string (no codec on this pool),
+# not a dict, and None when no fact_qms_event row for this deviation has a non-null rci_key.
 def _parse_investigator_by_rci(raw: Optional[str]) -> Dict[str, str]:
     if not raw:
         return {}
     return json.loads(raw)
 
 
-# STOPGAP (2026-09-08, per the user): dim_product.product_key=620 is the
-# ETL's catch-all "couldn't resolve a product" bucket — its name_of_material
-# is literally the string "Not Applicable", and it's the single largest
-# product_key across fact_qms_event (1,038/7,576 rows, ~14% — confirmed live,
-# 2026-09-08), including rows (e.g. 505232) where the correct product
-# clearly already exists elsewhere in dim_product under a different key. That
-# ETL mapping is out of this app's control, so — until it's fixed upstream —
-# fall back to parsing the product name out of dim_event.title, whose format
-# is templated per event type:
-#   Market Complaint: "<Product>; B. No. <batch>; <complaint description>"
-#   OOS/OOT:           "...<test> ... B.No <batch> [-<code>[-<code>]] <Product>"
-# Deviation titles (audit/calibration/equipment findings) don't reliably
-# reference a specific product at all (confirmed against a live sample), so
-# they're intentionally left unhandled — returning None there rather than a
-# wrong guess.
+# STOPGAP: product_key=620 is the ETL's unresolved-product catch-all (~14% of rows) — until fixed upstream, fall back to parsing the product out of dim_event.title (format differs by event type; Deviation titles aren't handled).
 _MC_TITLE_PRODUCT_RE = re.compile(r"^(.*?)[;,]\s*B\.?\s*N\.?(?:o\.?)?\b", re.IGNORECASE)
 _OOS_OOT_BATCH_ANCHOR_RE = re.compile(r"(?:B\.?\s*N\.?(?:o\.?)?|for\s+batch)\s*[:\-]?\s*\S+(.*)$", re.IGNORECASE)
-# Stability-study shorthand ("06M", "18M", "ASL") that sits right before the
-# product name with no delimiter of its own (e.g. "-H4075-06M Alfacalcidol
-# Capsules...") — the dash/comma split below can't separate it from the
-# product name that follows, so it's stripped as a separate pass.
+# Strips stability-study shorthand ("06M", "ASL") sitting before the product name with no delimiter.
 _LEADING_STUDY_CODE_RE = re.compile(r"^(?:ASL|\d{1,3}M)\s+")
 
 
@@ -228,14 +161,8 @@ def _extract_product_from_title(title: Optional[str], qe_type_label: str) -> Opt
         m = _OOS_OOT_BATCH_ANCHOR_RE.search(title)
         if not m:
             return None
-        # Batch/stability-condition codes and the product name are all
-        # dash/comma-separated on the same line (e.g. "-H2560-ASL-
-        # Alfacalcidol Capsules..." or "-ASL, N25°C/ 60%RH, Icosapentethyl
-        # capsules 1g") — the product segment is reliably the longest one,
-        # unlike "last segment", which grabs a trailing short site/country
-        # code instead of the product on titles that have one (confirmed
-        # live against deviation_id 509110, where "last" wrongly returned
-        # "US" instead of the actual product before it).
+        # The product segment is reliably the longest dash/comma-separated part — "last segment"
+        # can instead grab a trailing site/country code.
         parts = [p.strip() for p in re.split(r"[-,]", m.group(1)) if p.strip()]
         if not parts:
             return None
@@ -287,34 +214,14 @@ async def get_action_center_summary(
     cancelled_rows = await fetch_cancelled_investigations()
     all_departments = await fetch_all_departments()
 
-    # "Last updated" stamp for the page (2026-09-09, per the user) — grabbed
-    # from whichever fetched row has it first, before role-scoping narrows
-    # `rows` below; every row shares the same value (see the caveat further
-    # down), so this doesn't need its own query.
-    #
-    # BUGFIX (2026-09-10, per the user): pg_updated_at_timestamp is a plain
-    # TIMESTAMP column (no time zone) — asyncpg returns a naive datetime, and
-    # without tzinfo attached here, Pydantic serializes it with no "Z"/offset
-    # at all (confirmed: "2026-09-10T07:01:16.855860"). A JS Date parses an
-    # offset-less ISO string as the BROWSER'S OWN local time, not UTC — so
-    # the frontend's IST conversion was silently only correct for a viewer
-    # whose machine happened to already be set to IST, and wrong for anyone
-    # else. Confirmed live the raw value genuinely IS UTC (within ~22 minutes
-    # of the DB's own now(), which reports "UTC" as its session timezone) —
-    # not a guess — so tagging it here is a correction, not an assumption.
+    # pg_updated_at_timestamp is a naive TIMESTAMP; without tzinfo attached, a JS Date parses it as the browser's own local time instead of UTC, breaking the frontend's IST conversion for non-IST viewers.
     last_updated_at_raw = next(
         (r["pg_updated_at_timestamp"] for r in (*rows, *cancelled_rows) if r["pg_updated_at_timestamp"]), None
     )
     last_updated_at = last_updated_at_raw.replace(tzinfo=datetime.timezone.utc) if last_updated_at_raw else None
 
-    # Investigator-role scoping (2026-09-09, per the user) — filtered here,
-    # before ANY aggregation below, so every derived number (KPI counts,
-    # status cards, event-type pills, pending actions, the table) is scoped
-    # to just this investigator's own rows, not only the table. own_investigator
-    # prefers the explicit investigator_name hook (schema.sql) and falls back
-    # to the token's own `name` claim (athena_users.full_name) — works
-    # automatically whenever an account's full_name already matches
-    # dim_investigator.investigator verbatim.
+    # Investigator-role scoping — filtered before any aggregation, so every derived number (KPI
+    # counts, status cards, pills, pending actions, table) is scoped, not just the table.
     own_investigator: Optional[str] = None
     if "Investigator" in (claims.get("roles") or []):
         own_investigator = (claims.get("investigator_name") or claims.get("name") or "").strip()
@@ -322,13 +229,8 @@ async def get_action_center_summary(
         rows = [r for r in rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
         cancelled_rows = [r for r in cancelled_rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
 
-    # "Remark" column — editable by SIT only, but VIEWABLE by SIT or Admin
-    # (2026-09-11, per the user, extending the original SIT-only visibility
-    # to Admin too). require_sit on the PUT endpoint below still gates
-    # editing to SIT alone — this only widens the read side. Fetched in bulk
-    # (one query, not per-row) and only for these two roles, both to avoid
-    # the pointless query for everyone else and as defense-in-depth so a
-    # response never carries remark text for a role that shouldn't see it.
+    # Remark column: editable by SIT only (require_sit below), viewable by SIT or Admin. Fetched
+    # in bulk and only for those two roles, so no other response ever carries remark text.
     can_view_remarks = bool({"SIT", "Admin"} & set(claims.get("roles") or []))
     remarks_by_deviation: Dict[int, Dict[str, str]] = {}
     if can_view_remarks:
@@ -340,34 +242,18 @@ async def get_action_center_summary(
     enriched: List[Dict[str, Any]] = []
     for r in rows:
         due_date_display = _fmt_due_date_display(r["due_date_display"])
-        # Urgency sorting (days_until_due, below) must agree with the escalation
-        # bucket (open_investigation_status, upstream-computed) — both need the
-        # date actually in effect, i.e. the extension when one is set, not the
-        # original due_date, or "days until due" would disagree with a row's own
-        # Overdue/At Risk bucket. No display formatting happens off this value;
-        # that's due_date_display's job above.
+        # Must use the extension when set, matching the upstream escalation bucket, or
+        # days_until_due would disagree with a row's own Overdue/At Risk status.
         effective_due_date = (r["extended_due_date"] or r["due_date"])
         effective_due_date = effective_due_date.date() if effective_due_date else None
         date_opened = r["date_opened"].date() if r["date_opened"] else None
-        # CAVEAT (2026-08-03, unresolved): pg_updated_at_timestamp is a single
-        # flat bulk-load stamp — every row in fact_qms_event (7,246/7,246,
-        # including cancelled/closed ones) shares the exact same value, so
-        # this is NOT a genuine per-investigation "last updated" signal, just
-        # whenever this table was last reloaded. dim_event.module_start_date/
-        # module_end_date have real per-row variation and look like better
-        # candidates, but their exact semantics need confirming with the data
-        # engineer before switching — don't trust this field's UI meaning
-        # until that's resolved.
+        # CAVEAT (unresolved): pg_updated_at_timestamp is one flat bulk-load stamp shared by
+        # every row, not a real per-investigation "last updated" signal.
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
         days_until_due = (effective_due_date - today).days if effective_due_date else None
         days_since_opened = (today - date_opened).days if date_opened else 0
-        # Table progress bar is driven by Trackwise's own module/state (via
-        # module_stage.stage_for — the same "state change detection" mapping
-        # the 4 individual module pages already use), NOT the generated-
-        # content-table completion count. Per the user (2026-07-28):
-        # dim_event.module + _MODULE_TEXT_TO_LABEL below is for the progress
-        # chart's bucketing/stacking only — this is "the other one" for the
-        # table's per-row progress bar specifically.
+        # Table progress bar uses module_stage.stage_for (Trackwise's own module/state), not the
+        # generated-content completion count; _MODULE_TEXT_TO_LABEL below is for the chart only.
         stage = stage_for(r["module"])
         enriched.append(
             {
@@ -400,12 +286,8 @@ async def get_action_center_summary(
             }
         )
 
-    # Cancelled investigations (dim_event.module = 'Cancelled') — per the
-    # client (2026-07-28): shown in the Investigation Details table, always
-    # after every genuinely-open investigation, ordered by deviation_id
-    # among themselves. Deliberately kept out of `enriched` — they must NOT
-    # affect Total Investigations, the event-type stat pills, status/severity
-    # cards, or the progress chart (client-confirmed scope: table only).
+    # Cancelled investigations are kept out of `enriched` (must not affect totals/pills/cards/
+    # chart) and instead shown in the table after every open investigation, ordered by deviation_id.
     cancelled_enriched: List[Dict[str, Any]] = []
     for r in cancelled_rows:
         due_date_display = _fmt_due_date_display(r["due_date_display"])
@@ -437,27 +319,14 @@ async def get_action_center_summary(
             }
         )
 
-    # Order by start date (date_opened), newest first — not the raw query's
-    # due_date order. Without this, switching between overlapping filters
-    # (e.g. "last week" vs "last month") reshuffled rows unpredictably since
-    # nothing was ever actually sorted by start date. Rows with no
-    # date_opened always sort to the end.
+    # Sort by date_opened, newest first, so switching between overlapping filters doesn't
+    # reshuffle rows unpredictably; rows with no date_opened sort last.
     with_date = [i for i in enriched if i["date_opened"] is not None]
     without_date = [i for i in enriched if i["date_opened"] is None]
     with_date.sort(key=lambda i: i["date_opened"], reverse=True)
     enriched = with_date + without_date
 
-    # Site/department/product filter dropdowns always reflect the full
-    # open-investigation set — not narrowed by whichever filter is currently
-    # selected, so users can always switch to any other real value.
-    #
-    # The investigator dropdown is the exception (per the user, 2026-07-28):
-    # it's scoped to whichever investigators actually appear in the table
-    # under the OTHER active filters (site/department/product/date), so it
-    # only ever lists investigators genuinely present in what's currently
-    # shown — computed here, before the investigator filter itself narrows
-    # `enriched` further below (an investigator filter narrowing its own
-    # dropdown to just the one selected value would be circular/useless).
+    # Site/department/product dropdowns reflect the full open set; the investigator dropdown is scoped to the OTHER active filters, computed before the investigator filter narrows `enriched` below.
     scoped_for_investigator_options = enriched
     if site:
         scoped_for_investigator_options = [i for i in scoped_for_investigator_options if i["site"] == site]
@@ -483,18 +352,13 @@ async def get_action_center_summary(
         ]
 
     investigator_options = sorted({i["investigator"] for i in scoped_for_investigator_options if i["investigator"]})
-    # "Unassigned" only appears when at least one investigation in the
-    # current (site/department/product/date-scoped) view actually has no
-    # investigator — same "only list what's genuinely present" rule the
-    # real names already follow (see comment above).
+    # "Unassigned" only appears when at least one row in the current view actually has none.
     if any(not i["investigator"] for i in scoped_for_investigator_options):
         investigator_options = [_UNASSIGNED_INVESTIGATOR_FILTER] + investigator_options
 
     filter_options = FilterOptions(
         sites=sorted({i["site"] for i in enriched if i["site"]}),
-        # Static full list (2026-09-15, per the user) — unlike sites/products/
-        # investigators below, this is NOT scoped to "what's on an open
-        # investigation right now"; see fetch_all_departments's own comment.
+        # Static full list — unlike sites/products/investigators, not scoped to what's currently open.
         departments=all_departments,
         products=sorted({i["product"] for i in enriched if i["product"]}),
         investigators=investigator_options,
@@ -524,9 +388,8 @@ async def get_action_center_summary(
     if start_date_to is not None:
         enriched = [i for i in enriched if i["date_opened"] and i["date_opened"] <= start_date_to]
 
-    # Same filters, applied to cancelled investigations too, then ordered by
-    # deviation_id — this is the list that gets appended after `enriched`
-    # further down, always landing on the last page(s).
+    # Same filters applied to cancelled investigations, then ordered by deviation_id; this list
+    # gets appended after `enriched` further down, always landing on the last page(s).
     if site:
         cancelled_enriched = [i for i in cancelled_enriched if i["site"] == site]
     if department:
@@ -554,13 +417,7 @@ async def get_action_center_summary(
 
     total = len(enriched)
 
-    # ── Event type breakdown ──────────────────────────────────────────
-    # Fixed display order (Deviation, OOS, OOT, Market Complaint) matches
-    # Figma exactly — not sorted by count, which would reshuffle the pills
-    # as the data changes. All 4 always show, even at count 0 (2026-08-21,
-    # per the user) — e.g. an investigator-scoped view with no OOT
-    # investigations still shows an "OOT" pill reading 0, rather than that
-    # pill disappearing entirely.
+    # ── Event type breakdown ── fixed display order (not by count); all 4 always show, even at 0.
     type_counts: Dict[str, int] = {}
     for inv in enriched:
         label = QE_TYPE_TO_STAT_LABEL.get(inv["qe_type"], inv["qe_type"] or "Unknown")
@@ -568,20 +425,8 @@ async def get_action_center_summary(
     ordered_labels = list(_EVENT_TYPE_ORDER)
     ordered_labels += [l for l in type_counts if l not in _EVENT_TYPE_ORDER]
 
-    # KPI cards' monthly bar chart + MoM trend — a separate query since it
-    # covers the full event population (open AND closed), unlike `enriched`
-    # above which is open-investigations-only (see fetch_monthly_trend_rows).
-    #
-    # [BUGFIX 2026-09-15, per the user] own_investigator only ever gets set
-    # for the real "Investigator" role (JWT-based) — it stayed None for
-    # "View as Investigator" (AppHeader.tsx's demo control, which just sends
-    # the same `investigator` query param the manual dropdown filter does),
-    # so the charts silently kept showing every investigator's data even
-    # while the table/KPI counts/pills were already correctly scoped to just
-    # one. Falling back to the `investigator` filter param (when it's a real
-    # name, not the "unassigned" sentinel, which this query has no concept
-    # of) makes both paths scope the charts the same way the rest of the
-    # page already does.
+    # Separate query since it covers open AND closed events. Falls back to the `investigator`
+    # filter param since own_investigator is only set for the real Investigator role, not "View as Investigator".
     trend_investigator = own_investigator or (
         investigator if investigator and investigator != _UNASSIGNED_INVESTIGATOR_FILTER else None
     )
@@ -605,39 +450,14 @@ async def get_action_center_summary(
         for label in ordered_labels
     ]
 
-    # ── Status cards (escalation-level view) ──────────────────────────
-    # Unassigned and L5-L1 are INDEPENDENT dimensions, not a partition
-    # (2026-09-07, per the user, correcting an earlier assumption this
-    # session that they were mutually exclusive) — an investigation can be
-    # both Unassigned and L1 at the same time; the escalation level has no
-    # bearing on assignment status. "Unassigned" here is the same bucket
-    # used everywhere else on this page (i["bucket"] == "unassigned", i.e.
-    # dim_event.open_investigation_status == "Unassigned" — see _bucket_for
-    # above, already used for the per-row Status pill and PendingAction.
-    # is_unassigned) — NOT escalation_level being null, which was this
-    # session's earlier, incorrect definition. L5-L1 remain mutually
-    # exclusive among THEMSELVES (escalation_level is a single value per
-    # investigation), just no longer exclusive with Unassigned.
+    # ── Status cards ── Unassigned and L5-L1 are independent dimensions, not a partition: an investigation can be both Unassigned and L1 at once.
     _ESCALATION_LEVELS = ["L5", "L4", "L3", "L2", "L1"]
 
     def _build_status_cards(items: List[Dict[str, Any]], show_phase_breakdown: bool = False) -> List[StatusCard]:
         unassigned = [i for i in items if i["bucket"] == "unassigned"]
         by_level = {level: [i for i in items if i.get("escalation_level") == level] for level in _ESCALATION_LEVELS}
 
-        # Phase 1/Phase 2, as their own standalone cards alongside Unassigned
-        # (SIT Dashboard Figma live prototype, 2026-09-07, per the user —
-        # confirmed against the actual OOS-selected screenshot: Unassigned/
-        # Phase 1/Phase 2 render as 3 sibling cards). Counted over ALL items
-        # (not just the `unassigned` bucket) — same "independent dimension"
-        # fix as Unassigned vs L5-L1 above: an OOS/OOT investigation's phase
-        # has no bearing on its assignment status, so scoping to `unassigned`
-        # first was silently hiding every already-assigned Phase 2 case
-        # (confirmed live, 2026-09-07: OOS had 17 real Phase 2 investigations,
-        # all already assigned, so the card read 0). Explicitly scoped by the
-        # caller (only True for the OOS/OOT-labeled calls below) rather than
-        # inferred from the counts — always shown when scoped to OOS/OOT,
-        # even at 0/0, same "zero count still shows" convention as every
-        # other card here.
+        # Phase 1/2 counted over ALL items, not just `unassigned` — scoping to unassigned first hid already-assigned Phase 2 cases.
         phase_cards = (
             [
                 StatusCard(key="phase1", label="Phase 1", count=sum(1 for i in items if i.get("oos_oot_phase") == "Phase 1"), rows=[]),
@@ -655,11 +475,8 @@ async def get_action_center_summary(
 
     status_cards = _build_status_cards(enriched)
 
-    # Per the user (2026-07-31): clicking a Deviation/OOS/OOT/Market
-    # Complaint pill keeps showing these SAME 4 cards (not a different
-    # drill-down set) with counts filtered to just that event type — the
-    # frontend picks status_cards_by_event_type[label] instead of status_cards
-    # when a pill is active. Keyed by the same labels as event_type_counts.
+    # Clicking an event-type pill keeps showing these same cards, filtered to that type — the
+    # frontend picks status_cards_by_event_type[label] instead of status_cards when active.
     status_cards_by_event_type: Dict[str, List[StatusCard]] = {
         label: _build_status_cards(
             [i for i in enriched if QE_TYPE_TO_STAT_LABEL.get(i["qe_type"], i["qe_type"] or "Unknown") == label],
@@ -668,21 +485,7 @@ async def get_action_center_summary(
         for label in ordered_labels
     }
 
-    # ── Pending actions: fixed two-row layout (per the user, 2026-07-30) —
-    # row 1 = top overdue+critical OOS, row 2 = top overdue+critical
-    # Deviation (3 columns × 2 rows — see .ac-pending-grid CSS). Each row
-    # prioritizes overdue+Critical first (most overdue first); if fewer than
-    # _PENDING_ACTIONS_PER_ROW of those exist for that event type (per the
-    # user, 2026-07-31), the remaining slots are filled with other Critical
-    # rows of the same type that aren't overdue (soonest due first) rather
-    # than leaving the row sparse. If slots are STILL empty after both
-    # Critical tiers (2026-08-03, per the user) — i.e. there's neither an
-    # overdue-Critical nor a non-overdue-Critical row left to show — the rest
-    # of the row falls back to Non-Critical overdue rows of the same type
-    # (most overdue first, same sort as the first tier), rather than leaving
-    # the row sparse just because nothing Critical is left. Supersedes the
-    # prior unified unassigned-or-overdue/criticality-first sort — this
-    # panel is now scoped to exactly these two event types.
+    # ── Pending actions: row 1 = top OOS, row 2 = top Deviation; priority is overdue+Critical, then non-overdue Critical, then Non-Critical overdue as a last-resort fill.
     def _urgent_critical_overdue(qe_type: str) -> List[Dict[str, Any]]:
         same_type_critical = [
             i for i in enriched if i["qe_type"] == qe_type and i["criticality"] == "Critical"
@@ -730,14 +533,7 @@ async def get_action_center_summary(
         for i in candidates
     ]
 
-    # ── Progress chart: one bar per module (dim_event.module), each stacked
-    # by dim_event.module_risk_status — per the backend engineer (2026-07-28).
-    # Cancelled investigations aren't a real module stage and are excluded
-    # entirely (see _CANCELLED_MODULE_VALUE / is_cancelled). Problem
-    # Statement/Evidence Collection/Interview Questionnaire are merged into
-    # one bar (_CHART_MERGED_LABEL/_CHART_MERGED_GROUP above); the old
-    # always-0 "IQ Rubrics" placeholder bar is dropped entirely rather than
-    # merged in.
+    # ── Progress chart: one bar per module, stacked by module_risk_status; cancelled investigations excluded, the old always-0 "IQ Rubrics" bar dropped entirely.
     chart_labels = [_CHART_MERGED_LABEL] + [l for l in MODULE_LABELS if l not in _CHART_MERGED_GROUP]
     chart_counts: Dict[str, Dict[str, int]] = {
         label: {"on_track": 0, "at_risk": 0, "delayed": 0} for label in chart_labels
@@ -762,12 +558,8 @@ async def get_action_center_summary(
         for label in chart_labels
     ]
 
-    # Only one of these two sets is ever returned as `investigations` — which
-    # one depends on the `status` param (2026-08-13, per the user: cancelled
-    # investigations must not appear in the normal/default view at all).
-    # Stat cards/chart/pending actions are computed from `enriched` alone
-    # above, regardless of `status`, so they stay open-only either way — the
-    # toggle only changes what the investigations table itself shows.
+    # Only one of these two sets is returned as `investigations`, chosen by `status`; stat
+    # cards/chart/pending actions stay open-only either way — the toggle only affects the table.
     if status == "cancelled":
         investigations = [
             InvestigationRow(
@@ -843,15 +635,9 @@ async def update_investigation_remark(
     request: RemarkUpdateRequest,
     _: str = Depends(require_sit),
 ) -> Dict[str, str]:
-    """SIT Dashboard's "Remark" column (2026-09-11, per the user) — editable
-    (and visible, see get_action_center_summary's is_sit masking above) by
-    the SIT role only, enforced here via require_sit rather than just hidden
-    client-side. Keyed by (record_id, rci_id) — not record_id alone — since
-    a deviation with multiple RCI IDs renders as multiple table rows (see
-    ActionCenterPage.tsx's explodedInvestigations), each needing its own
-    independent remark; request.rci_id is "" for a row with none, matching
-    the frontend's own row-key convention.
-    """
+    """SIT Dashboard's "Remark" column, editable by SIT only (enforced via require_sit). Keyed
+    by (record_id, rci_id), not record_id alone, since a deviation with multiple RCI IDs renders
+    as multiple rows, each needing its own remark; rci_id is "" for a row with none."""
     try:
         deviation_id = int(record_id)
     except ValueError:

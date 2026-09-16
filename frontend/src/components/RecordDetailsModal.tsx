@@ -13,10 +13,6 @@ const STATUS_BADGE_STYLE: Record<SimilarInvestigation["status"], { bg: string; c
   Unknown: { bg: "var(--color-open-bg)", color: "var(--color-text-muted)" },
 };
 
-// Matches the approved Figma "Home<Problem_Statement_Generated" modal
-// (node 1229:31224) — appears automatically when landing on the Problem
-// Statement step for a record that already has a saved problem statement.
-
 export function RecordDetailsModal({
   recordId,
   problemStatement,
@@ -28,9 +24,7 @@ export function RecordDetailsModal({
 }: {
   recordId: string;
   problemStatement: string;
-  // True once Evidence Collection has any real data — hides the "Edit
-  // Problem Statement" option, since the generated PS can no longer be
-  // edited at that point (2026-08-21, per the user).
+  // True once Evidence Collection has real data — the PS can no longer be edited at that point.
   lockedForEditing?: boolean;
   onClose: () => void;
   onSaveEdit: (newText: string) => void;
@@ -47,11 +41,7 @@ export function RecordDetailsModal({
 
   function handleExploreEvents() {
     setExploreEventsError(null);
-    // Opened synchronously on the click itself, before the async handoff
-    // call — a tab opened only after an awaited fetch resolves is not
-    // considered a direct result of the user gesture by most browsers and
-    // gets popup-blocked. Redirect this already-open tab once the token
-    // arrives instead.
+    // Open the tab synchronously on the click — opening after the async fetch resolves gets popup-blocked.
     const newTab = window.open("", "_blank");
     getEventExplorerHandoffUrl()
       .then(({ url }) => {

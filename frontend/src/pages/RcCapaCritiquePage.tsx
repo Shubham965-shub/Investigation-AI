@@ -45,9 +45,7 @@ function formatDdMmYyyy(iso: string): string {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
-// The RC/Impact/CAPA drilldown behind the completion screen's "Score
-// Details" button (2026-08-26, per the user) — same 3 score rows that used
-// to sit inline on the completion card, just moved into a dialog.
+// The RC/Impact/CAPA drilldown behind the "Score Details" button — same 3 score rows, moved out of the completion card into a dialog.
 function ScoreDetailsDialog({ report, onClose }: { report: RcCapaReport; onClose: () => void }) {
   const rows = [
     { label: "RC CRITIQUE SCORE", value: report.rc_score, sections: ["rc"] },
@@ -133,16 +131,7 @@ function ScoreDetailsDialog({ report, onClose }: { report: RcCapaReport; onClose
   );
 }
 
-// One self-contained blanket accept/reject block per recommendation
-// subsection (Root Cause / Impact Assessment / CAPA's own "Recommendations
-// for Improvements") — mirrors Task Critique's single-section version
-// (2026-08-26, per the user: "do the same in rc and capa critique"), just
-// instantiated once per subsection here since this page has three instead
-// of one. Checkboxes + local bulk/deselect state live per-group (ids never
-// collide across groups since they're real DB row ids); the actual decision
-// calls and the "does this lock the whole report" prediction go through the
-// parent, since that prediction needs every recommendation across BOTH
-// critique categories, not just this group's own.
+// One self-contained accept/reject block per subsection — checkbox/deselect state lives per-group, but decisions and the "locks the whole report" prediction go through the parent since that needs every recommendation across both categories.
 function RecommendationGroup({
   recs,
   allRecsFlat,
@@ -164,10 +153,7 @@ function RecommendationGroup({
 }) {
   const [uncheckedIds, setUncheckedIds] = useState<Set<number>>(new Set());
   const [deselectPrompt, setDeselectPrompt] = useState(false);
-  // A separate reason per deselected recommendation (2026-08-26, per the
-  // user — previously one shared reason covered every deselected
-  // recommendation; now each gets its own labeled box in a table). Keyed by
-  // recommendation id.
+  // A separate reason per deselected recommendation, keyed by recommendation id.
   const [deselectReasons, setDeselectReasons] = useState<Record<number, string>>({});
 
   const pending = recs.filter((r) => r.decision === "pending");
@@ -177,10 +163,7 @@ function RecommendationGroup({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      // Auto-open the reason prompt the moment every recommendation in this
-      // group is deselected (2026-09-10, per the user) — previously this
-      // only opened via the "Yes" button, so unchecking the last one left
-      // the user with no visible next step until they clicked it themselves.
+      // Auto-opens the reason prompt the moment every recommendation in this group is deselected.
       if (pending.length > 0 && pending.every((r) => next.has(r.id))) {
         setDeselectPrompt(true);
       }
@@ -188,10 +171,7 @@ function RecommendationGroup({
     });
   }
 
-  // Every recommendation NOT in this batch must already be rejected for the
-  // batch's rejections to result in the whole report having nothing but
-  // rejected recommendations left — same rule the page previously applied
-  // per single recommendation, generalized to a batch.
+  // True only if every recommendation outside this batch is already rejected — i.e. this batch's rejections would leave nothing but rejected recommendations.
   function wouldLockEverything(batchIds: number[]): boolean {
     return allRecsFlat.filter((r) => !batchIds.includes(r.id)).every((r) => r.decision === "rejected");
   }
@@ -226,11 +206,7 @@ function RecommendationGroup({
     const toAccept = pending.filter((r) => !uncheckedIds.has(r.id));
     const toReject = pending.filter((r) => uncheckedIds.has(r.id));
     if (toReject.some((r) => !(deselectReasons[r.id] ?? "").trim())) return;
-    // Closed immediately, not just on success (2026-08-26, per the user) —
-    // ScoringDialog below renders at the same z-index the instant scoring
-    // is predicted, and this dialog previously stayed mounted for the whole
-    // (possibly long) scoring wait underneath/alongside it, looking like a
-    // broken white overlay.
+    // Closed immediately, not just on success — otherwise it stays mounted under ScoringDialog during the scoring wait, looking like a broken overlay.
     setDeselectPrompt(false);
     setDecisionBusy(true);
     setDecisionError(null);
@@ -395,23 +371,14 @@ export function RcCapaCritiquePage() {
   const [pushError, setPushError] = useState<string | null>(null);
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
 
-  // The RC/Impact/CAPA score drilldown moved out of the always-visible
-  // completion card into its own dialog behind a "Score Details" button
-  // (2026-08-26, per the user) — the total score stays inline as before.
+  // Score drilldown moved out of the completion card into its own dialog; the total score stays inline.
   const [showScoreDetails, setShowScoreDetails] = useState(false);
 
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyReports, setHistoryReports] = useState<RcCapaReport[]>([]);
 
-  // Fires once every recommendation on the current report has been decided
-  // and a new upload becomes possible again — detected as can_upload's
-  // false -> true transition (2026-08-26, per the user), rather than hooking
-  // every individual accept/reject call site, since that transition already
-  // uniquely identifies "just finished deciding, ready to re-upload"
-  // regardless of which decision path (bulk accept/reject/partial) got there.
-  // undefined -> true (e.g. on initial load of an already-fully-decided
-  // report) deliberately does NOT fire this — only a real transition does.
+  // Fires only on a genuine can_upload false -> true transition (not undefined -> true on initial load) — catches every decision path without hooking each call site.
   const [showIncorporateDialog, setShowIncorporateDialog] = useState(false);
   const prevCanUploadRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {
@@ -463,13 +430,7 @@ export function RcCapaCritiquePage() {
     return <DbErrorModal message={dbError} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
 
-  // Blocks navigating here (stepper click, direct URL, back/forward — this
-  // check runs regardless of how the page was reached) until every Task
-  // Critique section is complete (2026-09-08, per the user). No backend
-  // aggregate for this exists yet, so it's the same per-section reduction
-  // TaskCritiquePage.tsx itself already does for its own "push to RC & CAPA
-  // Critique" button — computed here too since that button is only a UI
-  // nicety, not an actual guard against a direct URL/stepper click.
+  // Blocks direct navigation here until every Task Critique section is complete — same per-section reduction TaskCritiquePage.tsx uses for its own button, recomputed here since that button is only a UI nicety, not a real guard.
   const taskCritiqueComplete =
     !!taskCritique &&
     taskCritique.has_source_document &&
@@ -501,9 +462,7 @@ export function RcCapaCritiquePage() {
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadError(null);
-    // Predicted client-side from the state as of this click — a gospel
-    // upload or the 3rd/final attempt both lock and get scored synchronously
-    // as part of this same request (2026-08-18, per the user).
+    // Predicted client-side — a gospel upload or the final attempt both lock and score synchronously in this same request.
     if (state!.next_upload_is_final) {
       setScoring("gospel");
     } else if (state!.upload_count + 1 >= state!.max_uploads) {
@@ -520,9 +479,7 @@ export function RcCapaCritiquePage() {
     }
   }
 
-  // Shared by every RecommendationGroup instance below — each group drives
-  // its own blanket accept/reject UI, but every actual decision still goes
-  // through this one page-level call (and updates the one shared `state`).
+  // Shared by every RecommendationGroup — each drives its own UI, but every decision goes through this one page-level call.
   function decideRecommendation(recommendationId: number, decision: "accepted" | "rejected", reason?: string) {
     return decideRcCapaRecommendation(recordId!, recommendationId, decision, reason);
   }
@@ -762,14 +719,7 @@ export function RcCapaCritiquePage() {
                     <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}><BoldText text={critique.summary} /></p>
                   </div>
                 )}
-                {/* A genuinely zero-recommendation critique (no gaps found)
-                    now locks the whole report immediately (see
-                    db/critique_state.py's compute_upload_state) — say so
-                    explicitly instead of falling through to "Critique
-                    pending.", which previously fired here too and wrongly
-                    implied the critique hadn't run yet (2026-09-10, per the
-                    user). isComplete is only reachable via a real,
-                    already-persisted critique response at this point. */}
+                {/* A zero-recommendation critique locks the report immediately (see compute_upload_state) — say so explicitly rather than falling through to "Critique pending.". */}
                 {critique.recommendations.length === 0 && isComplete && (
                   <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-success-text)", fontWeight: 600 }}>
                     ✓ No gaps identified — nothing further to review for this category.

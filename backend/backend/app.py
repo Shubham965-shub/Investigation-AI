@@ -27,10 +27,7 @@ from backend.routers.task_critique import router as task_critique_router
 
 logger = logging.getLogger(__name__)
 
-# Response header carrying a freshly re-issued token (sliding expiry — see
-# the request_lifecycle middleware below) — must be in CORS's expose_headers
-# or the frontend's fetch() can't read it at all despite it being present on
-# the wire.
+# Must be in CORS's expose_headers or the frontend's fetch() can't read it despite it being on the wire.
 _REFRESHED_TOKEN_HEADER = "X-Refreshed-Token"
 
 
@@ -61,21 +58,13 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        # Without this, the browser silently discards X-Refreshed-Token —
-        # allow_headers governs REQUEST headers, exposing a custom RESPONSE
-        # header to frontend JS needs this separate list.
+        # allow_headers only covers request headers; exposing a response header to JS needs this separately.
         expose_headers=[_REFRESHED_TOKEN_HEADER],
     )
 
     @app.middleware("http")
     async def request_lifecycle(request: Request, call_next):
-        """Two things per request, both best-effort (never break the actual
-        response over either): (1) sliding-expiry token refresh — a request
-        made with a still-valid token gets a freshly re-issued one back (new
-        full expiry window) via _REFRESHED_TOKEN_HEADER, so an active user's
-        session keeps extending instead of hard-expiring exactly
-        JWT_EXPIRE_MINUTES after login regardless of activity (per the user,
-        2026-07-31); (2) records the call in athena_api_call_trails."""
+        """Best-effort: refreshes the token (sliding expiry) and logs the call to athena_api_call_trails."""
         start = time.monotonic()
         response = await call_next(request)
 
@@ -86,17 +75,7 @@ def create_app() -> FastAPI:
             if payload:
                 user_id = payload.get("uid")
                 if user_id is not None:
-                    # payload["username"], NOT payload["sub"] — sub is now a
-                    # UUID derived from uid (see routers/auth.py's module
-                    # docstring), not the username. Also carry roles/name
-                    # forward — without this, every sliding refresh would
-                    # silently drop them (issue_token's params default to
-                    # none/derived), regressing the feedback service's
-                    # attribution back to a guessed name the moment a token
-                    # first refreshes after login. investigator_name carried
-                    # forward the same way (2026-09-09, per the user) — an
-                    # Investigator-role user would otherwise silently lose
-                    # their Action Center scoping on the first refresh.
+                    # sub is a UUID derived from uid, not the username; must carry roles/name/investigator_name forward or a refresh silently drops them.
                     response.headers[_REFRESHED_TOKEN_HEADER] = issue_token(
                         payload["username"],
                         user_id,
@@ -120,9 +99,7 @@ def create_app() -> FastAPI:
         return response
 
     api_prefix = "/api"
-    # /auth/login obviously can't require a token to get one; /auth/me
-    # self-protects internally (see routers/auth.py). Every other router
-    # requires a valid JWT — the frontend already sends one on every request.
+    # /auth/login and /auth/me are unprotected here; /auth/me self-protects internally.
     app.include_router(health_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
     protected = {"dependencies": [Depends(get_current_username)]}

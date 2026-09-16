@@ -4,8 +4,7 @@ import { Stepper, RECORD_STEPS, type StepStatus } from "./Stepper";
 import { getProblemStatementRecord } from "../api/dashboard";
 import backArrow from "../assets/icons/back-arrow.svg";
 
-// Placeholder record label + step-status derivation until a real "fetch
-// record by id" endpoint exists (see project memory: landing/list-investigations gap).
+// Placeholder step-status derivation until a real "fetch record by id" endpoint exists.
 function deriveStepStatuses(currentStep: string): Record<string, StepStatus> {
   const currentIndex = RECORD_STEPS.findIndex((s) => s.key === currentStep);
   const statuses: Record<string, StepStatus> = {};
@@ -24,10 +23,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
   const [criticality, setCriticality] = useState<string | null | undefined>(undefined);
   const [eventClassification, setEventClassification] = useState<string | null | undefined>(undefined);
 
-  // Only used so the stepper can mark Interview Questionnaire "(Optional)"
-  // for Market Complaint investigations, and pick which SLA tier applies —
-  // a failed/absent fetch just leaves both unmarked rather than blocking
-  // the page.
+  // A failed/absent fetch just leaves eventType/criticality unmarked rather than blocking the page.
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
@@ -45,17 +41,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
     };
   }, [recordId]);
 
-  // Which SLA tier (of the two shown under each Stepper step) applies to
-  // this specific investigation (2026-08-26, per the user: "only show
-  // applicable definitions for applicable investigations"). OOS/OOT always
-  // gets the strict tier — there's no data anywhere distinguishing "Real
-  // Time Stability Failure"/"Microbiocidal Failure" from any other OOS/OOT
-  // failure, so this errs toward the safer/faster SLA rather than guessing.
-  // Deviation/Market Complaint go by dim_event.criticality; anything other
-  // than exactly "Critical" — including null/missing (Trackwise hasn't set
-  // it, or the fetch failed) — defaults to the "other" tier (2026-08-26, per
-  // the user: "if an investigation does not have a criticality value, assume
-  // it is non critical").
+  // OOS/OOT always gets the strict tier (no data distinguishes stability/microbiocidal failures from others, so err strict). Deviation/Market Complaint: anything other than exactly "Critical" (including null/missing) defaults to "other".
   const slaTier: "critical" | "other" =
     eventType === "OOS" || eventType === "OOT" || eventType === "OOS/OOT" || criticality === "Critical"
       ? "critical"
@@ -63,10 +49,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
 
   if (!recordId) return null;
 
-  // dim_event.event_classification tag (2026-09-11, per the data engineer)
-  // — "Critical" reuses the same red outline look Action Center's Critical
-  // badge uses; "Major"/"Minor" get a plain grey tag; null/anything else
-  // shows nothing, same as before this field existed.
+  // "Critical" reuses Action Center's Critical badge style; Major/Minor get a plain grey tag; anything else shows nothing.
   const classificationTagStyle: CSSProperties | null =
     eventClassification === "Critical"
       ? { border: "1px solid var(--color-danger-text)", color: "var(--color-danger-text)" }

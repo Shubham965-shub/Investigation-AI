@@ -11,16 +11,10 @@ import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
 import { AppFeedbackButton } from "./AppFeedbackButton";
 
-// Temporary demo control (2026-08-14, per the user) — the real investigator
-// with the most currently open investigations (excluding unassigned rows),
-// found via a one-off live-DB query: 19 open investigations, next-highest
-// was 14. Hardcoded rather than fetched, since this dropdown is meant to be
-// removed once the demo need has passed.
+// Temporary demo control — hardcoded to the investigator with the most open investigations; remove once demo need passes.
 const DEMO_VIEW_AS_INVESTIGATOR = "Dileep Dasampalli";
 
-// "Ajay Pathania" -> "Ajay P", "Ajay Kumar Pathania" -> "Ajay K P" (2026-08-18,
-// per the user) — first name in full, every remaining name reduced to its
-// initial. A single-word name (no last name on file) is shown as-is.
+// First name in full, every remaining name reduced to its initial; single-word names shown as-is.
 function formatShortName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length <= 1) return fullName;
@@ -46,16 +40,9 @@ export function AppHeader() {
         padding: "20px 32px 21px",
         position: isPanelOpen ? "sticky" : "relative",
         top: isPanelOpen ? 0 : undefined,
-        // Below the preview panel's backdrop (zIndex 40, see
-        // InvestigationPreviewPanel.tsx) rather than above it — the backdrop
-        // should dim the whole page, header strip included, while the panel
-        // is open, not just the content below it.
+        // Below the preview panel's backdrop (zIndex 40) so the backdrop dims the header strip too.
         zIndex: isPanelOpen ? 30 : "auto",
-        // position can't be transitioned by CSS, so becoming sticky is
-        // instant — this keyframe animation (plays fresh every time
-        // isPanelOpen flips to true, since animation-name only (re)starts
-        // when its value actually changes) slides the header down over the
-        // same 250ms ease the preview panel itself opens with.
+        // position can't be transitioned by CSS; animate the slide instead to match the panel's open transition.
         animation: isPanelOpen ? "app-header-slide-down 250ms ease" : "none",
       }}
     >
@@ -78,9 +65,7 @@ export function AppHeader() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginRight: 16 }}>
         <AppFeedbackButton />
 
-        {/* Admin-only (2026-09-08, per the user) — opens User Management.
-            The backend independently re-checks the Admin role on every call
-            there; hiding the button is just a UX nicety, not the real gate. */}
+        {/* Backend re-checks the Admin role independently; hiding the button is just UX, not the real gate. */}
         {roles.includes("Admin") && (
           <button
             type="button"
@@ -93,9 +78,7 @@ export function AppHeader() {
           </button>
         )}
 
-        {/* CXO-only (2026-09-09, per the user) — opens the CXO Dashboard.
-            Same UX-nicety-not-the-real-gate pattern as the User Management
-            button above; CxoDashboardPage checks the role itself too. */}
+        {/* Same UX-only gate as the Admin button; CxoDashboardPage checks the role itself. */}
         {roles.includes("CXO") && (
           <button
             type="button"
@@ -117,9 +100,6 @@ export function AppHeader() {
           <img src={headerIcon1} alt="" width={20} height={20} />
         </button>
 
-        {/* While "view as" is active, show that investigator's name instead
-            of the real signed-in user's — switches back to fullName the
-            moment viewAsInvestigator is cleared (2026-08-18, per the user). */}
         {(viewAsInvestigator ?? fullName) && (
           <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "#fafafa" }}>
             {formatShortName(viewAsInvestigator ?? fullName!)}

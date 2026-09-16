@@ -1,13 +1,4 @@
-/**
- * Field definitions mirror the trackwise field schemas enforced by
- * InvestigationAi_DS (src/agents/shared/schemas.py and the problem-statement
- * v2 schemas). Keys must match exactly what those pydantic models accept —
- * either the declared alias, or the plain field name where no alias exists.
- *
- * Field sets are intentionally scoped per module: RCI plan needs the
- * extended Deviation fields, problem-statement generation needs the
- * extended Market Complaint fields, everything else uses the base sets.
- */
+// Keys must match InvestigationAi_DS's pydantic schemas exactly (src/agents/shared/schemas.py) — declared alias, or plain field name where no alias exists.
 
 export type EventType = "Deviation" | "OOS" | "OOT" | "OOS/OOT" | "Market Complaint";
 export type Module = "problem-statement" | "evidence" | "questionnaire" | "rci-plan";
@@ -56,9 +47,7 @@ const DEVIATION_EXTENDED_FIELDS: FieldDef[] = [
   { key: "Proposal for Resolution", label: "Proposal for Resolution (one per line)", required: false, kind: "list" },
 ];
 
-// Aliased where DS declares an alias; plain field name ("observation_date")
-// where it doesn't — this exact combination satisfies both the v2 (problem
-// statement) schema and the shared schema used by the other three modules.
+// Mix of aliased and plain keys is deliberate — satisfies both the v2 problem-statement schema and the shared schema used by the other three modules.
 const OOS_FIELDS: FieldDef[] = [
   { key: "title", label: "Title", required: true },
   { key: "description", label: "Description", required: true, kind: "textarea" },
@@ -115,17 +104,7 @@ export const EVENT_TYPE_OPTIONS: Record<Module, EventType[]> = {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^\d{2}:\d{2}(:\d{2})?$/;
 
-/**
- * Real DB values behind "date"/"time"-kind fields aren't always shaped like
- * the native <input type="date"/"time"> pickers require — e.g. Deviation's
- * observation_time is a free-text column (real values like "01:30hrs"), and
- * Date Opened is a full timestamp ("2025-10-24T08:01:00"), not a bare date.
- * Those native inputs silently blank out any value that doesn't match their
- * strict format, hiding real DB text from the user. Fall back to a plain
- * text input whenever the actual value isn't timestamp-shaped so it stays
- * visible and editable exactly as entered; empty values still get the native
- * picker for a normal blank-entry experience.
- */
+// Native date/time inputs silently blank out values that don't match their strict format (e.g. free-text "01:30hrs") — fall back to text input so real DB values stay visible.
 export function nativeInputType(kind: FieldDef["kind"], rawValue: string): "date" | "time" | "text" {
   if (kind === "date") return rawValue === "" || DATE_PATTERN.test(rawValue) ? "date" : "text";
   if (kind === "time") return rawValue === "" || TIME_PATTERN.test(rawValue) ? "time" : "text";
@@ -142,11 +121,7 @@ export function getFieldSet(module: Module, eventType: EventType): FieldDef[] {
   return OOS_FIELDS;
 }
 
-/**
- * Fields `module` needs for `eventType` that the Problem Statement step
- * didn't already collect. Only Deviation + RCI Plan has a gap today (DS
- * requires the extended field set there) — everything else returns [].
- */
+// Fields `module` needs that Problem Statement didn't already collect. Only Deviation + RCI Plan has a gap today; everything else returns [].
 export function getAdditionalFieldsForModule(module: Module, eventType: EventType): FieldDef[] {
   const moduleFields = getFieldSet(module, eventType);
   const collectedKeys = new Set(getFieldSet("problem-statement", eventType === "OOS/OOT" ? "OOS" : eventType).map((f) => f.key));

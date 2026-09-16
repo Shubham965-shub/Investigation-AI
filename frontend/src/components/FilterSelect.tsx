@@ -1,9 +1,6 @@
 import iconChevron from "../assets/icons/filter-chevron.svg";
 
-// Real filter dropdown backed by a live "distinct values" list from the
-// backend — styled to look like a decorative pill (via className, e.g.
-// "ac-filter-pill"/"an-filter-pill") while being a real <select> underneath.
-// Shared by ActionCenterPage and AnalyticsPage.
+// Styled via className to look like a decorative pill while being a real <select> underneath.
 export function FilterSelect({
   value,
   onChange,

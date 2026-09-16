@@ -12,9 +12,8 @@ from backend.clients.db_client import get_pool
 
 
 async def fetch_source_document(deviation_id: int) -> Optional[Tuple[bytes, str]]:
-    """Degrades to None if this table hasn't been run against the live DB
-    yet — same convention as generated_content.sql's read paths, since this
-    table shares that "not yet approved to run" status."""
+    """Degrades to None if this table doesn't exist yet — same convention
+    as generated_content.sql's read paths."""
     pool = get_pool()
     async with pool.acquire() as conn:
         try:

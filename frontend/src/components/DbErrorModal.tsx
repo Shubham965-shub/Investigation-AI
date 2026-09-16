@@ -1,9 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-// Blocking modal shown when the DB fetch for a record genuinely fails (not a
-// 404 — that means "no record yet" and is a valid, non-blocking state). No
-// way to dismiss and proceed with a broken/incomplete view; only retry or
-// leave.
+// Shown only on a genuine fetch failure (404 = "no record yet", handled elsewhere as valid). No dismiss — only retry or leave.
 export function DbErrorModal({ message, onRetry }: { message: string; onRetry: () => void }) {
   const navigate = useNavigate();
 

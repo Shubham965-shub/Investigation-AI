@@ -122,9 +122,7 @@ export function TaskCritiquePage() {
   async function handleUpload(taskIndex: number, file: File) {
     setBusyTaskIndex(taskIndex);
     setUploadError((prev) => ({ ...prev, [taskIndex]: "" }));
-    // Predicted client-side from the state as of this click — a gospel
-    // upload or the 3rd/final attempt both lock and get scored synchronously
-    // as part of this same request (2026-08-18, per the user).
+    // Predicted client-side — a gospel upload or the final attempt both lock and score synchronously in this same request.
     const section = sections?.find((s) => s.task_index === taskIndex);
     if (section?.next_upload_is_final) {
       setScoring("gospel");
@@ -134,9 +132,7 @@ export function TaskCritiquePage() {
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
       if (updated.locked) {
-        // Final upload (gospel or 3rd attempt) — scored, nothing left to
-        // review, so stay on the main list page instead of jumping to the
-        // detail page.
+        // Final upload — nothing left to review, so stay on the list page instead of navigating to the detail page.
         setSections((prev) => (prev ? prev.map((s) => (s.task_index === taskIndex ? updated : s)) : prev));
         setBusyTaskIndex(null);
         setScoring(null);
@@ -302,13 +298,7 @@ export function TaskCritiquePage() {
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        // A long filename had no width ceiling of its own, so
-                        // it silently grew this whole column (and the
-                        // scorecard box riding along in it) to fit the text
-                        // instead of ellipsis/nowrap ever engaging
-                        // (2026-09-10, per the user) — capped independently
-                        // of the scorecard box above, which still sizes
-                        // itself naturally.
+                        // maxWidth caps the filename independently — without it, a long name grows this whole column instead of ellipsis engaging.
                         maxWidth: 180,
                         marginLeft: "auto",
                         marginRight: "auto",

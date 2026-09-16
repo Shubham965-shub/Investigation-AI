@@ -1,8 +1,4 @@
-"""Placeholder auth schemas — no real credential store yet.
-
-Any non-empty username/password succeeds and returns an opaque bearer
-token. Replace with real identity provider integration later.
-"""
+"""Auth schemas. No real credential store yet — any non-empty username/password succeeds."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -30,10 +26,7 @@ class EventExplorerHandoffResponse(BaseModel):
     url: str
 
 
-# ── User Management (admin-only) ───────────────────────────────────────────
-# Added 2026-09-08, per the user — a small button beside AppFeedbackButton,
-# visible only to Admin-role users, opens a page listing every athena_users
-# row with role/created/last-login, plus create-user and edit-role actions.
+# ── User Management (admin-only) ──
 
 
 class AdminUserRow(BaseModel):
@@ -44,18 +37,13 @@ class AdminUserRow(BaseModel):
     is_active: bool
     created_at: datetime
     last_login: Optional[datetime] = None
-    # The Investigator-role scoping "hook" (2026-09-09, per the user) — links
-    # this account to its dim_investigator.investigator identity. Only
-    # meaningful for Investigator-role accounts; harmless/unused otherwise.
-    # NULL means action_center.py falls back to matching full_name instead
-    # (see schema.sql's own comment on this column for the full rationale).
+    # Links this account to its dim_investigator identity for Action Center scoping; NULL falls back to matching full_name.
     investigator_name: Optional[str] = None
 
 
 class AdminUserListResponse(BaseModel):
     users: List[AdminUserRow]
-    # Every role name that exists (athena_roles.name) — populates the
-    # role dropdown in the create-user/edit-role UI without a second call.
+    # Every athena_roles.name — populates the role dropdown without a second call.
     roles: List[str]
 
 
@@ -72,7 +60,5 @@ class AdminUpdateUserRoleRequest(BaseModel):
 
 
 class AdminUpdateInvestigatorNameRequest(BaseModel):
-    # Empty string clears it back to NULL (falls back to full_name matching)
-    # — not made Optional[str] = None, since a PUT body omitting the field
-    # entirely would be ambiguous with "clear it".
+    # "" clears it to NULL; kept non-Optional so an omitted field isn't ambiguous with "clear it".
     investigator_name: str = Field(default="")

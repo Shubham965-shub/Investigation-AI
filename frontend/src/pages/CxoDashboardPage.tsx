@@ -5,14 +5,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import "./ActionCenterPage.css";
 import "./CxoDashboardPage.css";
 
-// CXO Dashboard (2026-09-09, per the user) — ported from the Figma prototype
-// (file vFYyxUjVvQ0ICGysDga50H, screens D1-D4: node-id 2685:3405, 2704:8624,
-// 2766:1884, 2791:6263) as closely as this codebase's plain-SVG charting
-// convention (see ActionCenterPage.tsx's KPI mini bar charts) allows. Every
-// number below is STATIC mock data read off that prototype — there is no
-// backend endpoint behind this page yet, per the user: "for now the KPIs and
-// charts are static because they are not linked to any real data right now."
-// CXO-role gated, same pattern as UserManagementPage's Admin gate.
+// Every number below is STATIC mock data ported from the Figma prototype — no backend endpoint behind this page yet. CXO-role gated, same pattern as UserManagementPage's Admin gate.
 
 type DomainKey = "quality" | "cycle" | "criticality" | "capa";
 type DomainStatus = "below" | "on";
@@ -45,9 +38,7 @@ const TONE = {
   blue: "#1d4ed8",
 };
 
-// ── Small chart-building helpers (plain SVG, no charting library — see
-// ActionCenterPage.tsx's own hand-rolled mini bar charts for the existing
-// convention this follows) ──────────────────────────────────────────────
+// ── Small chart-building helpers (plain SVG, no charting library) ──────────────────────────────────────────────
 
 function YAxis({
   max,
@@ -60,11 +51,7 @@ function YAxis({
   steps?: number;
   width: number;
   height: number;
-  // How far left of x=0 the tick label sits (gridlines/data are unaffected).
-  // Larger on a chart whose leftmost data point/marker is wide (e.g.
-  // QualityDistributionChart's capsules extend to x=-24), so the label
-  // clears the marker instead of drawing under it (2026-09-09, per the
-  // user).
+  // How far left of x=0 the tick label sits — larger when the leftmost marker is wide (e.g. QualityDistributionChart's capsules), so the label clears it.
   labelOffset?: number;
 }) {
   const ticks = Array.from({ length: steps + 1 }, (_, i) => Math.round((max / steps) * i));
@@ -85,8 +72,7 @@ function YAxis({
   );
 }
 
-// "Investigation quality trend" grouped bar chart (D1, panel 1) — 3 series
-// per month + small blue delta badges between month groups.
+// "Investigation quality trend" grouped bar chart (D1, panel 1) — 3 series per month + delta badges between groups.
 function GroupedTrendChart() {
   const months = ["Jun", "Jul", "Aug"];
   const series = [
@@ -94,11 +80,7 @@ function GroupedTrendChart() {
     { label: "Accepted first time by SIT Lead", color: TONE.teal, values: [40, 40, 46] },
     { label: "Human error", color: TONE.mint, values: [48, 46, 60] },
   ];
-  // Month-over-month change in "Definite root cause Identified" (the dark
-  // green series — this KPI card's own headline metric, 71% vs target 85%),
-  // not a value of its own (2026-09-09, per the user: "the +3 +3 ... is for
-  // the values that denote change"). Rendered as a small Δ callout sitting
-  // just above that series' bar in the month it's reporting into.
+  // Month-over-month change in "Definite root cause Identified" (the dark green series) — a delta, not a value of its own.
   const deltas = [
     { afterGroupIndex: 1, value: "+3%" },
     { afterGroupIndex: 2, value: "+3%" },
@@ -150,9 +132,7 @@ function GroupedTrendChart() {
   );
 }
 
-// "Quality score distribution at pre-SIT gate" (D1, panel 2) — lollipop /
-// lollipop-waterfall: a colored capsule per score band, joined by a dashed
-// ascending line.
+// "Quality score distribution at pre-SIT gate" (D1, panel 2) — a colored capsule per score band joined by a dashed line.
 function QualityDistributionChart() {
   const buckets = [
     { label: "<50", value: 22, tone: "low" },
@@ -170,9 +150,7 @@ function QualityDistributionChart() {
   const points = buckets.map((b, i) => ({ x: i * step, y: h - (b.value / max) * h, ...b }));
   return (
     <svg viewBox={`-70 -10 ${w + 78} ${h + 40}`} width="100%" height={260}>
-      {/* labelOffset wider than the default (2026-09-09, per the user) — the
-          leftmost capsule is centered on x=0 and extends back to x=-24, so
-          the default label position (just past x=-8) sat underneath it. */}
+      {/* Wider labelOffset — the leftmost capsule extends back to x=-24, so the default label position sat underneath it. */}
       <YAxis max={max} steps={5} width={w} height={h} labelOffset={36} />
       <path
         d={points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")}
@@ -200,8 +178,7 @@ function QualityDistributionChart() {
   );
 }
 
-// Second "Investigation quality trend" (D1, panel 3) — stacked area/band
-// chart, same 3 categories as the grouped bar above.
+// Second "Investigation quality trend" (D1, panel 3) — stacked area/band chart, same 3 categories as the grouped bar above.
 function StackedAreaTrendChart() {
   const months = ["Jun", "Jul", "Aug"];
   const green = [45, 40, 45];
@@ -236,8 +213,7 @@ function StackedAreaTrendChart() {
   );
 }
 
-// "Criticality parameter assessment completeness" — horizontal bar-with-dot
-// list, reused by both D1 (no axis shown) and D3 (0-100% axis shown).
+// "Criticality parameter assessment completeness" — horizontal bar-with-dot list, reused by both D1 (no axis) and D3 (0-100% axis).
 function CompletenessBars({ data, showAxis }: { data: { label: string; value: number }[]; showAxis?: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -330,8 +306,7 @@ function StageCycleTimeColumns() {
   );
 }
 
-// "Inflow, closure and open backlog" (D2, panel 3) — stacked bar + dashed
-// trend line.
+// "Inflow, closure and open backlog" (D2, panel 3) — stacked bar + dashed trend line.
 function InflowClosureChart() {
   const months = ["Jun", "Jul", "Aug"];
   const bottom = [20, 18, 22];
@@ -402,9 +377,7 @@ function ClosureVelocityChart() {
   );
 }
 
-// "Event trend by classification, 8 quarters" (D3, panel 1) and "Recurrence
-// and effectiveness trend, 8 quarters" (D4, panel 1) — same stacked-bar
-// shape, different series/scale, so one shared component.
+// "Event trend by classification" (D3) and "Recurrence and effectiveness trend" (D4) — same stacked-bar shape, different series/scale, so one shared component.
 function QuarterlyStackedChart({
   max,
   seriesLabels,
@@ -454,8 +427,7 @@ function QuarterlyStackedChart({
   );
 }
 
-// "Time to action — interim vs final" (D3, Detailed analysis anchor A) —
-// grouped bar, dual axis (hours left / days right).
+// "Time to action — interim vs final" (D3, Detailed analysis anchor A) — grouped bar, dual axis (hours left / days right).
 function TimeToActionChart() {
   const rows = [
     { label: "Critical", interim: 6, final: 31 },
@@ -494,8 +466,7 @@ function TimeToActionChart() {
   );
 }
 
-// "Pareto of major failure modes" (D4, panel 2) — bars + cumulative % line,
-// dual axis.
+// "Pareto of major failure modes" (D4, panel 2) — bars + cumulative % line, dual axis.
 function ParetoChart() {
   const bars = [
     { label: "SOP Error", value: 22, tail: false },
@@ -552,8 +523,7 @@ function ParetoChart() {
   );
 }
 
-// ── Risk concentration heatmap + Regulatory register — plain data tables,
-// values read verbatim off the Figma screens (2026-09-09). ────────────────
+// ── Risk concentration heatmap + Regulatory register — plain data tables, values read verbatim off the Figma screens. ────────────────
 
 const RISK_CONCENTRATION: { area: string; critical: number | null; major: number | null; minor: number | null }[] = [
   { area: "Granulation", critical: 3, major: 14, minor: 9 },
@@ -565,11 +535,7 @@ const RISK_CONCENTRATION: { area: string; critical: number | null; major: number
   { area: "Warehouse", critical: null, major: 4, minor: 7 },
 ];
 
-// Severity tone per cell, read directly off the Figma screen's own coloring
-// (not derived from the count — the same number can carry a different tone
-// per column, e.g. Compression/Critical=2 is "moderate" but QC wet
-// lab/Critical=2 is also "moderate", while Packing L4/Critical=4 is
-// "critical" — the design's own risk-weighting, not a simple threshold).
+// Tone per cell is read off the Figma design, not derived from the count — the same number can carry a different tone in different cells.
 const RISK_TONE: Record<string, "low" | "moderate" | "high" | "critical"> = {
   "Granulation:critical": "high",
   "Granulation:major": "critical",

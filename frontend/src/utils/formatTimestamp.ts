@@ -1,7 +1,4 @@
-// "Tuesday, 18 Aug 2026, 2:32 PM" (2026-08-18, per the user) — used on
-// attempt-history entries (Task Critique's Recommendation History,
-// RC & CAPA's history panel) so each past attempt's timestamp reads as
-// day + date + time, not just a bare date.
+// e.g. "Tuesday, 18 Aug 2026, 2:32 PM" — used on attempt-history entries so timestamps read as day + date + time, not just a bare date.
 export function formatAttemptTimestamp(iso: string): string {
   const d = new Date(iso);
   const day = d.toLocaleDateString(undefined, { weekday: "long" });
@@ -10,16 +7,7 @@ export function formatAttemptTimestamp(iso: string): string {
   return `${day}, ${date}, ${time}`;
 }
 
-// "Last updated on 10 Sep 2026 at 14:35" (2026-09-09, per the user) — top-
-// right stamp on Action Center/Analytics/SIT Dashboard, sourced from
-// fact_qms_event.pg_updated_at_timestamp. 24-hour time, unlike
-// formatAttemptTimestamp's 12-hour AM/PM — an explicit, separate format the
-// user asked for here, not a reuse of that one.
-//
-// Explicitly rendered in IST (Asia/Kolkata), not the viewer's own browser/OS
-// timezone (2026-09-10, per the user — the raw value is UTC, and this is a
-// single-timezone internal tool, so every viewer should see the same
-// canonical time regardless of their machine's own timezone setting).
+// Always rendered in IST (Asia/Kolkata), not the viewer's browser timezone — raw value is UTC and this is a single-timezone internal tool, so every viewer sees the same canonical time.
 export function formatLastUpdated(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);

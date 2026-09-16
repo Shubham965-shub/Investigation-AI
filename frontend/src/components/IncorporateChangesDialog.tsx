@@ -1,11 +1,6 @@
 import modalClose from "../assets/icons/modal-close.svg";
 
-// Shown once every recommendation on the current report/task has been
-// decided (accepted or rejected) and a new upload becomes possible again —
-// a plain acknowledgment, not a confirmation, so it only has one button
-// (2026-08-26, per the user). Shared by Task Critique and RC & CAPA
-// Critique, both of which reach this same "all decided, ready for a new
-// upload" moment independently.
+// Plain acknowledgment (one button, not a confirmation) shown once every recommendation has been decided.
 export function IncorporateChangesDialog({ onClose }: { onClose: () => void }) {
   return (
     <>

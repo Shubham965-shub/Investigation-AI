@@ -44,12 +44,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Navigating here (rather than immediately after `await login(...)`
-  // resolves) avoids a race: navigate() could otherwise run before React
-  // actually commits the setUsername() state update from login(), so
-  // ProtectedRoute would read the still-stale isAuthenticated=false and
-  // bounce straight back to /login despite the login having succeeded —
-  // this effect only fires once the auth state has genuinely landed.
+  // Navigates only once isAuthenticated actually lands — navigating right after login() resolves risks ProtectedRoute reading a stale isAuthenticated=false and bouncing back to /login.
   useEffect(() => {
     if (isAuthenticated) navigate("/", { replace: true });
   }, [isAuthenticated, navigate]);
@@ -69,7 +64,6 @@ export function LoginPage() {
 
   return (
     <div className="login-page login-split-page">
-      {/* Left half — solid Strides green brand panel */}
       <aside className="login-brand-half">
         <div aria-hidden className="login-brand-grid" />
         <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 28, padding: "48px 32px", textAlign: "center" }}>
@@ -97,9 +91,7 @@ export function LoginPage() {
         </div>
       </aside>
 
-      {/* Right half — radar + login panel */}
       <section className="login-form-half">
-        {/* Faint grid, fading out toward the edges */}
         <div
           aria-hidden
           style={{
@@ -115,7 +107,6 @@ export function LoginPage() {
           }}
         />
 
-        {/* Decorative radar sweep */}
         <div className="login-radar" aria-hidden style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
           <div style={{ position: "relative", width: 720, height: 720 }}>
             {[0, 1, 2, 3, 4].map((i) => (

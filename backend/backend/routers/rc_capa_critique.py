@@ -64,11 +64,7 @@ async def _call_critique_endpoint(
 
 
 def _section_percentage(sections: Dict[str, Any], *keys: str) -> "int | None":
-    """Combines one or more of DS's rubric sections (each a SectionScore:
-    marks_awarded/applicable_max/percentage) into one percentage, summing
-    marks and denominators across the given keys before dividing — this is
-    what lets rc_score merge the 'rc' and 'impact' sections into one figure
-    rather than just using either section's own percentage in isolation."""
+    """Sums marks/denominators across the given rubric sections before dividing, so a merged score isn't just an average of each section's own percentage."""
     present = [sections[k] for k in keys if sections.get(k)]
     if not present:
         return None
@@ -82,21 +78,9 @@ def _section_percentage(sections: Dict[str, Any], *keys: str) -> "int | None":
 async def _score_rc_capa_report(
     event_type: str, filename: str | None, file_bytes: bytes, content_type: str | None
 ) -> "tuple[int | None, int | None, int | None, int | None, list[dict]]":
-    """Scores the final (locked) report against DS's rubric-based /score/report
-    endpoint and returns (rc_score, impact_score, capa_score, total_score, the
-    full `info` breakdown table list — see schemas/scoring.py — for
-    score_breakdown). ds itself scores 'rc' and 'impact' as two genuinely
-    separate rubric sections (confirmed 2026-08-25) — rc_score/impact_score
-    are each shown on their own now (2026-08-25, per the user), no longer
-    merged into one combined figure the way they used to be (they still sit
-    under the same "RC Impact Assessment Critique" panel everywhere else in
-    this module, just as two distinct score badges instead of one). capa_score
-    is the 'capa' section alone; total_score still combines all three
-    (2026-08-07, per the user: the underlying raw marks added together,
-    divided by their combined max — not a naive average of the parts).
-    Best-effort, same as routers/task_critique.py's _score_task_report — a
-    scoring failure must not undo an upload that already succeeded and
-    persisted."""
+    """Scores the locked report via DS's /score/report; rc_score and impact_score are shown as
+    separate badges (ds scores them as separate rubric sections), total_score combines all three.
+    Best-effort — a scoring failure must not undo an upload that already succeeded."""
     client = get_client()
     try:
         response = await client.post(
@@ -173,16 +157,7 @@ async def get_rc_capa_critique(record_id: str) -> RcCapaState:
 
 @router.get("/{record_id}/history", response_model=List[RcCapaReport])
 async def get_rc_capa_history(record_id: str) -> List[RcCapaReport]:
-    """The full audit trail across every attempt — unlike Task Critique,
-    investigation_rc_capa_reports already keeps a real row per attempt (never
-    upserted in place), so this is just the same fetch the live state uses,
-    minus the "only look at the latest" narrowing. Independent of lock/
-    complete state, so it stays available even once the record is scored and
-    done (2026-08-18, per the user) — surfaced behind its own button/panel
-    rather than inline, since it's the full history, not just the current
-    report. Newest attempt first: fetch_rc_capa_reports itself stays
-    ascending (compute_rc_capa_state relies on reports[-1] being the
-    latest), so the reversal happens here rather than in the shared query."""
+    """Full audit trail across every attempt, newest first; fetch_rc_capa_reports itself stays ascending since compute_rc_capa_state relies on reports[-1] being the latest."""
     deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
     reports = await fetch_rc_capa_reports(deviation_id)
     return [RcCapaReport(**report) for report in reversed(reports)]
@@ -206,29 +181,17 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
 
     if is_gospel:
         report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
-        # A gospel report is final the moment it's uploaded — score it now
-        # (2026-08-07, per the user), same trigger as Task Critique's.
+        # A gospel report is final the moment it's uploaded — score it now.
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
         return await _build_state(record_id, deviation_id, row)
 
-    # Real DS endpoints (per the user, 2026-08-06: module 6/RC & CAPA Critique
-    # uses these two single-purpose endpoints, not a combined one — module 5/
-    # Task Critique calls the genuinely per-task /critique/analyse-task-report
-    # instead, see routers/task_critique.py). ds used to also expose a combined
-    # /critique/critique-rc-conclusion-and-capa endpoint returning both
-    # categories in one call, but no caller ever used it — removed 2026-08-20.
-    # Called BEFORE persisting anything, so a transient DS failure doesn't
-    # burn one of the 3 real upload attempts.
-    # problem_statement lets DS reject an irrelevant/mismatched upload with a
-    # 422 before running any critique LLM calls (see ds's relevance_validation.py).
+    # Called BEFORE persisting anything, so a transient DS failure doesn't burn one of the 3 real
+    # upload attempts. problem_statement lets DS reject a mismatched upload with a 422 up front.
     problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
 
-    # Carry forward the previous attempt's accepted-but-still-pending recommendations (per
-    # category) so DS can check whether this new upload actually addresses them (2026-08-13, per
-    # the user — same behavior as Task Critique's carry-forward, but simpler here since every
-    # attempt's row is kept in place already, so the decisions are already right here in
-    # `reports` — no separate history table/lookup needed).
+    # Carry forward the previous attempt's accepted-but-still-pending recommendations so DS can
+    # check whether this upload actually addresses them.
     previous_rc_recommendations: List[str] = []
     previous_capa_recommendations: List[str] = []
     if reports:
@@ -252,11 +215,8 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     )
 
     report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
-    # ds's RCConclusionCritiqueResponse splits its recommendations into
-    # rc_recommendations (evidence/traceability/history) + impact_
-    # recommendations (impact linkage) — kept as two lists through to
-    # save_critiques, which tags each so the frontend can render them as
-    # separate subsections (2026-08-24, per the user).
+    # rc_recommendations and impact_recommendations are kept as separate lists so the frontend
+    # can render them as separate subsections.
     await save_critiques(
         report_id,
         rc_recommendations=rc_conclusion["rc_recommendations"],
@@ -273,23 +233,13 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         capa_items=capa.get("capa_items", []),
     )
 
-    # The 3rd attempt is final regardless of decision mix (see
-    # critique_state.compute_upload_state) — score it now, since no further
-    # upload will ever supersede it.
+    # The 3rd attempt is final regardless of decision mix — score it now.
     if attempt_number >= MAX_UPLOADS:
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
     elif not (rc_conclusion["rc_recommendations"] + rc_conclusion["impact_recommendations"] + capa["recommendations"]):
-        # BUGFIX (2026-09-10, per the user — same fix as Task Critique's
-        # upload_task_report, for the identical shared rule in
-        # critique_state.compute_upload_state): a non-final attempt whose
-        # combined rc/impact/capa critique came back with zero
-        # recommendations across the board now locks immediately as
-        # "complete" instead of getting stuck with can_upload=False and
-        # nothing to accept/reject. No further upload or decision will ever
-        # happen for this report, so — same as rejecting every
-        # recommendation — it needs the same "score it now" trigger
-        # decide_rc_capa_recommendation already applies for that case.
+        # Zero recommendations across the board locks this attempt as complete immediately
+        # (same as rejecting every recommendation), so it needs the same "score it now" trigger.
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
@@ -318,10 +268,7 @@ async def decide_rc_capa_recommendation(
     reports = await fetch_rc_capa_reports(deviation_id)
     new_state = compute_rc_capa_state(reports)
     if new_state["status"] == "complete" and new_state["latest"]["total_score"] is None:
-        # Rejecting every recommendation just locked this report immediately
-        # (see critique_state.compute_upload_state) rather than waiting on a
-        # further gospel upload — score it now, the same trigger a gospel/
-        # 3rd-attempt upload already gets.
+        # Rejecting every recommendation just locked this report immediately — score it now.
         report_id = new_state["latest"]["id"]
         file_bytes = await fetch_report_file_bytes(report_id)
         if file_bytes is not None:

@@ -18,19 +18,7 @@ import {
 } from "../api/dashboard";
 import "./AnalyticsPage.css";
 
-// Matches the approved Figma "Analytics" dashboard (rail icon 3, node
-// 1229:41868 — sub-sections: Event 1229:41892, Root Cause Status 1252:25454,
-// CAPA Status 1229:42279, Investigation Quality 1229:42536, Failure Pattern
-// Analysis 1229:43167).
-//
-// Real-data pass (2026-08-03), per the user — only sections that map
-// cleanly onto real star-schema columns are wired: Event, CAPA presence,
-// Root Cause presence, and Failure Pattern product/equipment frequency (see
-// backend/routers/analytics.py's module docstring). Investigation Quality
-// (IQ Score), the CAPA L1-L5 hierarchy ranking, and the Failure Pattern
-// "Recurring Failure" narrative cards + monthly trend line chart have no
-// backing data/formula anywhere in the star schema and are STILL MOCK DATA
-// — clearly commented at each remaining mock block below.
+// Only Event, CAPA/Root-Cause presence, and Failure Pattern product/equipment frequency map onto real data (see backend/routers/analytics.py) — Investigation Quality, CAPA L1-L5 ranking, and Failure Pattern narrative/trend cards are still mock (marked below).
 
 const FilterPill = ({ label }: { label: string }) => (
   <span className="an-filter-pill">
@@ -93,9 +81,7 @@ function RootCauseStatusSection({
   status: RootCauseStatusResponse;
   categories: CategoryCountResponse[];
 }) {
-  // Only a 2-way split (Identified / Not Identified) — real data has no
-  // column distinguishing "confirmed" from "probable" root cause, so the
-  // original Figma mock's 3-tier split isn't reproducible with real data.
+  // Only a 2-way split — real data has no column distinguishing "confirmed" from "probable" root cause like the Figma mock's 3-tier split.
   const identifiedPct = status.total ? Math.round((status.identified / status.total) * 100) : 0;
   const cards = [
     { key: "good", label: "ROOT CAUSE IDENTIFIED", value: status.identified, pct: identifiedPct },
@@ -141,12 +127,7 @@ function RootCauseStatusSection({
               ROOT CAUSE BY CAUSE CATEGORY
             </p>
           </div>
-          {/* Best-effort mapping of real root_cause_category values onto the
-              Man/Machine/Material/Method/Measurement/Mother Nature scheme —
-              real data doesn't actually follow a 6M taxonomy (see
-              backend/routers/analytics.py's _ROOT_CAUSE_TO_6M for the exact
-              mapping and its limits); events with no clear-fit category are
-              excluded from this chart rather than forced into a bucket. */}
+          {/* Best-effort mapping onto the 6M scheme (see _ROOT_CAUSE_TO_6M) — real data doesn't follow a true 6M taxonomy; unmatched events are excluded rather than forced into a bucket. */}
           <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Man · Machine · Material · Method · Measurement · Mother Nature</p>
           <HorizontalBarChart rows={categories.map((c) => ({ label: c.label, value: c.count }))} maxValue={maxCategory} primaryColor="#22c55e" />
         </div>
@@ -203,12 +184,7 @@ function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
         </div>
 
         <div className="an-card" style={{ gap: 16 }}>
-          {/* Replaces the mock's L1-L5 hierarchy ranking (Error Proofing /
-              Error Prevention / ...) — capa_effectiveness is 100% NULL on the
-              live DB and no other column encodes a CAPA hierarchy tier
-              anywhere in the star schema. This shows which root-cause
-              categories the CAPA'd events actually fall under instead — a
-              real, groundable substitute (see backend/routers/analytics.py). */}
+          {/* Replaces the mock's L1-L5 hierarchy ranking — capa_effectiveness is 100% NULL on live data, so this shows root-cause categories instead. */}
           <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>CAPA'D EVENTS BY ROOT CAUSE CATEGORY</p>
           {capa.by_root_cause_category.map((row) => (
             <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -230,10 +206,7 @@ function CapaStatusSection({ capa }: { capa: CapaStatusResponse }) {
 }
 
 // ── Investigation Quality (IQ Score) section ────────────────────────────────
-// STILL MOCK DATA — no IQ Score formula exists anywhere in this codebase or
-// the star schema; computing a real one is a product/business-logic decision
-// deferred per the user (2026-08-03), not a data-availability gap like the
-// sections above. Revisit once that formula is defined.
+// STILL MOCK DATA — no IQ Score formula exists yet anywhere in the codebase or star schema.
 
 const INVESTIGATORS = [
   { initials: "RK", color: "#0d9488", name: "Rajesh Kurian", tag: "TOP", score: 93, trend: 6.6, events: 35, overdue: 3, assignable: 28 },
@@ -459,11 +432,7 @@ function InvestigationQualitySection() {
 }
 
 // ── Failure Pattern Analysis section ────────────────────────────────────────
-// Product/equipment frequency below is real (failure_patterns prop). The
-// "Recurring Failure" cards and "Monthly Trends" line chart are STILL MOCK
-// DATA — they need narrative descriptions and time-series granularity this
-// pass deliberately didn't build (out of the agreed data-groundable scope,
-// see AnalyticsPage's top-of-file comment).
+// Product/equipment frequency is real; "Recurring Failure" cards and "Monthly Trends" chart are STILL MOCK DATA (see top-of-file comment).
 
 const RECURRING_FAILURES = [
   { category: "Equipment", color: "#ef4444", count: 29, description: "Process parameters not validated for current equipment state" },
@@ -545,11 +514,7 @@ function formatDatePreset(v: string): string {
   return v === "30" ? "Last 30 days" : v === "90" ? "Last 90 days" : v === "180" ? "Last 6 months" : "Last 12 months";
 }
 
-// Single filter bar for the whole page (per the user, 2026-08-03) — all 4
-// real sections (Event, Root Cause, CAPA, Failure Pattern) share one query
-// and re-fetch together rather than each keeping an independent filter
-// state. Investigation Quality stays mock and keeps its own decorative
-// pills (see InvestigationQualitySection) since it isn't wired to this.
+// Shared by all 4 real sections (Event, Root Cause, CAPA, Failure Pattern) — Investigation Quality stays mock with its own decorative pills.
 function AnalyticsFilterBar({
   siteFilter,
   setSiteFilter,
@@ -628,8 +593,7 @@ export function AnalyticsPage() {
     };
   }, [retryKey, siteFilter, deptFilter, productFilter, equipmentFilter, datePreset]);
 
-  // Only the full-page skeleton on first load — a filter-driven refetch
-  // just dims the existing content in place (matches ActionCenterPage).
+  // Full-page skeleton only on first load — later refetches just dim existing content (matches ActionCenterPage).
   if (loading && !summary) {
     return (
       <div className="an-page">
@@ -653,10 +617,7 @@ export function AnalyticsPage() {
 
   return (
     <div className="an-page" style={{ opacity: loading ? 0.6 : 1, transition: "opacity 150ms ease" }}>
-      {/* Top-right "last updated" stamp (2026-09-09, per the user) — same
-          convention/source as ActionCenterPage's own. No page title exists
-          here to pair it with, so it's its own right-aligned row above the
-          filter bar. */}
+      {/* Same convention as ActionCenterPage's stamp — no page title here to pair it with, so it's its own row. */}
       {formatLastUpdated(summary.last_updated_at) && (
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>

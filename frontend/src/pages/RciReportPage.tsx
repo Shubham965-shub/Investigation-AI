@@ -43,12 +43,7 @@ import "./RecordModulePage.css";
 
 const EditModeContext = createContext(false);
 
-// number/dmaic match the real exported document's own INDEX table exactly
-// (backend/backend/assets/rci_report_template.docx, confirmed via
-// python-docx, 2026-08-25) — Executive Summary is listed there but
-// unnumbered, and Risk Assessment has no row/slot in the document at all
-// (see risk-assessment's null number and its rendering as an unnumbered
-// coda after Impact Assessment, below).
+// number/dmaic match the real exported document's INDEX table — Executive Summary is listed but unnumbered; Risk Assessment has no row/slot at all (see its null number below).
 type SectionMeta = { key: string; number: number | null; dmaic: string; title: string; subtitle?: string };
 
 const SECTIONS: SectionMeta[] = [
@@ -81,11 +76,7 @@ const SECTIONS: SectionMeta[] = [
 
 const SOURCE_OPTIONS: SourcedTextItem["source"][] = ["trackwise", "manual_entry_required", "manual_entry_provided", "synthesized"];
 
-// The real document's Approval table has 5 fixed role rows (matches
-// backend/backend/services/rci_report_export.py's _APPROVAL_ROLE_LABELS) —
-// report.approval.rows is currently always empty (no sign-off workflow
-// generates it yet), so these render with "—" placeholders rather than
-// being skipped, same as the real exported table would with nothing filled in.
+// 5 fixed role rows (matches _APPROVAL_ROLE_LABELS) — report.approval.rows is currently always empty, so these render as "—" placeholders rather than being skipped.
 const APPROVAL_ROLE_ROWS: { key: string; label: string }[] = [
   { key: "investigator", label: "Prepared by (Investigator)" },
   { key: "hod", label: "Reviewed by (HOD)" },
@@ -101,9 +92,7 @@ function findApprovalRow(rows: ApprovalRow[], key: string): ApprovalRow | undefi
   });
 }
 
-// Matches the app's existing table-header convention (see .ac-table thead th
-// in ActionCenterPage.css) — reused here for every read-mode section label
-// so this page's typography doesn't drift from the rest of the app.
+// Matches the app's existing table-header convention (.ac-table thead th) so this page's typography doesn't drift.
 const READ_LABEL_STYLE: React.CSSProperties = {
   margin: 0,
   fontWeight: 700,
@@ -113,27 +102,7 @@ const READ_LABEL_STYLE: React.CSSProperties = {
   color: "var(--color-text-muted)",
 };
 
-// Wraps the whole generated report in a fixed white "paper" regardless of
-// the app's own dark/light theme (2026-08-25, per the user) — matches what
-// the downloaded .docx actually looks like, the same way Google Docs/Word
-// Online always render the document itself on a light page. Every shared
-// field/table component in this file already reads var(--color-*) rather
-// than a hardcoded color, so shadowing the tokens they use here (locked to
-// their light-theme values, see index.css) makes the whole existing
-// component tree render correctly on white with no per-component changes —
-// this cascades to every descendant exactly like a CSS class would.
-// Content font size started locked at 11pt/10pt to match the exported
-// .docx exactly (2026-08-25, per the user, see rci_report_export.py's
-// FONT_SIZE/TABLE_FONT_SIZE) but read too small on screen, so it's bumped
-// up here for on-screen readability in both read and edit mode (2026-09-02,
-// per the user) — the export itself is untouched, still genuinely 11pt/10pt.
-// Shadowing --font-size-base/-md (used by plain body paragraphs and the
-// .field-label/.field-value classes, so this also sizes the edit-mode
-// inputs/textareas) and --font-size-sm (used by every table in this file —
-// DataTable, KeyValueTable, DocHeaderTable, DocIndex) achieves this the same
-// way the color tokens above do, without hunting down every inline
-// fontSize prop. --font-size-xs (caption/label text, e.g. READ_LABEL_STYLE)
-// is left alone — a label isn't the content itself.
+// Locks the paper to light theme by shadowing --color-*/--font-size-* tokens (cascades to every descendant that already reads var(--color-*)); font size is bumped above the real 11pt/10pt export size for on-screen readability only — the export itself is untouched.
 const DOC_PAPER_STYLE = {
   "--color-surface": "#ffffff",
   "--color-bg": "#f7f7f7",
@@ -157,10 +126,7 @@ const DOC_PAPER_STYLE = {
   background: "#ffffff",
   color: "#1a1a1a",
   fontSize: "13pt",
-  // The real exported .docx's Normal style resolves to Times New Roman (its
-  // docDefaults claims Calibri, but Normal overrides that) — matching it
-  // exactly rather than substituting Georgia (2026-08-26, per the user:
-  // "exactly how the docx is").
+  // The exported .docx's Normal style resolves to Times New Roman (docDefaults claims Calibri, but Normal overrides it) — matched exactly here.
   fontFamily: '"Times New Roman", Times, serif',
   maxWidth: 850,
   margin: "0 auto",
@@ -172,15 +138,7 @@ const DOC_PAPER_STYLE = {
   gap: 28,
 } as React.CSSProperties;
 
-// The Index's own sidebar card, sticky alongside the document paper
-// (2026-09-02, per the user) — shares the paper's locked light-theme
-// tokens (via CSS custom-property inheritance from the shared row wrapper)
-// so it reads as part of the same document, just relocated out of the
-// paper's own scroll flow. `top` clears BOTH the app shell's own sticky
-// Stepper (48px circle + 60px reserved label/SLA padding, see
-// Stepper.tsx — ~108px) AND this page's own sticky "Download and View"
-// button bar (~60px, see its `top: 108` sticky style below) stacked right
-// under it, so none of the three stuck elements overlap.
+// `top: 168` clears both the app shell's sticky Stepper (~108px) and this page's own sticky button bar (~60px) stacked under it, so none of the three overlap.
 const DOC_SIDEBAR_STYLE: React.CSSProperties = {
   padding: "20px 20px",
   position: "sticky",
@@ -203,10 +161,7 @@ const DOC_HEADING_STYLE: React.CSSProperties = {
   borderBottom: "2px solid var(--color-text)",
 };
 
-// Shown in place of a section's fields when ds skipped it — either a
-// required TrackWise field was blank, or a section it depends on was itself
-// skipped (2026-08-24, per the user: this must not break the sections that
-// DID generate, and should point the investigator at what to go fill in).
+// Shown when ds skipped a section — a required TrackWise field was blank, or a dependency section was itself skipped.
 function MissingFieldsNotice({ message }: { message?: string }) {
   return (
     <div style={{ background: "var(--color-warning-bg)", border: "1px solid var(--color-warning-text)", borderRadius: "var(--radius-card)", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -238,16 +193,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// Full grid borders (every th/td bordered, square corners) so this reads as
-// a real Word table, matching the real exported document (2026-08-25, per
-// the user) rather than the app's usual rounded dashboard-card tables.
+// Full grid borders, square corners — matches the real exported Word table rather than the app's usual rounded dashboard tables.
 function DataTable<T>({
   columns,
   rows,
 }: {
-  // width is optional (2026-09-08, per the user — Report Approval's Name/
-  // Title columns wider, Department/Signature-Date narrower) — every other
-  // DataTable usage omits it and keeps its existing auto-sized columns.
+  // width is optional — only Report Approval's columns need custom widths; every other usage keeps auto-sizing.
   columns: { key: string; label: string; width?: string }[];
   rows: (T & { _cell?: (key: string) => React.ReactNode })[];
 }) {
@@ -280,8 +231,7 @@ function DataTable<T>({
   );
 }
 
-// A real 2-column label/value table — for sections the real document renders
-// as a table rather than stacked fields (Description of Event, Root Cause).
+// A real 2-column label/value table — for sections the real document renders as a table rather than stacked fields.
 function KeyValueTable({ rows }: { rows: { label: string; value: React.ReactNode }[] }) {
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
@@ -299,12 +249,7 @@ function KeyValueTable({ rows }: { rows: { label: string; value: React.ReactNode
   );
 }
 
-// The document's page-header table (Product/Material Name+Code, Parent
-// record number, RCI record number, Batch, Date of initiation) — Parent
-// record number is the deviation id itself; RCI record number is the real
-// TrackWise RCI id (dim_rci.rci_key, confirmed distinct from the deviation
-// id elsewhere in this app), matching rci_report_export.py's
-// _fill_header_table exactly.
+// Parent record number is the deviation id itself; RCI record number is the real TrackWise RCI id (dim_rci.rci_key) — matches _fill_header_table exactly.
 function _twText(fields: TrackwiseFields | null, ...keys: string[]): string {
   if (!fields) return "";
   for (const key of keys) {
@@ -350,19 +295,8 @@ function DocHeaderTable({ recordId, rciNumber, trackwiseFields }: { recordId: st
   );
 }
 
-// The document's INDEX/table-of-contents (DMAIC Elements | Sr. No. |
-// Description | Page No.). Real page numbers only exist once Word actually
-// paginates the exported .docx (see rci_report_export.py's PAGEREF fields)
-// — this preview is a scrolling web page, not a paginated one, so the Page
-// No. column can't show a real value here and points to the export instead
-// (2026-09-02, per the user). Risk Assessment is excluded entirely,
-// matching its absence from the real INDEX table.
-//
-// `compact` (2026-09-02, per the user — the Index now lives in a narrow
-// sticky sidebar): the full 4-column table doesn't fit a ~300px-wide panel
-// without forcing horizontal scroll, so this drops the DMAIC/Page No.
-// columns and renders a plain clickable list instead — same sections, same
-// onJump behavior, just laid out to actually fit.
+// Page No. column points to the export instead of a real value — this preview isn't paginated like the real .docx. Risk Assessment is excluded, matching the real INDEX table.
+// `compact` drops the DMAIC/Page No. columns for the narrow sticky sidebar — same sections/onJump, just a plain list instead of a 4-column table.
 function DocIndex({ onJump, compact = false }: { onJump: (key: string) => void; compact?: boolean }) {
   const cellStyle: React.CSSProperties = { border: "1px solid var(--color-card-border)", padding: "8px 12px" };
   const sections = SECTIONS.filter((s) => s.key !== "risk-assessment");
@@ -471,15 +405,7 @@ function SectionFooter({
   );
 }
 
-// The real exported .docx (backend/backend/assets/rci_report_template.docx)
-// uses genuine Word bulleted lists (w:numPr) for these narrative fields —
-// ds's generated text just embeds the bullet character ("•"/"-") as a plain
-// line prefix instead, so the on-screen version was rendering those as flat
-// wrapped text rather than a real indented list like the document itself
-// (2026-08-26, per the user: "that is how all reports must be formatted,
-// exactly how the docx is"). This reconstructs list structure from that
-// prefix + leading-whitespace nesting depth, the same way a lightweight
-// markdown-to-list parser would.
+// ds's generated text embeds bullets ("•"/"-") as plain line prefixes, not real Word lists — this reconstructs list structure from that prefix + indentation depth.
 interface NarrativeListNode {
   text: string;
   children: NarrativeListNode[];
@@ -545,11 +471,7 @@ function renderNarrativeList(nodes: NarrativeListNode[]) {
 }
 
 function ReadOnlyValue({ value }: { value: string }) {
-  // height/overflowY override .field-value's dashboard-grid sizing (a fixed
-  // 3-line box with a scrollbar) — appropriate for the short dashboard
-  // fields that class was designed for, but this page's fields are full
-  // document paragraphs that need to show in full (2026-08-26, per the
-  // user).
+  // Overrides .field-value's fixed 3-line scrollbox — this page's fields are full paragraphs that need to show in full.
   const boxStyle: React.CSSProperties = { background: "none", border: "none", padding: "6px 0", height: "auto", overflow: "visible" };
   if (!value) {
     return (
@@ -591,14 +513,7 @@ function TextInput({
   return <input type={type} className="field-value" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} style={style} />;
 }
 
-// Auto-formats free-text date fields to DD/MM/YYYY as the user types
-// (2026-09-10, per the user) — these are plain text fields (CAPA/Correction
-// & Remedial due dates, CAPA Implementation Date), not a native
-// <input type="date">, whose own format follows the browser's locale, not
-// this app's chosen convention. Strips anything non-digit, caps at 8 digits
-// (DDMMYYYY), and inserts "/" after the day and month groups as they're
-// completed — so a user typing digits straight through lands on a
-// correctly-separated date without needing to type the slashes themselves.
+// Auto-formats to DD/MM/YYYY as the user types digits — these are plain text fields, not native date inputs, so the browser's own locale format doesn't apply.
 function formatDateInput(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 8);
   const day = digits.slice(0, 2);
@@ -686,9 +601,7 @@ function CheckboxField({ label, checked, onChange }: { label: string; checked: b
   );
 }
 
-// `bare` suppresses the own Field-label wrapper — for when this is nested as
-// the value cell of a KeyValueTable row, whose label cell already supplies
-// the label (2026-08-25, added alongside the document-preview redesign).
+// `bare` suppresses the Field-label wrapper — for when this is nested in a KeyValueTable row whose label cell already supplies the label.
 function SourcedTextEditor({ label, value, onChange, bare }: { label: string; value: SourcedTextItem; onChange: (v: SourcedTextItem) => void; bare?: boolean }) {
   const editing = useContext(EditModeContext);
   if (!editing) {
@@ -721,11 +634,7 @@ function StringListEditor({
   items: string[];
   onChange: (items: string[]) => void;
   placeholder?: string;
-  // "checklist" (default, unchanged) renders each read-only item as a
-  // checkmark row — right for action/criteria items elsewhere on this page.
-  // "bullets" renders a plain <ul><li> list instead (2026-09-10, per the
-  // user — Executive Summary's narrative bullets aren't checkable action
-  // items, so the checkmark styling read as wrong there).
+  // "checklist" (default) renders each item as a checkmark row; "bullets" renders a plain <ul><li> list instead — for narrative bullets that aren't checkable action items.
   readOnlyStyle?: "checklist" | "bullets";
 }) {
   const editing = useContext(EditModeContext);
@@ -793,10 +702,7 @@ function StringListEditor({
   );
 }
 
-// Read-mode now honors `applicable` (2026-08-25, fixed alongside the
-// document-preview redesign) — the real export skips any of the 11 Impact
-// Assessment subsections where applicable is false, but this previously
-// always showed the narrative regardless, a real preview/export mismatch.
+// Read-mode honors `applicable` — the real export skips any Impact Assessment subsection where it's false, so this must match.
 function ImpactSubsectionEditor({
   label,
   value,
@@ -838,11 +744,7 @@ function ImpactSubsectionEditor({
   );
 }
 
-// Replaces the old collapsible dashboard SectionCard — a plain document
-// heading (numbered like the real export, or unnumbered for
-// Executive Summary/Risk Assessment), content always visible (nothing
-// collapses anymore), Edit/Mark-as-Read kept exactly as before, just
-// repositioned under the heading instead of card chrome.
+// A plain document heading (numbered like the real export, or unnumbered for Executive Summary/Risk Assessment) — content always visible, no collapsing.
 function DocSection({
   section,
   editing,
@@ -865,12 +767,7 @@ function DocSection({
   return (
     <div
       ref={setRef}
-      // Matches the exported .docx exactly (2026-08-25, per the user: every
-      // section starts on its own page) — a print-only rule (breakBefore
-      // only takes effect when this page is actually printed/exported to
-      // PDF from the browser), so normal on-screen scrolling is unaffected.
-      // Risk Assessment (variant="coda") has no heading of its own in the
-      // real document either, so it doesn't get one.
+      // breakBefore is print-only (matches every section starting its own page in the exported .docx) — normal on-screen scrolling is unaffected.
       style={{ display: "flex", flexDirection: "column", gap: 12, breakBefore: variant === "coda" ? undefined : "page" }}
     >
       <div>
@@ -985,12 +882,7 @@ export function RciReportPage() {
     updateReport((r) => ({ ...r, [section]: { ...(r[section] as unknown as Record<string, unknown>), [field]: value } } as unknown as RciReportSections));
   }
 
-  // Generic setter for a nested object one level under a section (e.g.
-  // description_of_event.nonconforming_reference, root_cause_conclusion.taxonomy,
-  // or any of the 10 flat ImpactSubsection fields on impact_assessment_batch_disposition).
-  // `patch` deliberately typed `object` (not Record<string, unknown>) so any of
-  // this file's concrete typed shapes (SourcedTextItem, ImpactSubsectionItem, ...)
-  // can be passed directly without a per-call-site cast.
+  // Generic setter for a nested object one level under a section. `patch` is typed `object` (not Record<string, unknown>) so concrete typed shapes can be passed without a per-call-site cast.
   function setNestedField(section: keyof RciReportSections, subfield: string, patch: object) {
     updateReport((r) => {
       const sec = r[section] as unknown as Record<string, any>;
@@ -1043,17 +935,7 @@ export function RciReportPage() {
     }
   }
 
-  // Real .docx download for "Download and View" (2026-08-25, per the user)
-  // — the backend fills the company's actual RCI Report Word template with
-  // this investigation's persisted report and returns the file directly,
-  // same convention as RCI Plan's own export. Previously also called
-  // window.open(url, "_blank") to try to "view" it in a new tab, but since
-  // no browser renders .docx natively, that just triggered a second save of
-  // the same blob — without the <a> element's filename hint, so the
-  // browser assigned it a random blob-derived name, i.e. downloading the
-  // same file twice under two different names (2026-08-26, per the user).
-  // Dropped — a single correctly-named download is what this button
-  // actually achieves either way.
+  // Single .docx download only — window.open("_blank") was previously also tried to "view" it, but no browser renders .docx natively, so it just downloaded the same blob a second time under a random name.
   async function handleDownloadAndView() {
     if (!recordId) return;
     setDownloading(true);
@@ -1067,8 +949,7 @@ export function RciReportPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      // A short delay, not an instant revoke — some browsers haven't
-      // finished writing the download yet when .click() returns.
+      // Short delay before revoking — some browsers haven't finished writing the download yet when .click() returns.
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       setDownloadError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI report document");
@@ -1077,14 +958,7 @@ export function RciReportPage() {
     }
   }
 
-  // Gates "Download and View" on every section having been marked read
-  // (2026-08-24, per the user). "annexures"/"approval" are excluded — they
-  // render as plain pass-through <div>s (see below), never wrapped in
-  // <DocSection read=.../>, so there's no control anywhere for the user to
-  // actually mark them read — requiring them made this gate permanently
-  // unsatisfiable no matter what the user did (confirmed live, 2026-09-08,
-  // per the user: marking every visible section read still left the button
-  // disabled).
+  // "annexures"/"approval" are excluded from this gate — they're plain pass-through <div>s, never wrapped in <DocSection read=...>, so there's no control to mark them read.
   const _UNGATED_SECTIONS = new Set(["annexures", "approval"]);
   const allSectionsRead =
     !!report && SECTIONS.filter((s) => !_UNGATED_SECTIONS.has(s.key)).every((s) => readSections[s.key]);
@@ -1137,12 +1011,7 @@ export function RciReportPage() {
         </div>
       )}
 
-      {/* Covers both the initial "Generate RCI Report" and later
-          "Regenerate" actions — both drive the same `generating` state
-          (2026-09-08, per the user). RCI Report is by far the heaviest
-          generation in this app (9+ LLM calls per rci_report_route.py), so
-          this is the one most in need of real progress feedback instead of
-          just a disabled button. */}
+      {/* Covers both "Generate" and "Regenerate" — both drive the same `generating` state. RCI Report is the heaviest generation in this app (9+ LLM calls), so it needs real progress feedback. */}
       {generating && (
         <GeneratingDialog
           heading="Generating RCI Report…"
@@ -1151,12 +1020,7 @@ export function RciReportPage() {
       )}
 
       {report && (
-        // Full width, no outer max-width/centering (2026-09-08, per the
-        // user) — the Index sidebar sits flush at the true left edge of the
-        // page instead of being centered as a group with the doc, and the
-        // doc panel's own `maxWidth: 850` (DOC_PAPER_STYLE's default,
-        // matching the real .docx page width) is overridden below so it
-        // actually grows to fill the freed-up horizontal space.
+        // Full width, no centering — the Index sidebar sits flush left, and the doc panel's maxWidth: 850 default is overridden to fill the freed space.
         <div style={{ display: "flex", alignItems: "flex-start", gap: 24, width: "100%" }}>
           <div style={{ ...DOC_PAPER_STYLE, ...DOC_SIDEBAR_STYLE }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>INDEX</p>
@@ -1199,11 +1063,7 @@ export function RciReportPage() {
               <MissingFieldsNotice message={report.errors.executive_summary} />
             ) : (
               <>
-                {/* Every field below is a list of bullet points, not one
-                    prose string (2026-09-10, per the user) — StringListEditor
-                    with readOnlyStyle="bullets" renders a real <ul><li> list
-                    in preview, matching rci_report_export.py's own real
-                    bulleted paragraphs (_fill_executive_summary). */}
+                {/* Every field is a list of bullet points, not prose — StringListEditor with readOnlyStyle="bullets" matches the exported document's real bulleted paragraphs. */}
                 {([
                   ["problem_description", "Problem Description"],
                   ["immediate_containment_action", "Immediate Containment Action"],
@@ -1226,12 +1086,7 @@ export function RciReportPage() {
                     readOnlyStyle="bullets"
                   />
                 </Field>
-                {/* Conclusion Statement gets its own bold, spaced-apart
-                    heading (2026-09-10, per the user) instead of the old
-                    inline "Conclusion Statement: " prefix appended to
-                    correction_conclusion_preventive_actions' own paragraph
-                    — matches rci_report_export.py's _insert_heading_paragraph,
-                    which does the same in the exported document. */}
+                {/* Conclusion Statement gets its own heading instead of an inline prefix — matches _insert_heading_paragraph in the exported document. */}
                 <div style={{ marginTop: 20 }}>
                   <Field label="Conclusion Statement">
                     <StringListEditor
@@ -1339,14 +1194,7 @@ export function RciReportPage() {
                           ]}
                           rows={list.map((item) => ({
                             ...item,
-                            // Same fallback-missing bug as CAPA Effectiveness
-                            // Check Plan's table (fixed 2026-09-08, per the
-                            // user) — material_product_batch/batch_number/
-                            // quantity_involved weren't handled here either,
-                            // so they silently rendered blank despite having
-                            // real values; falls through to the plain field
-                            // now instead of only covering the two keys that
-                            // need special (non-plain-string) rendering.
+                            // Same fallback-missing bug as CAPA Effectiveness Check Plan's table — falls through to the plain field instead of only covering keys needing special rendering.
                             _cell: (key: string) => {
                               if (key === "quantity_on_hold") return item.quantity_on_hold.value;
                               if (key === "type_of_impact") {
@@ -1529,14 +1377,7 @@ export function RciReportPage() {
                     onChange={(v) => setSectionField("history_review", "lookback_months", Number(v))}
                   />
                 </Field>
-                {/* Suppressed in read-only view whenever real rows exist
-                    (2026-09-08, per the user) — this checkbox reflects ds's
-                    own no_similar_events_found flag, which isn't always
-                    reconciled with the rows it actually generated, so
-                    showing "✓ No Similar Events Found" directly above a
-                    populated table read as contradictory. Still shown while
-                    editing so a genuinely wrong flag can be corrected by
-                    hand. */}
+                {/* Suppressed in read-only view when real rows exist — ds's no_similar_events_found flag isn't always reconciled with the rows it generated, so showing it above a populated table read as contradictory. Still shown while editing to correct a wrong flag by hand. */}
                 {(!!editSections["history-review"] || report.history_review.rows.length === 0) && (
                   <CheckboxField
                     label="No Similar Events Found"
@@ -1842,8 +1683,7 @@ export function RciReportPage() {
                         />
                       </>
                     ) : (
-                      // Matches the exact single narrative the export produces
-                      // (rci_report_export.py's _fill_root_cause_conclusion).
+                      // Matches the exact single narrative _fill_root_cause_conclusion produces in the export.
                       <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "var(--font-size-base)" }}>
                         {report.root_cause_conclusion.conclusion}
                         {"\n"}Repeat occurrence: {report.root_cause_conclusion.is_repeat_occurrence ? "Yes" : "No"} — {report.root_cause_conclusion.repeat_occurrence_evidence}
@@ -1975,9 +1815,7 @@ export function RciReportPage() {
             )}
           </DocSection>
 
-          {/* Risk Assessment — no slot in the real exported document; rendered
-              as an unnumbered coda right after Impact Assessment, matching
-              where its content actually lands on export (see SECTIONS). */}
+          {/* Risk Assessment has no slot in the real exported document — rendered as an unnumbered coda after Impact Assessment, matching where its content lands on export. */}
           <DocSection
             section={SECTIONS[7]}
             variant="coda"
@@ -2342,18 +2180,7 @@ export function RciReportPage() {
                         ]}
                         rows={list.map((item) => ({
                           ...item,
-                          // Responsibility/Monitoring Duration show a fixed
-                          // "to be filled by user" note instead of the
-                          // generated value here (2026-09-08, per the user).
-                          // Every other key falls through to the item's own
-                          // field — DataTable's default rendering only
-                          // kicks in when `_cell` itself is absent, not when
-                          // it returns undefined for a given key, so every
-                          // key handled here needs an explicit case or it
-                          // silently renders blank (confirmed live,
-                          // 2026-09-08: this is why capa_description showed
-                          // empty in the preview despite being correctly
-                          // generated and correctly exported to the docx).
+                          // Responsibility/Monitoring Duration show a fixed "to be filled by user" note instead of the generated value — every other key needs an explicit case here or it silently renders blank, since DataTable's default rendering only kicks in when `_cell` itself is absent.
                           _cell: (key: string) => {
                             if (key === "effectiveness_check") return bullets(item.effectiveness_check);
                             if (key === "effectiveness_criteria") return bullets(item.effectiveness_criteria);
@@ -2433,11 +2260,7 @@ export function RciReportPage() {
             )}
           </DocSection>
 
-          {/* List of Annexures & Report Approval — real tables from the
-              exported document, per the user (2026-08-25), but not editable
-              here: annexures/approval are pure pass-through fields with no
-              generation or sign-off workflow built for them anywhere in
-              this app yet. */}
+          {/* List of Annexures & Report Approval — real tables from the exported document, but not editable here: pure pass-through fields with no generation or sign-off workflow built yet. */}
           <div style={{ breakBefore: "page" }} ref={(el) => { sectionRefs.current["annexures"] = el; }}>
             <p style={{ ...DOC_HEADING_STYLE, marginBottom: 8 }}>List of Annexures</p>
             {report.annexures.items.length > 0 ? (

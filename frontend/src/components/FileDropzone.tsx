@@ -10,15 +10,10 @@ export function FileDropzone({
 }: {
   onFileSelected: (file: File) => void;
   disabled?: boolean;
-  // An upload/critique triggered by this dropzone is in flight — shows a
-  // spinner in place of the upload icon and swaps the label to "Uploading…"
-  // instead of leaving the control merely dimmed with no feedback that
-  // anything is happening (2026-08-13, per the user).
   loading?: boolean;
   label?: string;
   hint?: string;
-  // Horizontal, no-hint-text button variant — matches the Task Critique
-  // list page's compact per-row upload control (2026-08-12 Figma revision).
+  // Horizontal, no-hint-text button variant for per-row upload controls.
   compact?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);

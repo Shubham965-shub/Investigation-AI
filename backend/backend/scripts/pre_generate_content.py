@@ -1,33 +1,6 @@
-"""Backfill Problem Statement / Evidence Collection / Interview Questionnaire /
-RCI Plan Creation for investigations whose Trackwise module (dim_event.module,
-via module_stage.stage_for) already implies those steps are done, but this
-app never generated them — e.g. investigations that reached "Interview
-Questionnaire" or later natively in Trackwise before this tool existed, so
-they have no row yet in investigation_problem_statements /
-investigation_evidence_items / investigation_questionnaire_items /
-investigation_rci_sections.
+"""Backfill Problem Statement/Evidence/Questionnaire/RCI Plan for investigations whose Trackwise stage implies they're done but were never generated here.
 
-Calls the exact same functions the real POST .../generate endpoints use
-(ds_client.ds_post + field_mapping.build_trackwise_fields + the
-generated_content_queries persist functions) directly, rather than going
-through the backend's own HTTP API — so this runs standalone; only the
-Postgres DB and the InvestigationAi_DS service need to be reachable, the
-backend/frontend dev servers do NOT need to be running.
-
-Each investigation's 4 steps are independent (none of them actually reads
-another step's persisted output — they're all built from the same STAR-
-schema row via build_trackwise_fields), so a failure on one step (e.g. a
-required Trackwise field is genuinely blank for that investigation — the
-same "missing required field" a real user would hit generating by hand)
-just skips that step and moves on; it never blocks the other 3 steps or
-other investigations.
-
-Usage — run separately from the app (not part of any request path):
-    cd backend
-    uv run python -m backend.scripts.pre_generate_content              # do it for real
-    uv run python -m backend.scripts.pre_generate_content --dry-run    # report only, no writes
-    uv run python -m backend.scripts.pre_generate_content --limit 20   # first 20 investigations only
-    uv run python -m backend.scripts.pre_generate_content --concurrency 5
+Usage: cd backend && uv run python -m backend.scripts.pre_generate_content [--dry-run] [--limit N] [--concurrency N]
 """
 from __future__ import annotations
 
@@ -56,18 +29,12 @@ from backend.schemas.rci_plan import RciPlanGenerateResponse
 
 logging.basicConfig(format="%(asctime)s | %(levelname)-7s | %(message)s", level=logging.INFO)
 logger = logging.getLogger("pre_generate_content")
-# httpx logs "HTTP Request: POST ... 200 OK" at INFO for every call by
-# default — that's exactly the kind of scrolling noise the progress bar
-# below is replacing, so it's quieted here rather than left to clutter it.
+# Quiet httpx's per-request INFO logs so they don't clutter the progress bar below.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class _Progress:
-    """Single updating terminal line instead of one log line per step — per
-    the user (2026-07-31), so a run over hundreds of investigations doesn't
-    scroll the terminal. Permanent output (failures, the final summary)
-    calls .clear() first so it lands on a clean line instead of mangling
-    the in-progress one; the next .update() call redraws the bar after."""
+    """Single updating terminal line instead of one log line per step; permanent output calls .clear() first to avoid mangling it."""
 
     def __init__(self, total: int) -> None:
         self.total = total
@@ -84,9 +51,7 @@ class _Progress:
     def update(self, deviation_id: int, step: str, note: str = "") -> None:
         line = f"[{self.done}/{self.total}] deviation_id={deviation_id} -> {step}" + (f" ({note})" if note else "")
         if not self._is_tty:
-            # Not an interactive terminal (e.g. piped to a file/CI log) —
-            # \r would just be invisible junk, so fall back to one line per
-            # update instead of pretending to overwrite anything.
+            # Not a terminal (e.g. piped to a file) — \r would be invisible junk, so print one line per update instead.
             print(line)
             return
         self.clear()
@@ -100,14 +65,7 @@ class _Progress:
     def finish(self) -> None:
         self.clear()
 
-# Same de-dup pattern as action_center_queries.py's open-investigations query
-# (a deviation_id can legitimately have >1 fact_qms_event row — take the most
-# recently updated one as representative). Scoped to currently-open
-# investigations only (closed_on IS NULL — same column/convention
-# action_center_queries.py uses as authoritative for "open"; date_closed is a
-# separate column that can be set on rows still genuinely open, see that
-# file's own header comment) — per the user (2026-08-04), this backfill
-# should only cover open investigations, not the full all-time history.
+# Dedupes to the most recently updated fact_qms_event row per deviation_id; scoped to open investigations only (closed_on IS NULL).
 _ALL_INVESTIGATIONS_QUERY = """
 SELECT DISTINCT ON (f.deviation_id)
     f.deviation_id,
@@ -140,12 +98,7 @@ WHERE f.closed_on IS NULL
 ORDER BY f.deviation_id, f.pg_updated_at_timestamp DESC NULLS LAST
 """
 
-# stage_for()'s return value is the "modules done" count (see
-# module_stage.py's MODULE_LABELS/next_module_label) — Problem Statement is
-# done once stage >= 1, Evidence Collection >= 2, Interview Questionnaire
-# >= 3, RCI Plan Creation >= 4. STATUS_TO_STAGE only has entries starting at
-# stage 3 ("interview questionnaire"), so in practice this only ever fires
-# for investigations already at "interview questionnaire" module or later.
+# stage_for()'s return value is the "modules done" count: PS >= 1, Evidence >= 2, Questionnaire >= 3, RCI Plan >= 4.
 _STAGE_REQUIRED = {"problem_statement": 1, "evidence": 2, "questionnaire": 3, "rci_plan": 4}
 _STEPS = ("problem_statement", "evidence", "questionnaire", "rci_plan")
 
@@ -162,19 +115,11 @@ async def _needs(step: str, deviation_id: int, stage: int) -> bool:
     return not await fetch_rci_sections(deviation_id)  # rci_plan
 
 
-# Each step is split into a DS "fetch" phase and a DB "persist" phase (rather
-# than one function doing both) so _process_investigation can re-check _needs()
-# in between — the DS call is the slow part (seconds, per our own test run),
-# and that's the real window in which a live user (this app's DB is used by
-# the running frontend/backend at the same time — see project memory: don't
-# manage dev servers) could generate the same step by hand. Without the
-# re-check, this script would silently clobber that fresher, real generation
-# with its own redundant one once its slower DS call finally came back.
+# Split into fetch/persist phases so _process_investigation can re-check _needs() between them — without it, a slow DS call could clobber a fresher real generation made by a live user in the meantime.
 
 
 async def _fetch_problem_statement(row, event_type: str) -> ProblemStatementGenerateResponse:
-    # Market Complaint gets the extended field set only for problem-statement
-    # (see routers/problem_statement.py's GET handler).
+    # Market Complaint gets the extended field set only for problem-statement.
     fields = build_trackwise_fields(row, row["qe_type"], extended=event_type == "Market Complaint")
     data = await ds_client.ds_post("/ps/v2/generate", json={"event_type": event_type, "trackwise_fields": fields})
     return ProblemStatementGenerateResponse(**data)
@@ -209,8 +154,7 @@ async def _persist_questionnaire(deviation_id: int, response: QuestionnaireGener
 
 
 async def _fetch_rci_plan(row, event_type: str) -> RciPlanGenerateResponse:
-    # Deviation gets the extended field set only for rci-plan (see
-    # routers/rci_plan.py's GET handler).
+    # Deviation gets the extended field set only for rci-plan.
     fields = build_trackwise_fields(row, row["qe_type"], extended=event_type == "Deviation")
     data = await ds_client.ds_post("/rci/plan", json={"event_type": event_type, "trackwise_fields": fields})
     return RciPlanGenerateResponse(**data)
@@ -247,11 +191,7 @@ _PERSISTERS = {
 
 
 def _record_failure(progress: "_Progress", failures: list, deviation_id: int, step: str, stage: str, exc: Exception) -> None:
-    """Every failure records exactly what a human needs to go look at: which
-    investigation, which of the 4 steps, and at what point it gave up — per
-    the user (2026-07-31), so failures are never just a scroll-back-through-
-    the-log exercise. progress.clear() first so the traceback lands on a
-    clean line instead of mangling the in-progress bar."""
+    """Records which investigation/step/stage failed; progress.clear() first so the traceback doesn't mangle the in-progress bar."""
     progress.clear()
     logger.exception("deviation_id=%s stopped at step=%s (%s)", deviation_id, step, stage)
     failures.append({"deviation_id": deviation_id, "step": step, "stage": stage, "error": str(exc)})
@@ -289,9 +229,7 @@ async def _process_investigation(
                 _record_failure(progress, failures, deviation_id, step, "generating (DS call)", exc)
                 continue
 
-            # Re-check right before writing (see the comment above _fetch_*)
-            # — skip the write entirely if this step got generated some
-            # other way while we were waiting on DS.
+            # Re-check right before writing — skip if this step got generated some other way while waiting on DS.
             try:
                 if not await _needs(step, deviation_id, stage):
                     continue

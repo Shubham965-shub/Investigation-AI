@@ -33,8 +33,7 @@ router = APIRouter(prefix="/rci-plan", tags=["RCI Plan"])
 
 
 def _add_working_days(start: datetime.date, days: int) -> datetime.date:
-    """Skips Saturdays/Sundays — no holiday calendar tracked anywhere else in
-    this app, so weekends are the only exclusion."""
+    """Skips weekends only — no holiday calendar is tracked."""
     current = start
     added = 0
     while added < days:
@@ -46,10 +45,8 @@ def _add_working_days(start: datetime.date, days: int) -> datetime.date:
 
 @router.post("/{record_id}/generate", response_model=RciPlanGenerateResponse)
 async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> RciPlanGenerateResponse:
-    # Use the LLM-generated Problem Statement as the plan's "description"
-    # context instead of the raw TrackWise column (2026-08-18, per the user)
-    # — falls back to whatever was already in trackwise_fields if no problem
-    # statement has been generated yet for this investigation.
+    # Use the generated Problem Statement as "description", falling back to the raw TrackWise
+    # column if none has been generated yet.
     try:
         problem_statement = await fetch_problem_statement(int(record_id))
     except ValueError:
@@ -60,18 +57,11 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
     data = await ds_post("/rci/plan", json=request.model_dump())
     response = RciPlanGenerateResponse(**data)
 
-    # TCD defaults to generation day + 5 working days (per the user,
-    # 2026-08-22) — still editable per-section afterward, this just saves the
-    # investigator from having to set every section's TCD by hand. Set on the
-    # response itself (not just the persisted rows below) so the frontend
-    # shows it immediately after generating, without needing a reload.
+    # TCD defaults to generation day + 5 working days, editable per-section afterward. Set on the
+    # response itself so the frontend shows it immediately without a reload.
     default_due_date = _add_working_days(datetime.datetime.now(datetime.timezone.utc).date(), 5).isoformat()
 
-    # Assignee defaults to whoever's already assigned as this investigation's
-    # investigator (per the user, 2026-08-24) — same "prefill, still editable"
-    # treatment as due_date above, so a case with a real investigator doesn't
-    # start every section on "Unassigned" for no reason. None (left blank)
-    # when the investigation has no investigator assigned yet.
+    # Assignee defaults to the investigation's own investigator, if any (still editable).
     default_assignee = None
     try:
         row = await fetch_investigation_row(int(record_id))
@@ -84,8 +74,7 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
         section.due_date = default_due_date
         section.assignee = default_assignee
 
-    # Persisting is best-effort — a DB/table issue must never break generation
-    # itself, especially before generated_content.sql has been run anywhere.
+    # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
         await replace_rci_sections(
@@ -126,18 +115,15 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> RciTemplateUploa
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> None:
-    """Full replace of the persisted sections — used to save investigator-name
-    edits made directly on the RCI Plan page (see RciPlanPage.tsx)."""
+    """Full replace of the persisted sections."""
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
     if await any_task_critique_started(deviation_id):
-        # replace_rci_sections deletes-then-recreates every section row (new
-        # IDs) — once Task Critique has a report against a section, further
-        # edits here would cascade-delete that history (2026-08-05, per the
-        # user: lock RCI Plan editing instead of letting that happen).
+        # replace_rci_sections deletes-then-recreates every section row (new IDs), which would
+        # cascade-delete Task Critique history once a report exists against a section.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="RCI Plan is locked because Task Critique has already started",
@@ -160,15 +146,8 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
 
 @router.get("/{record_id}/export")
 async def export_rci_plan(record_id: str, username: str = Depends(get_current_username)) -> Response:
-    """The real .docx download for "Accept and Push to TW" (RciPlanPage.tsx)
-    — fills the company's actual RCI Plan template (assets/rci_plan_template.docx)
-    with this investigation's persisted sections, per the user (2026-07-31).
-
-    Also persists this generated docx to investigation_rci_plan_exports
-    (2026-08-04, per the user) as a frozen approval snapshot — a separate,
-    external process is expected to pick up 'pending' rows there and push
-    them into Trackwise. Best-effort: a persistence failure must never break
-    the download the user is actively waiting on."""
+    """Fills the RCI Plan .docx template and returns it; also persists a frozen approval snapshot
+    (best-effort — must not block the download) that a separate process pushes into Trackwise."""
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -188,10 +167,7 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
     extended = event_type == "Deviation"
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
-    # Same substitution as generate_rci_plan — the exported docx's "A
-    # description of what has happened" paragraph should show the
-    # LLM-generated Problem Statement, not the raw TrackWise description
-    # column (2026-08-18, per the user).
+    # Same substitution as generate_rci_plan — show the generated Problem Statement, not raw TrackWise description.
     problem_statement = await fetch_problem_statement(deviation_id)
     if problem_statement:
         trackwise_fields["description"] = problem_statement
@@ -199,17 +175,13 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
     docx_bytes, truncated, owners_truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
     if truncated:
-        # Actually dropped from the Investigation tasks table entirely — the
-        # template's 6-slot capacity, same constraint the old template had.
+        # Sections beyond the template's 6-slot task table are dropped entirely.
         logger.warning(
             "RCI plan export for record_id=%s has %d section(s) beyond the template's 6-slot task table capacity — dropped",
             record_id, truncated,
         )
     if owners_truncated:
-        # NOT dropped — every section's tasks still appear in full in the
-        # Investigation tasks table. Only the Sign-off row's 4 Task Owner
-        # slots are capped, so sections beyond that just have no named
-        # owner there.
+        # Tasks themselves aren't dropped — only the Sign-off row's 4 Task Owner slots are capped.
         logger.warning(
             "RCI plan export for record_id=%s has %d section(s) beyond the Sign-off row's 4 Task Owner slots — no named owner for those",
             record_id, owners_truncated,
@@ -235,13 +207,7 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
 @router.get("/investigators", response_model=list[str])
 async def get_open_investigators() -> list[str]:
-    """Investigators currently assigned to an OPEN investigation only
-    (2026-08-19, per the user, re-scoping the prior 2026-08-13 all-time
-    list) — populates the Investigator dropdown per section on the RCI Plan
-    Creation page, replacing free text. Registered before /{record_id}
-    below — otherwise that catch-all route would shadow this one (FastAPI
-    matches by registration order; same class of bug fixed in ds's critique
-    routes earlier this session)."""
+    """Investigators on an OPEN investigation only. Must stay registered before /{record_id}, or that catch-all route shadows this one (FastAPI matches by registration order)."""
     return await fetch_open_investigators()
 
 
@@ -264,10 +230,7 @@ async def get_rci_plan(record_id: str) -> RciPlanRecord:
     extended = event_type == "Deviation"
     persisted = await fetch_rci_sections(deviation_id)
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
-    # Same substitution as generate_rci_plan/export_rci_plan — this is what
-    # the frontend reads back as prefill and re-sends verbatim on a
-    # regenerate, so it needs the Problem Statement text too, not the raw
-    # TrackWise description column (2026-08-18, per the user).
+    # Same substitution as generate_rci_plan/export_rci_plan — frontend reads this back as prefill.
     problem_statement = await fetch_problem_statement(deviation_id)
     if problem_statement:
         trackwise_fields["description"] = problem_statement

@@ -10,25 +10,16 @@ function verdictColor(verdict: string): string {
   return "var(--color-text-muted)";
 }
 
-// Full per-checkpoint breakdown for one or more scored sections (e.g. just
-// "task_report" for Task Critique, or "rc"+"impact" together for RC & CAPA's
-// combined RC score) — shown via a small info icon next to the generated
-// score (2026-08-14, per the user), same rows/columns as ds's own marking-
-// checklist spreadsheet (ID/Checkpoint/Max/Verdict/Score/Rationale/Evidence).
+// Rows/columns mirror ds's own marking-checklist spreadsheet (ID/Checkpoint/Max/Verdict/Score/Rationale/Evidence).
 export function ScoreBreakdownTooltip({
   tables,
   description,
   hideTables = false,
 }: {
   tables: ScoreBreakdownTable[];
-  // Optional explanatory line shown above the breakdown tables — e.g. for
-  // the combined RC & CAPA Critique Score, clarifying it's a cumulative
-  // figure rather than its own independently-scored section (2026-08-25,
-  // per the user).
+  // Optional explanatory line shown above the breakdown tables, e.g. clarifying a combined score is cumulative rather than its own scored section.
   description?: string;
-  // Skips the per-checkpoint tables entirely, showing only `description` —
-  // for a combined/derived score (e.g. RC & CAPA Critique Score) that has no
-  // checkpoints of its own to break down (2026-08-25, per the user).
+  // Skips the per-checkpoint tables, showing only `description` — for a derived score with no checkpoints of its own.
   hideTables?: boolean;
 }) {
   if (tables.length === 0 && !description) return null;

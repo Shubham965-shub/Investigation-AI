@@ -53,8 +53,6 @@ function RuleList({ title, rules }: { title: string; rules: { label: string; tex
   );
 }
 
-// Next to the "RC Impact Assessment Critique" panel heading in
-// RcCapaCritiquePage.tsx (2026-08-13, per the user).
 export function RcConclusionGuidelines() {
   return (
     <InfoTooltip label="RC conclusion guidelines" width={460}>
@@ -63,8 +61,6 @@ export function RcConclusionGuidelines() {
   );
 }
 
-// Next to the "CAPA Critique" panel heading in RcCapaCritiquePage.tsx
-// (2026-08-13, per the user).
 export function CapaProposalGuidelines() {
   return (
     <InfoTooltip label="CAPA proposal guidelines" width={460}>

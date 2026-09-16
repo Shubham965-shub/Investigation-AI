@@ -17,27 +17,14 @@ import iconRowArrow from "../assets/icons/row-arrow.svg";
 import { formatLastUpdated } from "../utils/formatTimestamp";
 import "./ActionCenterPage.css";
 
-// Only "Unassigned" has an icon (matches the SIT Dashboard Figma — the L1-L5
-// cards show no icon, just the level text). renderStatusCard skips the <img>
-// when a card's key has no entry here.
+// Only "Unassigned" gets an icon; renderStatusCard skips the <img> when a card's key has no entry here.
 const STATUS_ICONS: Record<string, string> = {
   unassigned: iconUnassigned,
 };
 
-// Status cards are keyed by dim_event.escalation_level ("L1".."L5") or
-// "unassigned"/"phase1"/"phase2" (see action_center.py's _build_status_cards).
-// Unassigned and L5-L1 are INDEPENDENT dimensions, not a partition
-// (2026-09-07, per the user, correcting an earlier assumption this session
-// that they were mutually exclusive) — an investigation can be both
-// Unassigned and L1 at once, so this does NOT derive "unassigned" from a
-// missing escalation_level; it uses the same `bucket` field as the per-row
-// Status pill/PendingAction.is_unassigned everywhere else on this page.
+// Unassigned and L5-L1 are independent dimensions, not a partition — an investigation can be both Unassigned and L1, so this uses `bucket` rather than deriving "unassigned" from a missing escalation_level.
 function matchesStatusCard(inv: InvestigationRowResponse, cardKey: string): boolean {
-  // Phase 1/Phase 2 are their own standalone cards, independent of
-  // assignment status (2026-09-07, per the user) — an OOS/OOT
-  // investigation's phase has no bearing on whether it's unassigned, only
-  // ever present when scoped to OOS/OOT (see action_center.py's
-  // show_phase_breakdown).
+  // Phase 1/Phase 2 are standalone cards, independent of assignment status — only present when scoped to OOS/OOT.
   if (cardKey === "phase1") return inv.oos_oot_phase === "Phase 1";
   if (cardKey === "phase2") return inv.oos_oot_phase === "Phase 2";
   if (cardKey === "unassigned") return inv.bucket === "unassigned";
@@ -52,10 +39,7 @@ const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
   overdue: { status: "overdue", label: "Overdue" },
 };
 
-// dim_event.escalation_level ("L1".."L5", or "Not Applicable"/null for most
-// rows) -> the same 5 distinct tones as the escalation-level status cards
-// above (2026-09-04, per the user — previously grouped into just
-// success/warning/danger, now one tone per level to match).
+// escalation_level ("L1".."L5") -> one distinct tone per level, matching the status cards above.
 const ESCALATION_TONE: Record<string, "success" | "info" | "warning" | "pink" | "danger"> = {
   L1: "success",
   L2: "info",
@@ -64,13 +48,7 @@ const ESCALATION_TONE: Record<string, "success" | "info" | "warning" | "pink" | 
   L5: "danger",
 };
 
-// Default table order (before the user picks a column to sort by): most
-// overdue first (2026-08-21, per the user). Sorting by bucket rather than
-// raw due_date, since open_investigation_status is Trackwise's own opaque
-// determination — not always strictly derivable from due_date alone (see
-// project memory on overdue/delay/on-track logic) — so an explicit bucket
-// isn't guaranteed to line up with a plain due_date sort. Within the same
-// bucket, earliest due date (most overdue, or soonest due) sorts first.
+// Default order sorts by bucket (Trackwise's own status), not raw due_date — due_date alone can't reliably reproduce it. Ties break by earliest due date.
 const DEFAULT_SORT_BUCKET_PRIORITY: Record<string, number> = {
   overdue: 0,
   delay: 1,
@@ -79,19 +57,14 @@ const DEFAULT_SORT_BUCKET_PRIORITY: Record<string, number> = {
 };
 
 
-// Matches the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly —
-// sent/received as a plain investigator= value, same as a real name, just
-// matched server-side against a null/blank investigator instead of an
-// equality check. Only appears in filter_options.investigators when at
-// least one investigation in view actually has none.
+// Must match the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly.
 const UNASSIGNED_INVESTIGATOR_FILTER = "__unassigned__";
 
 function formatInvestigatorLabel(investigator: string): string {
   return investigator === UNASSIGNED_INVESTIGATOR_FILTER ? "Unassigned" : investigator;
 }
 
-// Every Investigation Details column except "Investigation" itself is
-// sortable — this list drives both the clickable headers and the sort logic.
+// Every column except "Investigation" itself is sortable.
 type SortColumn = "product" | "investigator" | "progress" | "start_date" | "due_date" | "status";
 
 const SORTABLE_COLUMNS: { key: SortColumn; label: string }[] = [
@@ -103,10 +76,7 @@ const SORTABLE_COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "status", label: "Status" },
 ];
 
-// start_date/due_date are pre-formatted display strings ("29 Jul 2026"), not
-// ISO — plain string comparison would sort by month name alphabetically
-// (Apr, Aug, Dec, Feb...), so parse to a timestamp for real chronological
-// sorting instead.
+// Dates are pre-formatted strings ("29 Jul 2026"), not ISO — parse to a timestamp so sort is chronological, not alphabetical by month name.
 function parseDisplayDateMs(value: string | null): number | null {
   if (!value) return null;
   const ms = new Date(value).getTime();
@@ -130,9 +100,7 @@ function getSortValue(inv: InvestigationRowResponse, column: SortColumn): string
   }
 }
 
-// Nulls (no investigator/date yet) always sort to the end regardless of
-// direction — flipping them with the rest of the comparison on "desc" would
-// put blanks first, which reads as broken rather than sorted.
+// Nulls always sort to the end regardless of direction — flipping them on "desc" would put blanks first.
 function compareForSort(a: string | number | null, b: string | number | null, direction: "asc" | "desc"): number {
   if (a === null && b === null) return 0;
   if (a === null) return 1;
@@ -141,22 +109,13 @@ function compareForSort(a: string | number | null, b: string | number | null, di
   return direction === "asc" ? cmp : -cmp;
 }
 
-// KPI card mini bar-chart tone is driven by the MoM trend direction
-// (2026-09-07, per the user) — red when the trend is negative, green when
-// positive, grey when exactly 0 or undefined (previous month's count was
-// 0, so a % change isn't meaningful) — reusing the existing "warm"
-// (red)/"cool" (green)/"neutral" (grey) chart-color families rather than
-// introducing new tokens, since those already are red/green/grey.
+// Grey (neutral) when trend is 0/undefined — previous month's count was 0, so a % change isn't meaningful.
 function trendTone(trendPercent: number | null): "neutral" | "warm" | "cool" {
   if (!trendPercent) return "neutral";
   return trendPercent < 0 ? "warm" : "cool";
 }
 
-// Left-edge accent color per event-type KPI card (SIT Dashboard Figma,
-// 2026-09-08, per the user) — static per event type, not tied to MoM trend
-// direction (unlike the mini bar chart's own coloring above). Each of the 4
-// event types now has its own exact brand hex (2026-09-09, per the user),
-// replacing the earlier shared blue/teal/purple groupings.
+// Static per event type, independent of the MoM trend coloring above.
 function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | "event-oot" | "event-mc" {
   if (label === "OOS") return "event-oos";
   if (label === "OOT") return "event-oot";
@@ -164,61 +123,17 @@ function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | 
   return "event-deviation";
 }
 
-// Major/Minor/Non-Critical flag shown in front of the event-type badge
-// (2026-09-11, per the user) — driven by dim_event.event_classification,
-// the data-engineer-provided field (see api/dashboard.ts). "Critical" isn't
-// handled here — that's still the existing red Critical badge shown right
-// after the event-type badge, driven by criticality; this flag only covers
-// the 3 cases that badge doesn't.
-//
-// [BUGFIX 2026-09-15, per the user] The "Non Critical" fallback used to
-// fire for ANY null event_classification + Non-Critical criticality — but
-// per the data engineer's own spec, null means "OOS/OOT (no Major/Minor
-// concept exists for these types)" OR "a Deviation/Complaint with no
-// classification set yet" — those are NOT the same thing, and confirmed
-// live: 57/59 open Deviations and 46/46 open Complaints are null simply
-// because they haven't been classified, not because they're confirmed
-// non-critical. Showing "Non Critical" for those read as a 3rd real
-// category sitting alongside Major/Minor, when it should have been no tag
-// at all (matching Critical/Major/Minor being the only real categories for
-// Deviation/Complaint). Scoped the fallback to OOS/OOT only, where
-// Major/Minor never applies and criticality really is the only signal.
-//
-// [REVERTED 2026-09-15, per the user] A "not critical, not minor -> must be
-// Major" inference was tried and briefly added here, but confirmed wrong:
-// event_classification genuinely has its own distinct "Major" value stored
-// in the DB for both Deviation (61 records) and Market Complaint (60
-// records) across the full (not just open) dataset — null is a real,
-// separate "not yet classified" state, not a stand-in for Major. Badges
-// must only ever reflect the actual stored event_classification value, not
-// an inferred one.
+// Only Major/Minor show here, no "Non Critical" tag — null means unclassified or no Major/Minor concept (OOS/OOT), not "non-critical". Critical itself is a separate badge driven by criticality.
 function classificationFlag(inv: InvestigationRowResponse): { label: string; className: string } | null {
   if (inv.event_classification === "Major") return { label: "Major", className: "classification-major" };
   if (inv.event_classification === "Minor") return { label: "Minor", className: "classification-minor" };
-  const isOosOrOot = inv.event_type === "OOS" || inv.event_type === "OOT";
-  if (!inv.event_classification && inv.criticality === "Non-Critical" && isOosOrOot) {
-    return { label: "Non Critical", className: "classification-noncritical" };
-  }
   return null;
 }
 
-// Fixed pixel height of .ac-kpi-chart in ActionCenterPage.css — bar heights
-// are computed in JS as a pixel value against this, not a CSS `%`, since a
-// percentage height on a flex item only resolves reliably when every
-// ancestor in the chain has its own definite (non-flex-computed) height;
-// through .ac-kpi-bar-col/.ac-kpi-chart's flex layout it didn't, so every
-// bar silently fell back to the same rendered height regardless of count
-// (confirmed live, 2026-09-04, per the user).
+// Bar heights are computed as a JS pixel value, not CSS %, since % height doesn't resolve reliably through this flex chain.
 const KPI_CHART_HEIGHT_PX = 40;
 
-// Rounds a chart's max count up to a "nice" axis ceiling built from ~4
-// steps of a round size (the classic 1-2-5-10 sequence) — e.g. a max of 75
-// picks a step of 20 for a 0-20-40-60-80 scale; a max of 101 picks a step
-// of 50 for 0-50-100-150 (2026-09-04, per the user). Keeps bars
-// proportional to a real 0 baseline (went back on an earlier min-max
-// version, which exaggerated differences but made bar height no longer
-// mean the real number) while still giving the tallest bar some headroom
-// instead of always touching the top.
+// Rounds max up to a "nice" axis ceiling (1-2-5-10 step sequence) so bars stay proportional to a real 0 baseline, with headroom above the tallest bar.
 function niceAxisMax(max: number, targetSteps = 4): number {
   if (max <= 0) return 1;
   const rawStep = max / targetSteps;
@@ -228,16 +143,7 @@ function niceAxisMax(max: number, targetSteps = 4): number {
   return Math.ceil(max / step) * step;
 }
 
-// Renders a MonthlyTrend as a small bar chart (older months "muted", the
-// most recent "strong") with month labels beneath, plus a caption + MoM
-// trend line below that — e.g. "Opened / month  ▼ 9% MoM". Tone (red/
-// green/grey) is derived from the trend direction by default; pass
-// forceTone="neutral" to opt out (2026-09-07, per the user — Open
-// Investigations' own chart stays grey regardless of trend direction).
-// invertTrendColor swaps which arrow direction reads as good/bad (2026-09-08,
-// per the user) — every other card tracks "Closed / month", where more is
-// good (▲ green); Open Investigations tracks "Opened / month", where more
-// is bad, so ▲ should read red and ▼ green there instead.
+// forceTone="neutral" opts a card out of trend-based coloring (used for Open Investigations). invertTrendColor flips good/bad direction for "Opened / month", where more is bad unlike "Closed / month".
 function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutral", invertTrendColor = false) {
   const tone = forceTone ?? trendTone(trend.trend_percent);
   const axisMax = niceAxisMax(Math.max(...trend.monthly.map((b) => b.count)));
@@ -271,23 +177,9 @@ function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutr
   );
 }
 
-// Supervisor variant of the Action Center (see project memory: Action Center
-// has CXO/Supervisor/Investigator variants — CXO is on hold, Investigator
-// filters this same data down to the current user). Real data as of
-// 2026-07-24, sourced from GET /action-center/summary — see project memory:
-// action_center_roles for the business-rule placeholders this endpoint
-// encodes (status buckets, pending actions, progress chart).
+// Sourced from GET /action-center/summary — see project memory (action_center_roles) for the business-rule placeholders this endpoint encodes.
 
-// Per-level tagline (SIT Dashboard Figma, 2026-09-04/08, per the user) — the
-// days-open range each escalation level represents, copied verbatim from
-// the Figma mock. Market Complaint gets its own, more lenient set (2026-09-08,
-// per the user, confirmed against a Market-Complaint-scoped screenshot) —
-// consistent with this page's own due-date InfoTooltip elsewhere, which
-// already documents a 55-day window for Market Complaints vs 30 days for
-// Deviation/OOS/OOT. Frontend-only static text: dim_event.escalation_level
-// is computed upstream by TrackWise, not derived here, so these ranges
-// aren't independently verified against a real threshold in this codebase —
-// they document what the design shows, not a rule this app enforces.
+// Per-level day-range captions, copied verbatim from the Figma mock — frontend-only display text, not derived from a real threshold in this codebase.
 const LEVEL_CAPTION_DEFAULT: Record<string, string> = {
   L5: "Days Open > 30",
   L4: "26 ≤ Days Open ≤ 30",
@@ -309,26 +201,20 @@ const ASSIGNMENT_FILTER_OPTIONS: { key: "all" | "assigned" | "unassigned"; label
   { key: "unassigned", label: "Unassigned" },
 ];
 
-// Replaces the plain "Unassigned" card for Deviation/Market Complaint/no
-// filter (2026-09-08, per the user) — 3 vertically-stacked radio buttons,
-// always exactly one selected, filtering by inv.bucket === "unassigned"
-// independently of the L5-L1 level filter (see assignmentFilter's own
-// comment at its declaration). Styled to match the other status cards in
-// the same row (.ac-status-card/.ac-status-card-header) so it doesn't look
-// like a foreign control dropped into the row.
-function renderAssignmentFilterCard(value: "all" | "assigned" | "unassigned", onChange: (v: "all" | "assigned" | "unassigned") => void) {
+// Replaces the plain "Unassigned" card for Deviation/Market Complaint/no-filter — filters independently of the L5-L1 level filter.
+function renderAssignmentFilterCard(
+  value: "all" | "assigned" | "unassigned",
+  onChange: (v: "all" | "assigned" | "unassigned") => void,
+  assignedCount: number,
+  unassignedCount: number
+) {
   return (
     <div className="ac-status-card unassigned" key="assignment-filter">
       <div className="ac-status-card-header">
         <span>Status</span>
       </div>
       <div style={{ padding: "0 20px 20px" }}>
-        {/* Single segmented pill, not 3 separate radio rows (2026-09-08,
-            per the user) — same .ac-criticality-toggle look as the "All /
-            Critical / Major-Minor" control in the filter bar above, for
-            visual consistency. The "stretch" modifier fills this now-wider
-            card's width instead of staying a small inline-flex pill hugging
-            the left edge (2026-09-08, per the user). */}
+        {/* Reuses .ac-criticality-toggle styling; "stretch" fills the wider card's width instead of a small inline pill. */}
         <div className="ac-criticality-toggle stretch">
           {ASSIGNMENT_FILTER_OPTIONS.map((opt) => (
             <button type="button" key={opt.key} className={value === opt.key ? "active" : ""} onClick={() => onChange(opt.key)}>
@@ -336,6 +222,10 @@ function renderAssignmentFilterCard(value: "all" | "assigned" | "unassigned", on
             </button>
           ))}
         </div>
+        {/* Counts respect the event-type pill + status card filters, not the Assigned/Unassigned toggle itself — both always show. */}
+        <p style={{ margin: "10px 0 0", fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)", textAlign: "center" }}>
+          Assigned: {assignedCount} · Unassigned: {unassignedCount}
+        </p>
       </div>
     </div>
   );
@@ -346,27 +236,16 @@ function renderStatusCard(
   statusFilter: string | null,
   onSelect: (key: string) => void,
   activeFilter: string | null,
-  // Draws a thin vertical rule before this card — used to demarcate
-  // Unassigned from the L5-L1 group when they share one row (Deviation/
-  // Market Complaint/no filter; OOS/OOT already separate them into two
-  // rows instead — see the caller) (2026-09-08, per the user). A wrapper,
-  // not a style on .ac-status-card itself, so it doesn't fight that card's
-  // own (possibly colored) border.
+  // Draws a divider before this card, to separate Unassigned from L5-L1 when they share one row.
   dividerBefore = false
 ) {
-  // card.key is already the CSS class ("unassigned", "phase1", "phase2",
-  // "L5".."L1") — just lowercased, to match ActionCenterPage.css's
-  // .l5/.l4/.l3/.l2/.l1 rules ("unassigned"/"phase1"/"phase2" fall through
-  // to the plain default .ac-status-card look, no override needed).
+  // Lowercased to match ActionCenterPage.css's .l5/.l4/.l3/.l2/.l1 rules.
   const cssClass = card.key.toLowerCase();
   const icon = STATUS_ICONS[cssClass];
   const levelCaptions = activeFilter === "Market Complaint" ? LEVEL_CAPTION_MARKET_COMPLAINT : LEVEL_CAPTION_DEFAULT;
   const caption = levelCaptions[card.key];
   const isActive = statusFilter === card.key;
-  // Only L5-L1 get the selected-dot — they're the only cards whose color
-  // fill is otherwise off by default (2026-09-08, per the user); unassigned/
-  // phase1/phase2 keep the plain box-shadow ring instead (see .ac-status-
-  // card.active in the CSS).
+  // Only L5-L1 get the selected-dot; unassigned/phase1/phase2 use the plain box-shadow ring instead.
   const isLevelCard = /^l[1-5]$/.test(cssClass);
   const card_ = (
     <div
@@ -394,9 +273,7 @@ function renderStatusCard(
 
 const PAGE_SIZE = 10;
 
-// Numbered pager (Figma node 1229:38395) — always shows first/last plus a
-// window around the current page, collapsing the rest into an ellipsis so
-// this stays usable at real page counts (45+), unlike Figma's 2-page mock.
+// Shows first/last plus a window around the current page, collapsing the rest into an ellipsis for large page counts.
 function pageNumbers(current: number, total: number): (number | "…")[] {
   const pages = new Set<number>([1, total, current, current - 1, current + 1]);
   const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
@@ -410,116 +287,64 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 
 export function ActionCenterPage() {
   const { roles, viewAsInvestigator } = useAuth();
-  // Anyone with the SIT (Site Inspection Team) role, or Admin, sees "SIT
-  // Dashboard" as the page title instead of "Action Center" (2026-08-18, per
-  // the user; made role-based instead of a single hardcoded account on
-  // 2026-09-03; swapped from User to Admin on 2026-09-04, per the user) —
-  // the plain "User" role sees "Action Center" (when not viewing as a
-  // specific investigator, which has its own title).
+  // SIT or Admin roles see "SIT Dashboard" as the title; plain "User" sees "Action Center".
   const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
-  // Investigator role (2026-09-09, per the user) — backend already scopes
-  // every number in `summary` to just this investigator's own rows (see
-  // action_center.py's get_action_center_summary); the Open Investigations
-  // KPI card and the "All Investigators" filter dropdown are hidden here
-  // purely because they'd be redundant/meaningless for a role that only
-  // ever sees itself.
+  // Backend already scopes `summary` to this investigator's own rows; Open Investigations KPI and "All Investigators" filter are hidden here since they'd be redundant.
   const isInvestigatorRole = roles.includes("Investigator");
-  // "Remark" column (2026-09-11, per the user) — editable by SIT only, but
-  // viewable by SIT or Admin (widened from SIT-only visibility the same
-  // day, per the user); the backend enforces both independently (remarks is
-  // {} for anyone else, and the PUT endpoint 403s for non-SIT), this is
-  // just the UI-side gate.
+  // Remark column: viewable by SIT or Admin, editable by SIT only — the backend enforces both independently too.
   const canViewRemarks = roles.includes("SIT") || roles.includes("Admin");
   const canEditRemarks = roles.includes("SIT");
   const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
   const [remarkSaving, setRemarkSaving] = useState<Record<string, boolean>>({});
   const [remarkErrors, setRemarkErrors] = useState<Record<string, string>>({});
+  // Keyed by deviation_id (inv.id) — unique per row now that rows aren't exploded one-per-rci_id.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<ActionCenterSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [previewInvestigation, setPreviewInvestigation] = useState<PreviewInvestigation | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
-  // Status-card click filter (2026-08-19, per the user) — same client-side
-  // toggle-filter UX as the event-type pills (activeFilter above), just
-  // scoped to a card's bucket instead of an event type. For OOS/OOT this
-  // still also covers Unassigned/Phase 1/Phase 2 (unchanged) — Deviation/
-  // Market Complaint/no-filter use it for L5-L1 only, see assignmentFilter
-  // below for their separate Assigned/Unassigned axis.
+  // Same toggle-filter UX as activeFilter, scoped to a card's bucket; assignmentFilter below covers Assigned/Unassigned separately.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  // Reset on event-type change (2026-09-09, per the user) — e.g. selecting
-  // Unassigned while OOS is active and then switching to Deviation
-  // previously kept the OOS-era "unassigned" selection silently applied to
-  // Deviation's own cards/table. Same reset convention as assignmentFilter
-  // below.
+  // Reset on event-type change — otherwise a stale selection from the previous event type silently keeps filtering.
   useEffect(() => {
     setStatusFilter(null);
   }, [activeFilter]);
-  // All/Assigned/Unassigned radio group, replacing the plain "Unassigned"
-  // card for Deviation/Market Complaint/no-filter (2026-09-08, per the
-  // user) — a genuinely independent filter dimension from level (statusFilter
-  // above): both can be set at once (e.g. Assigned + L3), neither clears the
-  // other. Not shown for OOS/OOT, whose Unassigned concept stays coupled
-  // with level via statusFilter as before — reset back to "all" on any
-  // event-type change so a hidden selection never silently keeps filtering
-  // once OOS/OOT hides the radio group (same reset convention as
-  // criticalityFilter below).
+  // Independent filter dimension from statusFilter — both can be set at once (e.g. Assigned + L3). Not shown for OOS/OOT.
   const [assignmentFilter, setAssignmentFilter] = useState<"all" | "assigned" | "unassigned">("all");
   useEffect(() => {
     setAssignmentFilter("all");
   }, [activeFilter]);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  // Card View's grouping toggle (SIT Dashboard Figma, 2026-09-04, per the
-  // user) — genuine group-by, not a value filter: Card View always shows
-  // every matching investigation, just organized into named sections by
-  // product or by investigator instead of one flat grid. "all" (added
-  // 2026-09-04, per the user) shows the plain ungrouped flat grid.
+  // Genuine group-by, not a filter — every matching investigation still shows, just organized into sections. "all" = flat grid.
   const [groupBy, setGroupBy] = useState<"all" | "product" | "investigator">("product");
   const [page, setPage] = useState(1);
   const [siteFilter, setSiteFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [investigatorFilter, setInvestigatorFilter] = useState("");
-  // Default view excludes cancelled investigations entirely (2026-08-13, per
-  // the user) — toggled on via a button rather than mixed into the normal
-  // list.
+  // Cancelled investigations are excluded by default.
   const [showCancelled, setShowCancelled] = useState(false);
-  // Page-wide filter (2026-08-14, per the user) — unlike showCancelled above,
-  // this narrows stat cards/chart/pending actions AND the investigations
-  // table alike, same as site/department/product/investigator/date.
+  // Narrows stat cards/chart/pending actions and the table alike, unlike showCancelled.
   const [criticalityFilter, setCriticalityFilter] = useState("");
-  // The criticality/phase toggle switches its whole option set between
-  // Critical/Major & Minor and Critical/Phase 1/Phase 2 depending on the
-  // event type selected above (2026-08-25, per the user) — a value from one
-  // set (e.g. "phase1") is meaningless in the other, so switching event
-  // types resets the toggle back to "All" rather than carrying it over.
+  // Toggle's option set changes with event type (Critical/Major&Minor vs Critical/Phase1&2) — reset on switch since a value like "phase1" is meaningless in the other set.
   useEffect(() => {
     setCriticalityFilter("");
   }, [activeFilter]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
 
-  // Demo "view as" control from the account menu (2026-08-14, per the user) —
-  // reuses the existing investigator filter to reproduce that investigator's
-  // whole-page view (stat cards/chart/pending actions/table alike) rather
-  // than adding a separate scoping mechanism. Runs whenever the header
-  // selection changes, including back to null (clears the filter).
+  // "View as" reuses the investigator filter to reproduce that investigator's whole-page view.
   useEffect(() => {
     setInvestigatorFilter(viewAsInvestigator ?? "");
     setPage(1);
   }, [viewAsInvestigator]);
-  // Clears the Site filter back to "All Sites" on leaving investigator view
-  // — deliberately keyed only on viewAsInvestigator (not summary), so this
-  // never fires while the admin is browsing normally and picks their own
-  // site filter (which also triggers a summary refetch).
+  // Keyed only on viewAsInvestigator (not summary) so this doesn't fire during normal admin site-filter browsing.
   useEffect(() => {
     if (!viewAsInvestigator) setSiteFilter("");
   }, [viewAsInvestigator]);
-  // Once that investigator's data comes back, the Site filter reflects their
-  // real site instead of "All Sites" — the Investigator filter pill itself
-  // is hidden entirely while in this view (rendered further down), since
-  // picking a different investigator here would fight the header's own
-  // control (2026-08-21, per the user).
+  // Site filter is set to the investigator's real site once their data arrives.
   useEffect(() => {
     if (!viewAsInvestigator || !summary) return;
     const site = summary.investigations.find((inv) => inv.investigator === viewAsInvestigator)?.site;
@@ -555,10 +380,7 @@ export function ActionCenterPage() {
     };
   }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, showCancelled, criticalityFilter]);
 
-  // Only show the full-page skeleton on the very first load. Once we have a
-  // summary, a filter-driven refetch just dims the existing content in place
-  // (see the opacity below) instead of unmounting everything — avoids the
-  // jarring full-page reload feel on every filter change.
+  // Full-page skeleton only on first load — later refetches just dim existing content instead of unmounting.
   if (loading && !summary) {
     return (
       <div className="ac-page-bg">
@@ -575,15 +397,7 @@ export function ActionCenterPage() {
     return <DbErrorModal message={dbError ?? "No data returned."} onRetry={() => setRetryKey((k) => k + 1)} />;
   }
 
-  // Selecting an L5-L1 card narrows the event-type pill counts/percentages
-  // the same way selecting an event type already narrows the status cards
-  // via status_cards_by_event_type (2026-08-25, per the user) — computed
-  // client-side from the same already-fetched summary.investigations list
-  // the table itself filters, rather than a new backend field, since every
-  // investigation's event_type/bucket is already right there. Unassigned/
-  // Phase 1/Phase 2 are excluded from this (2026-09-07, per the user) — they
-  // still filter the table and the other status cards, just not the
-  // event-type pills above.
+  // Selecting a level card narrows event-type pill counts too, computed client-side. Unassigned/Phase1/Phase2 are excluded from this back-filter.
   const _NO_EVENT_TYPE_BACKFILTER = new Set(["unassigned", "phase1", "phase2"]);
   const eventTypePillStatusFilter = statusFilter && !_NO_EVENT_TYPE_BACKFILTER.has(statusFilter) ? statusFilter : null;
   const statusFilteredInvestigations = summary.investigations.filter(
@@ -594,38 +408,12 @@ export function ActionCenterPage() {
     return {
       ...s,
       count,
-      // Rounded to 1 decimal place (2026-09-08, per the user) — was a whole
-      // number before.
       percent: statusFilteredInvestigations.length > 0 ? Math.round((count / statusFilteredInvestigations.length) * 1000) / 10 : 0,
     };
   });
 
-  // Record ID + RCI ID is a composite key for this table (2026-09-10, per
-  // the user) — a deviation_id with more than one rci_id now shows as one
-  // row PER rci_id instead of a single row listing all of them
-  // comma-joined. Only ever splits (never merges/drops): every other list
-  // (KPI cards, status cards, event-type counts) still reads directly off
-  // summary.investigations, so this doesn't inflate any of those real
-  // investigation-count totals — it's scoped to just this table's own rows.
-  // [BUGFIX 2026-09-15] Each exploded row must show ITS OWN rci_id's
-  // investigator (investigator_by_rci, keyed by rci_id), not the single
-  // `investigator` value shared by every exploded row of the same
-  // deviation_id — that was the actual bug: two different RCIs under the
-  // same investigation can have two different investigators, and the old
-  // code showed whichever one the backend's dedup happened to pick for
-  // BOTH rows. Falls back to `investigator` only when the map has no entry
-  // at all for that rci_id (e.g. no rci_key on that underlying row).
-  const explodedInvestigations: InvestigationRowResponse[] = summary.investigations.flatMap((inv) =>
-    inv.rci_ids.length > 1
-      ? inv.rci_ids.map((rciId) => ({
-          ...inv,
-          rci_ids: [rciId],
-          investigator: rciId in inv.investigator_by_rci ? inv.investigator_by_rci[rciId] : inv.investigator,
-        }))
-      : [inv]
-  );
-
-  const visibleInvestigations = explodedInvestigations
+  // Rows are one per real investigation — a multi-RCI investigation is a single row that expands into an accordion (see expandedIds) rather than being exploded one-per-rci_id.
+  const visibleInvestigations = summary.investigations
     .filter((inv) => !activeFilter || inv.event_type === activeFilter)
     .filter((inv) => !statusFilter || matchesStatusCard(inv, statusFilter))
     .filter((inv) => {
@@ -653,38 +441,25 @@ export function ActionCenterPage() {
         if (bucketDiff !== 0) return bucketDiff;
         return compareForSort(parseDisplayDateMs(a.due_date), parseDisplayDateMs(b.due_date), "asc");
       });
-  // All 4 status cards always show, even when scoped to one investigator (via
-  // the filter dropdown or the header's "view as" demo control) who happens to
-  // have zero investigations in a given bucket — a zero count is still shown
-  // rather than the card disappearing (2026-08-21, per the user; previously
-  // "Unassigned" was hidden entirely for investigator views).
-  // Clicking one status card (Unassigned/Phase 1/Phase 2/L5-L1) narrows
-  // every OTHER card's own displayed count too (2026-09-07, per the user) —
-  // same "selecting one filter recomputes the rest" pattern as
-  // statusFilteredInvestigations above, since these are independent
-  // dimensions now (an investigation can be both Unassigned and L1), not a
-  // partition — e.g. clicking Unassigned should show how many of THOSE are
-  // L1 vs L2, not just repeat the unscoped L1/L2 totals. When no status
-  // filter is active this recomputes to the same number the backend
-  // already sent, just via the same matchesStatusCard logic the table uses.
+  // Status cards always show even at a zero count, rather than disappearing.
+  // Clicking one status card narrows every other card's own count too, since these are independent dimensions (not a partition).
   const eventTypeScopedInvestigations = summary.investigations.filter((inv) => !activeFilter || inv.event_type === activeFilter);
+  // L1-L5 are mutually exclusive — cross-narrowing one level's count by another selected level would always be 0, so skip narrowing when both are levels.
+  const isLevelKey = (key: string) => /^L[1-5]$/.test(key);
   const statusCards = (activeFilter ? summary.status_cards_by_event_type[activeFilter] ?? summary.status_cards : summary.status_cards).map(
-    (card) => ({
-      ...card,
-      // Recomputed against assignmentFilter too (2026-09-08, per the user)
-      // — selecting Assigned/Unassigned via the Status pill now narrows
-      // L5-L1's own displayed counts the same way statusFilter already did,
-      // instead of always showing the full per-level total regardless of
-      // which assignment state is selected. A no-op when assignmentFilter
-      // is "all" (its default/reset value), so this doesn't change anything
-      // for OOS/OOT, which never shows that pill.
-      count: eventTypeScopedInvestigations.filter(
-        (inv) =>
-          matchesStatusCard(inv, card.key) &&
-          (!statusFilter || matchesStatusCard(inv, statusFilter)) &&
-          (assignmentFilter === "all" || (inv.bucket === "unassigned") === (assignmentFilter === "unassigned"))
-      ).length,
-    })
+    (card) => {
+      const sameLevelDimension = isLevelKey(card.key) && isLevelKey(statusFilter ?? "");
+      return {
+        ...card,
+        // Also narrowed by assignmentFilter — a no-op when it's "all" (OOS/OOT never shows that pill).
+        count: eventTypeScopedInvestigations.filter(
+          (inv) =>
+            matchesStatusCard(inv, card.key) &&
+            (!statusFilter || sameLevelDimension || matchesStatusCard(inv, statusFilter)) &&
+            (assignmentFilter === "all" || (inv.bucket === "unassigned") === (assignmentFilter === "unassigned"))
+        ).length,
+      };
+    }
   );
   const chartData = summary.chart.map((c) => ({ label: c.label, onTrack: c.on_track, atRisk: c.at_risk, delayed: c.delayed }));
 
@@ -692,13 +467,7 @@ export function ActionCenterPage() {
   const currentPage = Math.min(page, totalPages);
   const pagedInvestigations = sortedInvestigations.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  // Card View's grouped sections — built from every sorted+filtered
-  // investigation, not just the current page, since a group split across
-  // pages would show as incomplete/duplicated sections. Grouping and
-  // List View's pagination are mutually exclusive views of the same data,
-  // matching the Figma mock (no pager shown alongside grouped cards). "all"
-  // is a single unnamed group — Card View renders it as one flat grid, no
-  // section header (see the "all" branch in the render below).
+  // Built from every filtered investigation, not just the current page — a group split across pages would look incomplete.
   const groupedInvestigations: { name: string; items: InvestigationRowResponse[] }[] = (() => {
     if (groupBy === "all") return [{ name: "", items: sortedInvestigations }];
     const groups = new Map<string, InvestigationRowResponse[]>();
@@ -731,13 +500,8 @@ export function ActionCenterPage() {
     setPage(1);
   }
 
-  // SIT-only "Remark" column — autosaves on blur (no explicit Save button;
-  // this is a lightweight per-row notes field in a table, not a full-page
-  // edit like Problem Statement's). rowKey mirrors the table row's own
-  // composite key (`${inv.id}-${inv.rci_ids[0] ?? ""}`) so a deviation with
-  // multiple RCI IDs keeps each exploded row's draft independent.
-  async function saveRemark(inv: InvestigationRowResponse, rowKey: string, value: string) {
-    const rciId = inv.rci_ids[0] ?? "";
+  // Autosaves on blur. rowKey mirrors the row's composite key (`${inv.id}-${rciId}`) so each accordion sub-row's draft stays independent.
+  async function saveRemark(inv: InvestigationRowResponse, rciId: string, rowKey: string, value: string) {
     const previouslySaved = inv.remarks[rciId] ?? "";
     if (value === previouslySaved) return;
     setRemarkSaving((prev) => ({ ...prev, [rowKey]: true }));
@@ -749,6 +513,15 @@ export function ActionCenterPage() {
     } finally {
       setRemarkSaving((prev) => ({ ...prev, [rowKey]: false }));
     }
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
@@ -785,9 +558,7 @@ export function ActionCenterPage() {
           <span className="ac-inv-tag">Start date: {inv.start_date ?? "—"}</span>
           <span className="ac-inv-tag">Due date: {inv.due_date ?? "—"}</span>
         </div>
-        {/* Redundant once cards are already grouped by investigator — that
-            group's own header already names them (2026-09-10, per the
-            user) — still shown when grouped by product or ungrouped. */}
+        {/* Hidden when already grouped by investigator — that group header already names them. */}
         {inv.investigator && groupBy !== "investigator" && (
           <div className="ac-inv-investigator-row">
             <span className="ac-inv-avatar">{initials}</span>
@@ -827,10 +598,7 @@ export function ActionCenterPage() {
               ? "SIT Dashboard"
               : "Action Center"}
         </h1>
-        {/* Top-right "last updated" stamp (2026-09-09, per the user) —
-            fact_qms_event.pg_updated_at_timestamp, the same single flat
-            bulk-load stamp already documented on InvestigationRow.updated_at
-            below. */}
+        {/* fact_qms_event.pg_updated_at_timestamp — a flat bulk-load stamp, same value on every row. */}
         {formatLastUpdated(summary.last_updated_at) && (
           <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
             {formatLastUpdated(summary.last_updated_at)}
@@ -838,19 +606,9 @@ export function ActionCenterPage() {
         )}
       </div>
 
-      {/* 5 equal-width KPI cards — Open Investigations plus one per event
-          type, each with its own monthly bar chart + MoM trend (SIT
-          Dashboard Figma, 2026-09-04, per the user) — replaces the old
-          single "Open Investigations" card + flat stat-pill row. Open
-          Investigations itself is dropped entirely for the Investigator
-          role (2026-09-09, per the user) — it's a cross-investigator total,
-          meaningless once the whole page is already scoped to one person's
-          own investigations — so the row becomes 4 equal columns instead of
-          5 for that role. */}
+      {/* Open Investigations card is dropped for the Investigator role — it's a cross-investigator total, meaningless when already scoped to one person. */}
       <div className="ac-kpi-row" style={isInvestigatorRole ? { gridTemplateColumns: "repeat(4, 1fr)" } : undefined}>
-        {/* Open Investigations resets back to the all-types default view
-            (2026-09-07, per the user) — the other 4 cards scope down to one
-            event type, this one clears that scope. */}
+        {/* Clears the event-type scope back to the all-types default view. */}
         {!isInvestigatorRole && (
           <div
             className={`ac-kpi-card neutral ${activeFilter === null ? "active" : ""}`}
@@ -862,7 +620,7 @@ export function ActionCenterPage() {
             <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
             <div className="ac-kpi-card-count">{summary.total_investigations}</div>
             <div className="ac-kpi-card-subtitle">4 event types · 6-step workflow</div>
-            {renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
+            {!viewAsInvestigator && renderKpiChart(summary.opened_trend, "Opened / month", "neutral", true)}
           </div>
         )}
         {eventTypeCounts.map((s) => (
@@ -875,16 +633,19 @@ export function ActionCenterPage() {
             <div className="ac-kpi-card-header">{s.label.toUpperCase()}</div>
             <div className="ac-kpi-card-count">{s.count}</div>
             <div className="ac-kpi-card-subtitle">{s.percent}% of open</div>
-            {renderKpiChart(s.closed_trend, "Closed / month")}
+            {!isInvestigatorRole && !viewAsInvestigator && renderKpiChart(s.closed_trend, "Closed / month")}
           </div>
         ))}
       </div>
 
-      {/* Unassigned only splits into its own row above L5-L1 when Phase
-          1/Phase 2 are also present (i.e. scoped to OOS/OOT) — every other
-          selection keeps all 6 cards in one line (2026-09-07, per the
-          user). */}
+      {/* Unassigned splits into its own row only when Phase 1/Phase 2 are present (OOS/OOT scope). */}
       {(() => {
+        // Sourced from summary.investigations (one row per real investigation), scoped to the active event-type pill + status card.
+        const scopedForAssignmentCounts = eventTypeScopedInvestigations
+          .filter((inv) => !statusFilter || matchesStatusCard(inv, statusFilter));
+        const unassignedCount = scopedForAssignmentCounts.filter((inv) => inv.bucket === "unassigned").length;
+        const assignedCount = scopedForAssignmentCounts.length - unassignedCount;
+
         const topRowKeys = new Set(["unassigned", "phase1", "phase2"]);
         const topRow = statusCards.filter((c) => topRowKeys.has(c.key));
         const levelRow = statusCards.filter((c) => !topRowKeys.has(c.key));
@@ -895,22 +656,15 @@ export function ActionCenterPage() {
           return (
             <div
               className="ac-status-row"
-              // Status gets 1.5x a level card's width (2026-09-08, per the
-              // user — dialed back from 2fr, which read as too big) so its
-              // segmented All/Assigned/Unassigned control has a bit more
-              // room to stretch out than a single level card's 1fr.
+              // Status gets 1.5x a level card's width so its segmented control has room to stretch.
               style={{ gridTemplateColumns: `1.5fr repeat(${levelOnlyCards.length}, 1fr)` }}
             >
-              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
+              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter, assignedCount, unassignedCount)}
               {levelOnlyCards.map((card, idx) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter, idx === 0))}
             </div>
           );
         }
-        // OOS/OOT: Phase 1/Phase 2 keep their own row above (unchanged); the
-        // Status pill now shares the L5-L1 row below instead, same as the
-        // Deviation/Market Complaint/no-filter layout above — with the same
-        // 1.5fr multiplier and dividerBefore rule marking it off from the
-        // level cards (2026-09-11, per the user).
+        // OOS/OOT: Phase1/Phase2 keep their own row; Status pill shares the L5-L1 row below, same 1.5fr layout as above.
         const topRowWithoutUnassigned = topRow.filter((c) => c.key !== "unassigned");
         return (
           <>
@@ -924,7 +678,7 @@ export function ActionCenterPage() {
               className="ac-status-row"
               style={{ gridTemplateColumns: `1.5fr repeat(${levelRow.length}, 1fr)` }}
             >
-              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter)}
+              {renderAssignmentFilterCard(assignmentFilter, setAssignmentFilter, assignedCount, unassignedCount)}
               {levelRow.map((card, idx) => renderStatusCard(card, statusFilter, setStatusCardFilter, activeFilter, idx === 0))}
             </div>
           </>
@@ -936,15 +690,9 @@ export function ActionCenterPage() {
         <h2 className="ac-section-title" style={{ marginBottom: 12 }}>Pending Actions</h2>
         <div className="ac-pending-grid">
             {summary!.pending_actions.map((action) => {
-              // Pending actions carry a summary shape (no investigator/stage)
-              // — look up the matching full row from summary.investigations
-              // (same source list backend-side) to build the same
-              // PreviewInvestigation the table/grid rows use.
+              // Look up the full row from summary.investigations to build a PreviewInvestigation.
               const fullInvestigation = summary!.investigations.find((inv) => inv.id === action.id);
-              // Fixed two-row layout: row 1 = OOS, row 2 = Deviation (see
-              // action_center.py) — explicit gridRow so the split stays
-              // correct even when one side has fewer than 3 cards, rather
-              // than letting grid auto-placement slide the next group up.
+              // Explicit gridRow (row 1 = OOS, row 2 = Deviation) keeps the split correct even with fewer than 3 cards per side.
               const gridRow = action.event_type === "OOS" ? 1 : 2;
               return (
                 <div
@@ -985,20 +733,9 @@ export function ActionCenterPage() {
       </div>
       )}
 
-      {/* Filters section — criticality toggle, dropdown filters, and search
-          all live here now, separate from the Investigation Details table
-          below (SIT Dashboard Figma, 2026-09-04, per the user) — previously
-          all of this, plus the table itself, shared one card. */}
       <div className="ac-card">
-        {/* Search + every filter now share one line, search shortened and
-            pinned to the left with the whole filter group shifted to its
-            right (2026-09-09, per the user) — previously the search bar
-            was its own full-width row below this one. */}
         <div className="ac-details-header" style={{ flexWrap: "nowrap" }}>
-          {/* flex: 1 (2026-09-09, per the user) — expands to fill the space
-              up to the filter group instead of stopping at a short fixed
-              width, so the row reads as one unbroken line with no dead gap
-              between the search bar and the filters. */}
+          {/* flex: 1 fills space up to the filter group so there's no dead gap before it. */}
           <div className="ac-search-row" style={{ marginBottom: 0, flex: 1 }}>
             <div className="ac-search-input-wrap">
               <img src={iconSearch} alt="" width={16} height={16} />
@@ -1109,10 +846,7 @@ export function ActionCenterPage() {
                   formatOption={formatInvestigatorLabel}
                 />
               )}
-              {/* Button removed (2026-08-25, per the user: never show cancelled
-                  deviations) — showCancelled/setShowCancelled and the
-                  status: "cancelled" query branch are kept as-is below, just
-                  unreachable with no way to toggle this on. */}
+              {/* Cancelled deviations are never shown; showCancelled/setShowCancelled stay wired but unreachable. */}
               {false && (
                 <button
                   type="button"
@@ -1158,8 +892,7 @@ export function ActionCenterPage() {
           </div>
         </div>
 
-        {/* Card View's group-by toggle (SIT Dashboard Figma, 2026-09-04, per
-            the user) — no List View equivalent, matches the Figma mock. */}
+        {/* Group-by toggle — Card View only, no List View equivalent. */}
         {viewMode === "grid" && (
           <div className="ac-details-header" style={{ marginTop: -8 }}>
             <div className="ac-criticality-toggle">
@@ -1212,39 +945,48 @@ export function ActionCenterPage() {
               </tr>
             </thead>
             <tbody>
-              {pagedInvestigations.map((inv) => {
+              {pagedInvestigations.flatMap((inv) => {
                 const percent = Math.round((inv.stage / inv.total_stages) * 100);
                 const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
-                const rowKey = `${inv.id}-${inv.rci_ids[0] ?? ""}`;
-                const remarkValue = remarkDrafts[rowKey] ?? inv.remarks[inv.rci_ids[0] ?? ""] ?? "";
-                return (
+                const hasMultipleRci = inv.rci_ids.length > 1;
+                const isExpanded = expandedIds.has(inv.id);
+                const primaryRciId = inv.rci_ids[0] ?? "";
+                const rowKey = `${inv.id}-${primaryRciId}`;
+                const remarkValue = remarkDrafts[rowKey] ?? inv.remarks[primaryRciId] ?? "";
+
+                const summaryRow = (
                   <tr
-                    key={rowKey}
+                    key={inv.id}
                     className={`ac-inv-row ${eventTypeAccentClass(inv.event_type)}`}
-                    onClick={() => setPreviewInvestigation(toPreview(inv))}
+                    onClick={() => (hasMultipleRci ? toggleExpanded(inv.id) : setPreviewInvestigation(toPreview(inv)))}
                     style={{ cursor: "pointer" }}
                   >
                     <td>
                       <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
                         <span className={`ac-badge ${eventTypeAccentClass(inv.event_type)}`}>{inv.event_type}</span>
-                        {/* Major/Minor/Non-Critical flag reintroduced (2026-09-11,
-                            per the user) — driven by event_classification, the new
-                            data-engineer-provided field. Always rendered AFTER the
-                            event-type badge (2026-09-11, per the user), same as the
-                            existing Critical badge right below. */}
                         {(() => {
                           const flag = classificationFlag(inv);
                           return flag && <span className={`ac-badge ${flag.className}`}>{flag.label}</span>;
                         })()}
                         {inv.criticality === "Critical" && <span className="ac-badge critical">Critical</span>}
                       </div>
-                      <div className="ac-inv-id">{inv.id}{inv.rci_ids.length > 0 ? ` / ${inv.rci_ids.join(", ")}` : ""}</div>
+                      <div className="ac-inv-id" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {inv.id}
+                        {inv.rci_ids.length > 0 ? ` / ${inv.rci_ids.join(", ")}` : ""}
+                        {hasMultipleRci && (
+                          <span aria-hidden style={{ fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
+                            {isExpanded ? "▾" : "▸"}
+                          </span>
+                        )}
+                      </div>
                       <div className="ac-inv-title">{inv.title}</div>
                     </td>
                     <td>{inv.product ?? "—"}</td>
-                    <td>{inv.investigator ?? "Unassigned"}</td>
+                    <td>{hasMultipleRci ? "—" : inv.investigator ?? "Unassigned"}</td>
                     <td className="ac-progress-cell">
-                      {inv.is_cancelled ? (
+                      {hasMultipleRci ? (
+                        "—"
+                      ) : inv.is_cancelled ? (
                         <span className="status-pill cancelled">Cancelled</span>
                       ) : (
                         <>
@@ -1272,21 +1014,27 @@ export function ActionCenterPage() {
                     </td>
                     {canViewRemarks && (
                       <td onClick={(e) => e.stopPropagation()}>
-                        <textarea
-                          className="ac-remark-input"
-                          rows={2}
-                          placeholder={canEditRemarks ? "Add a remark…" : "No remark yet"}
-                          value={remarkValue}
-                          readOnly={!canEditRemarks}
-                          title={!canEditRemarks ? "Only the SIT role can edit remarks" : undefined}
-                          onChange={canEditRemarks ? (e) => setRemarkDrafts((prev) => ({ ...prev, [rowKey]: e.target.value })) : undefined}
-                          onBlur={canEditRemarks ? (e) => saveRemark(inv, rowKey, e.target.value) : undefined}
-                        />
-                        {canEditRemarks && remarkSaving[rowKey] && (
-                          <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>Saving…</p>
-                        )}
-                        {canEditRemarks && remarkErrors[rowKey] && (
-                          <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-danger-text)" }}>{remarkErrors[rowKey]}</p>
+                        {hasMultipleRci ? (
+                          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>See below</span>
+                        ) : (
+                          <>
+                            <textarea
+                              className="ac-remark-input"
+                              rows={2}
+                              placeholder={canEditRemarks ? "Add a remark…" : "No remark yet"}
+                              value={remarkValue}
+                              readOnly={!canEditRemarks}
+                              title={!canEditRemarks ? "Only the SIT role can edit remarks" : undefined}
+                              onChange={canEditRemarks ? (e) => setRemarkDrafts((prev) => ({ ...prev, [rowKey]: e.target.value })) : undefined}
+                              onBlur={canEditRemarks ? (e) => saveRemark(inv, primaryRciId, rowKey, e.target.value) : undefined}
+                            />
+                            {canEditRemarks && remarkSaving[rowKey] && (
+                              <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>Saving…</p>
+                            )}
+                            {canEditRemarks && remarkErrors[rowKey] && (
+                              <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-danger-text)" }}>{remarkErrors[rowKey]}</p>
+                            )}
+                          </>
                         )}
                       </td>
                     )}
@@ -1294,17 +1042,90 @@ export function ActionCenterPage() {
                       <button
                         type="button"
                         className="ac-row-arrow"
-                        aria-label={`Preview ${inv.id}`}
+                        aria-label={hasMultipleRci ? `Toggle ${inv.id}` : `Preview ${inv.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setPreviewInvestigation(toPreview(inv));
+                          if (hasMultipleRci) toggleExpanded(inv.id);
+                          else setPreviewInvestigation(toPreview(inv));
                         }}
                       >
-                        <img src={iconRowArrow} alt="" width={14} height={14} style={{ transform: "rotate(180deg)" }} />
+                        <img
+                          src={iconRowArrow}
+                          alt=""
+                          width={14}
+                          height={14}
+                          style={{ transform: hasMultipleRci ? (isExpanded ? "rotate(90deg)" : "rotate(0deg)") : "rotate(180deg)" }}
+                        />
                       </button>
                     </td>
                   </tr>
                 );
+
+                if (!hasMultipleRci || !isExpanded) return [summaryRow];
+
+                // One sub-row per rci_id; title/product/dates/status stay blank since they're already shown on the summary row above.
+                const subRows = inv.rci_ids.map((rciId) => {
+                  const subRowKey = `${inv.id}-${rciId}`;
+                  const subRemarkValue = remarkDrafts[subRowKey] ?? inv.remarks[rciId] ?? "";
+                  const subInvestigator = rciId in inv.investigator_by_rci ? inv.investigator_by_rci[rciId] : inv.investigator;
+                  return (
+                    <tr
+                      key={subRowKey}
+                      className={`ac-inv-row ac-inv-subrow ${eventTypeAccentClass(inv.event_type)}`}
+                      onClick={() =>
+                        setPreviewInvestigation(toPreview({ ...inv, rci_ids: [rciId], investigator: subInvestigator }))
+                      }
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td style={{ paddingLeft: 32 }}>
+                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>↳ RCI {rciId}</span>
+                      </td>
+                      <td>—</td>
+                      <td>{subInvestigator ?? "Unassigned"}</td>
+                      <td className="ac-progress-cell">
+                        {inv.is_cancelled ? (
+                          <span className="status-pill cancelled">Cancelled</span>
+                        ) : (
+                          <>
+                            <div className="ac-progress-top">
+                              <span>{inv.stage}/{inv.total_stages} steps</span>
+                              <span>{percent}%</span>
+                            </div>
+                            <div className="ac-progress-track">
+                              <div className="ac-progress-fill" style={{ width: `${percent}%` }} />
+                            </div>
+                          </>
+                        )}
+                      </td>
+                      <td>—</td>
+                      <td>—</td>
+                      <td>—</td>
+                      {canViewRemarks && (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <textarea
+                            className="ac-remark-input"
+                            rows={2}
+                            placeholder={canEditRemarks ? "Add a remark…" : "No remark yet"}
+                            value={subRemarkValue}
+                            readOnly={!canEditRemarks}
+                            title={!canEditRemarks ? "Only the SIT role can edit remarks" : undefined}
+                            onChange={canEditRemarks ? (e) => setRemarkDrafts((prev) => ({ ...prev, [subRowKey]: e.target.value })) : undefined}
+                            onBlur={canEditRemarks ? (e) => saveRemark(inv, rciId, subRowKey, e.target.value) : undefined}
+                          />
+                          {canEditRemarks && remarkSaving[subRowKey] && (
+                            <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>Saving…</p>
+                          )}
+                          {canEditRemarks && remarkErrors[subRowKey] && (
+                            <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-xs)", color: "var(--color-danger-text)" }}>{remarkErrors[subRowKey]}</p>
+                          )}
+                        </td>
+                      )}
+                      <td />
+                    </tr>
+                  );
+                });
+
+                return [summaryRow, ...subRows];
               })}
             </tbody>
           </table>
@@ -1334,9 +1155,7 @@ export function ActionCenterPage() {
           </div>
         )}
 
-        {/* Card View's groups always show every matching investigation, not
-            a page at a time (see groupedInvestigations above) — pagination
-            only applies to the flat List View table. */}
+        {/* Pagination only applies to List View — Card View always shows every matching investigation. */}
         {viewMode === "list" && (
           <div className="ac-pagination">
             <button

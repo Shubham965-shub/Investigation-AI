@@ -6,16 +6,7 @@ const MESSAGE: Record<ScoringReason, string> = {
   final_attempt: "This is the final upload attempt — no further review is possible, and it's being scored now.",
 };
 
-// Shown while a report is being scored — i.e. the in-flight request that
-// just finalized/locked a report (a gospel or final-attempt upload, or the
-// decision that resolved the last pending recommendation) is also running
-// DS's rubric scoring synchronously server-side (2026-08-18, per the user).
-// Not dismissable — it's just progress feedback for a request already under
-// way, same non-cancelable spirit as the "Uploading…"/"Saved" states
-// elsewhere in these modules. `reason` is determined client-side, from the
-// state as of the moment the triggering action was submitted, so the
-// message never misrepresents whether recommendations were actually all
-// decided or this was a no-critique gospel/final-attempt upload instead.
+// Shown while the finalizing request also runs DS's rubric scoring server-side. Not dismissable; `reason` is fixed client-side at submit time so the message can't misrepresent which finalize path triggered it.
 export function ScoringDialog({ reason }: { reason: ScoringReason }) {
   return (
     <>

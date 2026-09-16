@@ -1,10 +1,4 @@
-"""Schemas for the RCI Report module (step 7 of 7) — proxies ds's real
-POST /rci-report/generate. Field names/types below are copied verbatim from
-ds's own schemas (ds/src/agents/rci_report/api/schemas/{define,
-measure_analyze,improve_control,common,response}.py, re-read directly
-2026-08-21) rather than imported across the service boundary — same
-convention rc_capa_critique.py already uses for its own shapes.
-"""
+"""Schemas for the RCI Report module (step 7 of 7); field names/types are copied verbatim from ds's own schemas rather than imported across the service boundary."""
 from __future__ import annotations
 
 import datetime
@@ -18,9 +12,7 @@ from backend.schemas.common import EventType
 # ── Shared primitives (ds's common.py) ──────────────────────────────────
 
 class SourcedText(BaseModel):
-    """Cross-cutting primitive for fields TrackWise doesn't back for every
-    event type. Renders an explicit manual-entry state instead of a
-    silently blank string."""
+    """For fields TrackWise doesn't back for every event type; renders an explicit manual-entry state instead of a blank string."""
     value: str
     source: Literal["trackwise", "manual_entry_required", "manual_entry_provided", "synthesized"]
 
@@ -69,9 +61,7 @@ class ApprovalSection(BaseModel):
 # ── 1. Executive Summary / Description / Initial Impact (ds's define.py) ─
 
 class ExecutiveSummarySection(BaseModel):
-    # Each field is a list of bullet-point strings, not one prose string
-    # (2026-09-10, per the user: broken into bullets for readability) —
-    # mirrors ds's own ExecutiveSummarySection (define.py) exactly.
+    # Each field is a list of bullet-point strings, not one prose string.
     summary: List[str]
     problem_description: List[str]
     immediate_containment_action: List[str]
@@ -133,12 +123,7 @@ class HistoryReviewRow(BaseModel):
 
 class HistoryReviewSection(BaseModel):
     lookback_months: int
-    # Optional (not required) — added after some RCI Reports were already
-    # generated and persisted without it; a required field here would 500 on
-    # GET for every one of those older stored reports, not just block new
-    # generation (2026-08-26, found via a live 500 on record_id=503442,
-    # whose report predates this field). ds still always populates a real
-    # value for freshly-generated reports.
+    # Optional since older persisted reports predate this field — required here would 500 on GET for those.
     search_scope_note: Optional[str] = None
     rows: List[HistoryReviewRow]
     no_similar_events_found: bool
@@ -329,15 +314,7 @@ class CAPAEffectivenessCheckPlanSection(BaseModel):
 
 class RciReportSections(BaseModel):
     event_type: str
-    # Every section is Optional on ds's own RciReportResponse — ds skips a
-    # section (leaving it None) rather than failing the whole request when a
-    # required TrackWise field is blank, or when a section it depends on was
-    # itself skipped (2026-08-24, found live: a Market Complaint missing
-    # 'complaint_reported_by'/'impact_details'/'correction_or_remedial_action'
-    # nulled out 6 of the 11 sections). Mirrored here the same way, since
-    # treating them as required made `RciReportSections(**data)` raise on any
-    # real ds response with a skipped section — an unrelated data gap must
-    # never break the sections that DID generate.
+    # Every section is Optional — ds skips a section (None) rather than failing the whole request on a blank field or skipped dependency.
     executive_summary: Optional[ExecutiveSummarySection] = None
     description_of_event: Optional[DescriptionOfEventSection] = None
     initial_impact_assessment: Optional[InitialImpactAssessmentSection] = None
@@ -351,10 +328,7 @@ class RciReportSections(BaseModel):
     capa_effectiveness_check_plan: Optional[CAPAEffectivenessCheckPlanSection] = None
     annexures: AnnexuresSection = Field(default_factory=AnnexuresSection)
     approval: ApprovalSection = Field(default_factory=ApprovalSection)
-    # Keyed by section field name — ds's explanation for why that section is
-    # None (a blank required TrackWise field, or a skipped dependency).
-    # Surfaced on the frontend so the investigator knows to go fill the
-    # field rather than assuming generation itself is broken.
+    # Keyed by section field name — ds's explanation for why that section is None, surfaced so investigators know to fill the field.
     errors: Dict[str, str] = Field(default_factory=dict)
 
 

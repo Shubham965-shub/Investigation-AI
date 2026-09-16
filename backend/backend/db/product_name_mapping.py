@@ -1,25 +1,14 @@
-"""Reviewed product-name standardization mapping for Action Center's Product
-column (2026-09-10, per the user).
-
-The Open Investigations table's Product column showed 152 distinct raw
-strings for what turned out to be ~96 real products — the same drug/strength
-entered under wildly different conventions across dim_product.name_of_material
-(raw SAP-style material codes alongside human-readable names) and this app's
-own title-extraction fallback (_extract_product_from_title in
-routers/action_center.py). Reviewed and approved by the user against a
-full clustering + confidence-tier writeup (every merge only joins the same
-drug at the same strength/form — nothing merged across strengths).
+"""Product-name standardization mapping for Action Center's Product column —
+~152 raw strings collapse to ~96 real products (merges only join the same
+drug at the same strength/form; nothing merged across strengths).
 
 STATUS: approved, NOT YET WIRED into _resolve_product()/the summary endpoint
-— kept here for reference until that wiring is done. When it is: look up the
-raw product string in PRODUCT_NAME_CANONICAL and use the mapped value if
-present, otherwise fall back to the raw string unchanged.
+— when wired, look up the raw string in PRODUCT_NAME_CANONICAL, falling back
+to the raw string unchanged if absent.
 
-One exception already flagged as a real bug, not a naming variant: the
-Famotidine 40mg/5mL entries include two raw strings with a stability-test
-condition ("N25°C/ 60%RH" / "N30°C/ 75%RH") wrongly baked into the product
-name by _extract_product_from_title's own regex — that should be fixed in
-the extraction regex directly, not just papered over by this mapping.
+One flagged bug, not a naming variant: two Famotidine 40mg/5mL entries have a
+stability-test condition baked into the product name by
+_extract_product_from_title's regex — fix the regex, not just this mapping.
 """
 from __future__ import annotations
 
@@ -84,7 +73,7 @@ PRODUCT_NAME_CANONICAL: dict[str, str] = {
     "Dutasteride Capsules [0.5mg] [Soft Gelatin]": "Dutasteride Capsules 0.5mg (SGC)",
     "DutasterideCap,0.5mgSG,3x10sPOSVITEL-MX": "Dutasteride Capsules 0.5mg (SGC)",
     "Extended Phenytoin Sod Cap USP-100mg--EX": "Extended Phenytoin Sodium Capsules USP 100mg",
-    # BUG, not just a naming variant: the last two entries have a stability-test condition ("N25°C/60%RH") wrongly baked into the product name by my own title-extraction fallback — recommend fixing the extraction regex to strip this, not just mapping it here.
+    # BUG: stability-test condition baked into these two entries by the title-extraction regex — fix the regex, not just this mapping.
     "Famotidine for OS 40mg/5mL": "Famotidine for Oral Suspension USP 40mg/5mL",
     "Famotidine oral suspension 40mG/5ML": "Famotidine for Oral Suspension USP 40mg/5mL",
     "N25°C/ 60%RH Famotidine for ORS USP 40 mg/5 mL": "Famotidine for Oral Suspension USP 40mg/5mL",
@@ -112,7 +101,7 @@ PRODUCT_NAME_CANONICAL: dict[str, str] = {
     "MMF ORS USP 200mg/ml": "MMF (Mycophenolate Mofetil) for Oral Suspension USP 200mg/mL",
     # Different Macrogol formulation (no electrolytes) — kept separate from Macrogol Plus Electrolytes below.
     "Macrogol 4000[10g] [Sachets]POS": "Macrogol 4000 10g Sachets",
-    # 13.7/13.71/13.72g treated as the same standard sachet dose across markets/brands (EU, STADA, Macrovic). Medium confidence on the 2 entries lacking an explicit gram figure (grouped by "Plus Electrolyt(es)" naming).
+    # 13.7/13.71/13.72g treated as the same sachet dose across markets/brands; medium confidence on the 2 entries with no explicit gram figure.
     "Macrogol Elektrolyte 13,7 g/Powder": "Macrogol Plus Electrolytes ~13.7g",
     "Macrogol Natural [13.71g] [Sachets]": "Macrogol Plus Electrolytes ~13.7g",
     "Macrogol Plus Electrolyt [Pow for OS] EU": "Macrogol Plus Electrolytes ~13.7g",
@@ -148,7 +137,7 @@ PRODUCT_NAME_CANONICAL: dict[str, str] = {
     "PL-PEG-17G-PIONEER LIFE SCIENCES-US": "PEG 3350 Powder for Solution 17g",
     # Different pack size/strength — kept separate from the 17g group.
     "PEG 3350 powder for solution 510g (Hydralax)": "PEG 3350 Powder for Solution 510g (Hydralax)",
-    # "Bot" = bottle packaging suffix — same formulation otherwise. Kept as its own group since the electrolyte composition differs from the 17g/510g powder entries.
+    # "Bot" = bottle packaging suffix; kept separate since electrolyte composition differs from the 17g/510g powder entries.
     "PEG3350 OS 178.7/7.3/1.12/0.9/0.5g": "PEG 3350 Oral Solution 178.7/7.3/1.12/0.9/0.5g",
     "PEG3350 OS 178.7/7.3/1.12/0.9/0.5g Bot": "PEG 3350 Oral Solution 178.7/7.3/1.12/0.9/0.5g",
     "Polyoxyl 40 Castor Oil USNF/BP/Ph.Eur/IP": "Polyoxyl 40 Castor Oil USNF/BP/Ph.Eur/IP",

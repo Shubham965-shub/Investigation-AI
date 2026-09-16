@@ -4,21 +4,14 @@ import { isTokenExpired, nameFromToken, rolesFromToken } from "./jwt";
 
 interface AuthContextValue {
   username: string | null;
-  // The signed-in user's display name (athena_users.full_name, from the
-  // token's `name` claim) — null until a token exists (2026-08-18, per the
-  // user: shown in AppHeader instead of the raw username/email).
+  // Display name from the token's `name` claim (athena_users.full_name); null until a token exists.
   fullName: string | null;
-  // athena_roles.name values for the signed-in user (e.g. ["SIT"]) — empty
-  // until a token exists. Use this instead of hardcoding a specific
-  // username/email to branch UI by role.
+  // athena_roles.name values (e.g. ["SIT"]); use this rather than hardcoding a username to branch UI by role.
   roles: string[];
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  // Temporary demo control (2026-08-14, per the user) — lets the account menu
-  // simulate "what would the dashboard look like if this investigator were
-  // logged in" by driving Action Center's investigator filter, without any
-  // real re-authentication. Not persisted to localStorage — resets on reload.
+  // Demo-only: lets the account menu simulate viewing as another investigator via Action Center's filter, without real re-auth. Not persisted.
   viewAsInvestigator: string | null;
   setViewAsInvestigator: (investigator: string | null) => void;
 }
@@ -29,16 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(
     () => localStorage.getItem("auth_username")
   );
-  // Tracked separately from `username` (not just read from localStorage
-  // inline) so logging back in as the SAME username after a prior session's
-  // token expired actually triggers a re-render. If only `username` were
-  // used as the reactive trigger, `setUsername(response.username)` would be
-  // a no-op re-render-wise whenever it's the same string as the current
-  // state (React bails out of re-rendering on an unchanged primitive) — so
-  // isAuthenticated would never flip to true and the post-login redirect
-  // would never fire until a full page reload. The token is virtually
-  // guaranteed to differ on every login (fresh iat/exp claims), so it
-  // reliably triggers the update even on a repeat login as the same user.
+  // Tracked separately from `username`: re-login as the same username after expiry is a no-op for React's bail-out check, so `token` (always fresh) is what actually triggers the re-render.
   const [token, setToken] = useState<string | null>(
     () => localStorage.getItem("auth_token")
   );
@@ -51,10 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles: token ? rolesFromToken(token) : [],
       viewAsInvestigator,
       setViewAsInvestigator,
-      // A cached username alone isn't enough — the token itself may have
-      // expired (or be an old opaque placeholder from before real JWTs)
-      // since it was last set, so don't show the user as logged in based on
-      // localStorage contents that no longer represent a valid session.
+      // A cached username alone isn't enough — the token may have expired since it was stored.
       isAuthenticated: username !== null && token !== null && !isTokenExpired(token),
       login: async (usernameInput: string, password: string) => {
         const response = await loginRequest(usernameInput, password);

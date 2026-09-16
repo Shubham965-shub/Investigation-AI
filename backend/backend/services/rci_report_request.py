@@ -1,24 +1,10 @@
-"""Assembles the JSON body for ds's real POST /rci-report/generate from
-this backend's own already-stored module data — RCI Plan sections, Task
-Critique reports, and RC & CAPA Critique's locked report. Kept separate
-from the router, same separation rci_plan_export.py already models for RCI
-Plan's docx-filling logic.
-
-ds's request schema (RciReportGenerationRequest, re-read directly 2026-08-21)
-asks for a few fields this backend has no real source for yet — those are
-defaulted rather than block generation on them; see the module docstring in
-schemas/rci_report.py and the plan this was built from for the full list.
-"""
+"""Assembles the JSON body for ds's POST /rci-report/generate from this backend's stored RCI Plan/Task Critique/RC & CAPA data; fields with no real source yet are defaulted rather than blocking generation."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 
-# Per-field cap for the RC & CAPA document's own extracted text — each field feeds its own
-# separate LLM call (unlike Task Critique's per-section blocks, which get summed together into
-# one prompt), so a single generous cap is enough; 8000 comfortably covers the longest real
-# value seen live (rc_conclusion_text at 8625 chars for record 505542, itself an unusually
-# verbose critique-annotated document) while still bounding a pathological upload.
+# Per-field cap for RC & CAPA extracted text — each field feeds its own LLM call, so one generous cap bounds a pathological upload without truncating real values.
 _MAX_RC_CAPA_FIELD_CHARS = 8000
 
 
@@ -28,16 +14,11 @@ def _accepted_rc_conclusion(rc_capa_report: Optional[Dict[str, Any]]) -> Dict[st
     rc_critique = next((c for c in rc_capa_report["critiques"] if c["category"] == "rc_impact"), None)
     recs = rc_critique["recommendations"] if rc_critique else []
     any_rejected = any(r["decision"] == "rejected" for r in recs)
-    # Prefer the uploaded document's own verbatim Root Cause Conclusion text
-    # (rc_conclusion_text_raw — deterministically extracted, no LLM condensation) over the
-    # thin critique summary; falls back to summary only for rows uploaded before this column
-    # existed. Same "richer over thin" preference already established for task_findings.
+    # Prefer the verbatim extracted RC Conclusion text over the thin critique summary; falls back to summary for rows uploaded before this column existed.
     raw_text = (rc_critique.get("rc_conclusion_text_raw") if rc_critique else "") or ""
     condensed_text = (rc_critique["summary"] if rc_critique else "") or ""
     return {
         "rc_conclusion_text": _truncate(raw_text, _MAX_RC_CAPA_FIELD_CHARS) if raw_text else condensed_text,
-        # Real source now exists (extract_rci_report_sections' deterministic detection) —
-        # was always None here before 2026-08-25, since no column persisted it.
         "is_repeat_occurrence": (rc_critique.get("is_repeat_occurrence") if rc_critique else None),
         "overall_verdict": "accept_with_comments" if any_rejected else "accept",
         "review_comments": [r["description"] for r in recs],
@@ -50,17 +31,12 @@ def _accepted_capa(rc_capa_report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     capa_critique = next((c for c in rc_capa_report["critiques"] if c["category"] == "capa"), None)
     recs = capa_critique["recommendations"] if capa_critique else []
     any_rejected = any(r["decision"] == "rejected" for r in recs)
-    # capa_items now comes from the uploaded document's own real CAPA action table
-    # (deterministically parsed by extract_rci_report_sections, no LLM) — previously always
-    # empty here because no column persisted it (the old comment on this line claimed "no
-    # real accepted-CAPA-action source yet"; that's no longer true as of 2026-08-25).
     raw_text = (capa_critique.get("capa_text_raw") if capa_critique else "") or ""
     condensed_text = (capa_critique["summary"] if capa_critique else "") or ""
     return {
         "capa_items": (capa_critique.get("capa_items") if capa_critique else []) or [],
         "capa_overall_text": _truncate(raw_text, _MAX_RC_CAPA_FIELD_CHARS) if raw_text else condensed_text,
-        # interim_controls/extrapolation/capa_not_applicable_justification:
-        # no real source yet — left at ds's own Optional/empty-list defaults.
+        # interim_controls/extrapolation/capa_not_applicable_justification: no real source yet, left at ds's defaults.
         "overall_verdict": "accept_with_comments" if any_rejected else "accept",
         "review_comments": [r["description"] for r in recs],
     }
@@ -69,11 +45,7 @@ def _accepted_capa(rc_capa_report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 def _uploaded_section_text(
     rc_capa_report: Optional[Dict[str, Any]], category: str, key: str
 ) -> Optional[str]:
-    """The uploaded RC & CAPA document's own verbatim Impact Assessment / Correction &
-    Remedial Action text — doesn't fit AcceptedRCConclusion/AcceptedCAPAProposal (neither is
-    an "accepted proposal" concept), so these are new top-level sibling fields on the request
-    instead. None when no RC & CAPA document has been uploaded yet, or the section wasn't
-    found in it — callers must fall back to today's TrackWise-field sourcing in that case."""
+    """Verbatim uploaded Impact Assessment / Correction & Remedial Action text. None if no report uploaded yet or the section wasn't found — caller falls back to TrackWise sourcing."""
     if rc_capa_report is None:
         return None
     critique = next((c for c in rc_capa_report["critiques"] if c["category"] == category), None)
@@ -82,11 +54,7 @@ def _uploaded_section_text(
 
 
 def _rci_plan_sections_payload(rci_sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """ds's own RciSectionItem (ds/src/agents/rci_plan/schemas.py) is a
-    plimmer shape than this backend's own — just title/correlation/tasks
-    (each task just a description) — no due_date/assignee/is_checked/id.
-    Same "checked = keep it" filtering rci_plan_export.py already uses for
-    excluded sections/unchecked tasks."""
+    """ds's RciSectionItem is a slimmer shape than ours: just title/correlation/tasks. Same "checked = keep it" filtering as rci_plan_export.py."""
     return [
         {
             "title": s["title"],
@@ -98,12 +66,7 @@ def _rci_plan_sections_payload(rci_sections: List[Dict[str, Any]]) -> List[Dict[
     ]
 
 
-# Per-field and per-section caps for _format_task_findings — a real live run against a report
-# with several verbose tasks produced a single section block of 53,886 characters, which by
-# itself overflowed the RCI Report LLM call's context window once combined with the other 5
-# sections' blocks plus the rest of the prompt (confirmed live, 2026-08-25). These bounds keep
-# each section's block at most ~6KB (still 15-25x richer than the old ~250-340 char
-# strengths-only summary it replaces) while a single verbose field can never dominate the budget.
+# Caps for _format_task_findings — a verbose report's section block once overflowed the RCI Report LLM call's context window; bounds each block to ~6KB.
 _MAX_FINDING_FIELD_CHARS = 1200
 _MAX_SECTION_FINDINGS_CHARS = 6000
 
@@ -116,14 +79,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _format_task_findings(findings: List[Dict[str, Any]]) -> Optional[str]:
-    """Render ds's real per-task extraction (objective/findings/inference — see
-    TaskReportCritiqueResponse.task_evidence) as report-style text blocks, one per
-    "Inference:" block ds found in the uploaded document. These blocks do NOT line up
-    positionally with the RCI Plan's own subtask list (extract_tasks' task_number is just
-    the order "Inference:" markers were found in the document, confirmed live 2026-08-25 —
-    e.g. a 6-subtask RCI Plan section had 7 extracted blocks, an 8-subtask section had 6),
-    so this stays applied at section granularity like `summary` below, just with far more
-    of the uploaded report's actual content than the old strengths-only blurb carried."""
+    """Renders ds's per-task extraction as report-style text blocks. These don't line up positionally with the RCI Plan's subtask list, so kept at section granularity, like `summary`."""
     if not findings:
         return None
     blocks = []
@@ -141,8 +97,7 @@ def _format_task_findings(findings: List[Dict[str, Any]]) -> Optional[str]:
     if len(text) <= _MAX_SECTION_FINDINGS_CHARS:
         return text
 
-    # Keep as many whole blocks as fit within the section cap rather than truncating mid-block,
-    # so a subtask's outcome is never grounded in a half-sentence.
+    # Keep whole blocks only, never truncate mid-block, so a subtask's outcome isn't grounded in a half-sentence.
     kept: List[str] = []
     total = 0
     omitted = 0
@@ -161,29 +116,7 @@ def _format_task_findings(findings: List[Dict[str, Any]]) -> Optional[str]:
 def _task_critique_payload(
     rci_sections: List[Dict[str, Any]], task_critique_reports: Dict[int, Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """One TaskAssignmentItem per RCI Plan subtask (not per section) —
-    `tick` mirrors the RCI Plan export's own "<task>.<subtask>" numbering
-    convention. Task Critique's task_index is the 0-based RCI Plan section
-    index (see task_critique_queries.py's own module docstring), not a
-    per-subtask index.
-
-    `critique` prefers the owning section's real extracted findings
-    (`task_findings` — see _format_task_findings) over the old `summary`
-    fallback. `summary` is a thin, strengths-only blurb (2-3 sentences,
-    ~1-2% of the uploaded report's length, confirmed 2026-08-25) built by
-    `task_critique.py` from every extracted task's positive-only `strengths`
-    line — real findings/inference were computed by ds's extract_tasks step
-    but discarded before reaching this backend at all until `task_findings`
-    was added. `summary` is kept as a fallback only for rows uploaded before
-    this column existed (task_findings empty). Previously this joined
-    recommendations[].reason instead — that field is meta-commentary about
-    why an individual review recommendation was accepted/rejected (frequently
-    blank, or literal placeholder text like "testing" in test data), never
-    the investigation's actual findings, so the report ended up echoing the
-    RCI Plan's own planned-task wording back with almost no real evidence
-    behind it. Same class of bug as the CAPA gap-commentary conflation fixed
-    earlier (recs are commentary about the review, not the review's substance).
-    """
+    """One TaskAssignmentItem per RCI Plan subtask (not per section); `tick` mirrors the export's "<task>.<subtask>" numbering. `critique` prefers real extracted `task_findings` over the thin `summary` fallback (kept only for rows uploaded before that column existed) — not recommendations[].reason, which is commentary about the review decision, not the investigation's actual findings."""
     items: List[Dict[str, Any]] = []
     for i, section in enumerate(rci_sections):
         if not section.get("is_checked", True):
@@ -230,13 +163,8 @@ def build_rci_report_request(
         "uploaded_impact_conclusion_text": _uploaded_section_text(rc_capa_report, "rc_impact", "impact_conclusion_text"),
         "uploaded_correction_remedial_text": _uploaded_section_text(rc_capa_report, "capa", "correction_remedial_text"),
         "mc_confirmed": mc_confirmed,
-        # 24 months ("last 2 years") — matches real reports' stated lookback;
-        # 12 months caused genuinely similar older records to be missed. See
-        # ds's RciReportGenerationRequest.history_lookback_months.
+        # 24 months matches real reports' stated lookback; 12 months missed genuinely similar older records.
         "history_lookback_months": 24,
         "manual_entries": manual_entries,
-        # approval_workflow/attachments: pure pass-through, no LLM — omitted
-        # (ds defaults both to empty if absent). Populating annexures from
-        # Evidence Collection or approval rows from athena_users is a
-        # natural v2, not required now.
+        # approval_workflow/attachments omitted — ds defaults both to empty.
     }
