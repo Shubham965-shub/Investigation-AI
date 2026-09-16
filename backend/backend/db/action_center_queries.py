@@ -109,6 +109,18 @@ async def fetch_open_investigations() -> List[asyncpg.Record]:
         return await conn.fetch(_OPEN_INVESTIGATIONS_QUERY, OPEN_INVESTIGATIONS_SINCE)
 
 
+# Lightweight count for the public (pre-auth) login page's "N investigations · live" stat —
+# COUNT(DISTINCT deviation_id) reproduces the same one-per-investigation scope as
+# _OPEN_INVESTIGATIONS_QUERY's DISTINCT ON dedup without needing the full row/join set.
+async def fetch_open_investigations_count() -> int:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT COUNT(DISTINCT deviation_id) FROM fact_qms_event WHERE closed_on IS NULL AND date_opened >= $1",
+            OPEN_INVESTIGATIONS_SINCE,
+        )
+
+
 # Cancelled investigations (module='Cancelled') always have closed_on set,
 # outside _OPEN_INVESTIGATIONS_QUERY's scope — still shown in the
 # Investigation Details table (after every open investigation) but excluded

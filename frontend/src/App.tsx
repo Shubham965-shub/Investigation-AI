@@ -1,4 +1,6 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { capturePageview } from "./telemetry/posthog";
 import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { PanelStateProvider } from "./components/PanelStateContext";
@@ -19,12 +21,43 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { CxoDashboardPage } from "./pages/CxoDashboardPage";
 
+// Static top-level routes.
+const STATIC_PAGEVIEW_IDS: Record<string, string> = {
+  "/login": "login",
+  "/": "action-center",
+  "/analytics": "analytics",
+  "/user-management": "user-management",
+  "/cxo-dashboard": "cxo-dashboard",
+};
+
+// /records/:recordId/<step>[/:taskIndex] — the step segment is already a clean id; no static
+// map needed since :recordId varies per investigation.
+function pageIdForPath(pathname: string): string | null {
+  if (STATIC_PAGEVIEW_IDS[pathname]) return STATIC_PAGEVIEW_IDS[pathname];
+  const match = pathname.match(/^\/records\/[^/]+\/([^/]+)(\/([^/]+))?/);
+  if (!match) return null;
+  const [, step, , subSegment] = match;
+  if (step === "task-critique" && subSegment) return "task-critique-detail";
+  return step;
+}
+
+// Fires a virtual $pageview on every SPA navigation (no real document load to hook into).
+function RouteAnalytics() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const id = pageIdForPath(pathname);
+    if (id) capturePageview(id);
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
           <PanelStateProvider>
+          <RouteAnalytics />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
 

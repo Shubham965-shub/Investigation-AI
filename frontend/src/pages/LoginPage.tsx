@@ -1,56 +1,50 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowRight, Activity, Eye, EyeOff, Loader2, Moon, Sun } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
-import stridesLogo from "../assets/icons/logo.png";
+import { getPublicStats } from "../api/auth";
+import { Schematic } from "./Schematic";
+import stridesLogoDark from "../assets/icons/logo.png";
+import stridesLogoLight from "../assets/icons/strides-logo-light-bg.jpeg";
 import athenaLogo from "../assets/icons/athena-logo.svg";
 import "./LoginPage.css";
-
-function EyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-2.16 3.19M6.5 6.6C3.7 8.4 2 11 2 11s3.5 7 10 7a9.28 9.28 0 0 0 4.32-1.05M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <path d="M1 1l22 22" />
-    </svg>
-  );
-}
-
-function ThemeIcon({ dark }: { dark: boolean }) {
-  return dark ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
-    </svg>
-  );
-}
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
+  const dark = theme === "dark";
+
+  const [mounted, setMounted] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [openInvestigations, setOpenInvestigations] = useState<number | null>(null);
 
-  // Navigates only once isAuthenticated actually lands — navigating right after login() resolves risks ProtectedRoute reading a stale isAuthenticated=false and bouncing back to /login.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Unauthenticated endpoint — this page runs before any token exists.
+  useEffect(() => {
+    getPublicStats()
+      .then((stats) => setOpenInvestigations(stats.open_investigations))
+      .catch(() => {});
+  }, []);
+
+  // Navigates only once isAuthenticated actually lands — navigating right after login() resolves
+  // risks ProtectedRoute reading a stale isAuthenticated=false and bouncing back to /login.
   useEffect(() => {
     if (isAuthenticated) navigate("/", { replace: true });
   }, [isAuthenticated, navigate]);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function signIn(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -62,221 +56,273 @@ export function LoginPage() {
     }
   }
 
+  const background = dark
+    ? {
+        backgroundImage:
+          "radial-gradient(900px 620px at 88% 6%, rgba(10,74,51,0.75), transparent 70%), radial-gradient(760px 560px at 6% 96%, rgba(10,74,51,0.55), transparent 72%), linear-gradient(180deg, #02160e 0%, #03241a 52%, #02110b 100%)",
+      }
+    : {
+        backgroundImage:
+          "radial-gradient(900px 620px at 88% 6%, rgba(197,232,150,0.6), transparent 70%), radial-gradient(760px 560px at 6% 96%, rgba(113,215,126,0.38), transparent 72%), linear-gradient(180deg, #f6faf4 0%, #ecf6e8 100%)",
+      };
+
+  const gridLine = dark ? "rgba(255,255,255,0.07)" : "rgba(0,64,44,0.07)";
+  const enter = "transition-all duration-700 ease-out";
+  const shown = mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3";
+
+  const cardShell = dark ? "border-white/10 bg-white/[0.04]" : "border-[#00402c]/12 bg-white/80";
+  const label = dark ? "text-emerald-100/55" : "text-[#00402c]/60";
+  const heading = dark ? "text-emerald-50" : "text-[#00402c]";
+  const body = dark ? "text-emerald-100/65" : "text-[#383536]/75";
+  const field = dark
+    ? "border-white/10 bg-white/[0.03] text-emerald-50 placeholder:text-emerald-100/25"
+    : "border-[#00402c]/15 bg-white text-[#383536] placeholder:text-[#383536]/35";
+
+  // logo.png is white-on-transparent (dark-bg only); the light-mode counterpart is a JPEG with
+  // a baked-in white background (no transparency), so it gets a rounded/padded chip instead of
+  // sitting flush against the gradient like the dark variant does.
+  const stridesLogo = dark ? stridesLogoDark : stridesLogoLight;
+
   return (
-    <div className="login-page login-split-page">
-      <aside className="login-brand-half">
-        <div aria-hidden className="login-brand-grid" />
-        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 28, padding: "48px 32px", textAlign: "center" }}>
-          <img src={athenaLogo} alt="" style={{ height: 72, animation: "login-rise 700ms ease both" }} />
-          <div style={{ animation: "login-rise 700ms ease 100ms both" }}>
-            <h1 style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "2.25rem", color: "#fafafa", letterSpacing: "0.02em" }}>
-              Athena
-            </h1>
-            <p
-              style={{
-                margin: "10px auto 0",
-                maxWidth: 360,
-                fontSize: "var(--font-size-md)",
-                lineHeight: 1.6,
-                color: "rgba(250,250,250,0.75)",
-              }}
-            >
-              Sign in to manage investigations, RCI Plans and RCI reports, all in one place.
-            </p>
-          </div>
-        </div>
-        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "0 32px 32px" }}>
-          <span style={{ fontSize: "var(--font-size-xs)", color: "rgba(250,250,250,0.55)", textTransform: "uppercase", letterSpacing: "0.15em" }}>Powered by</span>
-          <img src={stridesLogo} alt="Strides" style={{ height: 20 }} />
-        </div>
-      </aside>
+    <div className="relative h-screen overflow-hidden" style={background}>
+      {/* grid overlay */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `linear-gradient(to right, ${gridLine} 1px, transparent 1px), linear-gradient(to bottom, ${gridLine} 1px, transparent 1px)`,
+          backgroundSize: "56px 56px",
+          maskImage: "radial-gradient(ellipse at center, black 40%, transparent 75%)",
+          WebkitMaskImage: "radial-gradient(ellipse at center, black 40%, transparent 75%)",
+        }}
+      />
 
-      <section className="login-form-half">
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            opacity: 0.07,
-            pointerEvents: "none",
-            backgroundImage: isDark
-              ? "linear-gradient(to right, #c6f7e2 1px, transparent 1px), linear-gradient(to bottom, #c6f7e2 1px, transparent 1px)"
-              : "linear-gradient(to right, #00402c 1px, transparent 1px), linear-gradient(to bottom, #00402c 1px, transparent 1px)",
-            backgroundSize: "56px 56px",
-            maskImage: "radial-gradient(ellipse at center, black 40%, transparent 75%)",
-          }}
-        />
-
-        <div className="login-radar" aria-hidden style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
-          <div style={{ position: "relative", width: 720, height: 720 }}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  borderRadius: "50%",
-                  border: "1px solid rgba(16,185,129,0.18)",
-                  transform: `scale(${0.35 + i * 0.16})`,
-                  animation: `login-pulse 4.5s ease-out ${i * 0.7}s infinite`,
-                }}
-              />
-            ))}
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: "50%",
-                background: "conic-gradient(from 0deg, transparent 0deg, rgba(16,185,129,0.35) 30deg, transparent 60deg)",
-                animation: "login-sweep 6s linear infinite",
-                maskImage: "radial-gradient(circle, black 0%, black 60%, transparent 70%)",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
-                transform: "translate(-50%, -50%)",
-                background: "#10b981",
-                boxShadow: "0 0 24px #10b981, 0 0 60px rgba(16,185,129,0.5)",
-              }}
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          style={{
-            position: "absolute",
-            top: 24,
-            right: 24,
-            zIndex: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            border: "1px solid var(--color-card-border)",
-            background: "var(--color-surface)",
-            color: "var(--color-text)",
-            cursor: "pointer",
-          }}
-        >
-          <ThemeIcon dark={isDark} />
-        </button>
-
-        <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 400, animation: "login-rise 700ms ease 150ms both" }}>
-          <div
-            aria-hidden
+      {/* radar decoration */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 -right-40 hidden size-[720px] -translate-y-1/2 lg:block"
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className="absolute inset-0 rounded-full border"
             style={{
-              position: "absolute",
-              inset: -1,
-              borderRadius: 24,
-              opacity: 0.6,
-              filter: "blur(24px)",
-              background: "linear-gradient(135deg, rgba(16,185,129,0.45), rgba(0,64,44,0.15) 60%, transparent)",
+              borderColor: dark ? "rgba(0,212,150,0.28)" : "rgba(0,114,74,0.22)",
+              transform: `scale(${0.35 + i * 0.16})`,
+              animation: `atlas-pulse 4.5s ease-out ${i * 0.7}s infinite`,
             }}
           />
-          <form
-            onSubmit={handleSubmit}
-            style={{
-              position: "relative",
-              borderRadius: 24,
-              border: "1px solid var(--color-card-border)",
-              background: "var(--color-surface)",
-              boxShadow: "0 25px 50px rgba(0,0,0,0.25)",
-              padding: 32,
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-            }}
-          >
-            <div>
-              <h2 style={{ margin: "4px 0 0", fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-xl)", color: "var(--color-text)" }}>
-                Welcome back
-              </h2>
-            </div>
+        ))}
+        <span className="absolute left-0 top-1/2 h-px w-full bg-emerald-500/10" />
+        <span className="absolute left-1/2 top-0 h-full w-px bg-emerald-500/10" />
+        <span
+          className="absolute inset-0 rounded-full"
+          style={{
+            backgroundImage:
+              "conic-gradient(from 0deg, transparent 0deg, rgba(0,212,150,0.35) 30deg, transparent 60deg)",
+            animation: "atlas-sweep 6s linear infinite",
+            maskImage: "radial-gradient(circle at center, black 68%, transparent 70%)",
+            WebkitMaskImage: "radial-gradient(circle at center, black 68%, transparent 70%)",
+          }}
+        />
+        <span
+          className="absolute left-1/2 top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            background: "#00ffae",
+            boxShadow: "0 0 12px rgba(0,255,174,0.85), 0 0 34px rgba(0,255,174,0.4)",
+          }}
+        />
+      </div>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)" }}>
-              Username
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-                style={{ padding: "9px 13px", borderRadius: "var(--radius-btn)", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", color: "var(--color-text)" }}
-              />
-            </label>
+      <div className="relative mx-auto flex h-full max-w-[1600px] flex-col px-6 md:px-10">
+        {/* top bar */}
+        <header className="flex shrink-0 items-center justify-between py-5">
+          <div className="flex items-center gap-3">
+            {dark ? (
+              <img src={stridesLogo} alt="Strides" className="h-6" />
+            ) : (
+              <span className="flex items-center rounded-md bg-white px-1.5 py-1">
+                <img src={stridesLogo} alt="Strides" className="h-5" />
+              </span>
+            )}
+            <span className={`h-7 w-px ${dark ? "bg-white/12" : "bg-[#00402c]/15"}`} />
+            <img src={athenaLogo} alt="" className="h-8" />
+            <span className="leading-tight">
+              <span className={`font-display block text-[19px] font-semibold ${heading}`}>Athena</span>
+              <span className={`block text-[9px] font-semibold uppercase ${label}`} style={{ letterSpacing: "0.25em" }}>
+                Investigation AI Assistance
+              </span>
+            </span>
+          </div>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--font-size-base)", fontWeight: 600, color: "var(--color-text-muted)" }}>
-              Password
-              <div style={{ position: "relative" }}>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  style={{ width: "100%", padding: "9px 40px 9px 13px", borderRadius: "var(--radius-btn)", border: "1px solid var(--color-card-border)", background: "var(--color-bg)", color: "var(--color-text)" }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 4, display: "flex", color: "var(--color-text-muted)", cursor: "pointer" }}
-                >
-                  <EyeIcon open={showPassword} />
-                </button>
-              </div>
-            </label>
-
-            {error && <p style={{ color: "var(--color-danger-text)", fontSize: "var(--font-size-base)", margin: 0 }}>{error}</p>}
-
+          <div className="flex items-center gap-3">
             <button
-              type="submit"
-              disabled={submitting}
-              className="login-submit"
+              type="button"
+              onClick={toggleTheme}
+              aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+              className={`grid size-9 place-items-center rounded-full border transition ${
+                dark
+                  ? "border-white/12 bg-white/[0.04] text-emerald-100 hover:bg-white/[0.09]"
+                  : "border-[#00402c]/15 bg-white/70 text-[#00402c] hover:bg-white"
+              }`}
+            >
+              {dark ? <Sun className="size-[16px]" /> : <Moon className="size-[16px]" />}
+            </button>
+          </div>
+        </header>
+
+        {/* main */}
+        <main className="grid min-h-0 flex-1 grid-cols-1 items-center gap-16 pb-8 lg:grid-cols-2">
+          {/* left: story */}
+          <section className={`flex h-full min-h-0 flex-col justify-center ${enter} ${shown}`}>
+            <h1
+              className="font-display max-w-xl bg-clip-text text-3xl font-bold leading-[1.12] tracking-tight text-transparent md:text-4xl"
               style={{
-                marginTop: 4,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                background: "var(--color-primary)",
-                color: "#fafafa",
-                border: "none",
-                borderRadius: "var(--radius-btn)",
-                padding: "12px 16px",
-                fontFamily: "var(--font-heading)",
-                fontWeight: 700,
-                fontSize: "var(--font-size-base)",
-                cursor: submitting ? "default" : "pointer",
-                opacity: submitting ? 0.75 : 1,
+                backgroundImage: dark
+                  ? "linear-gradient(100deg, #c5e896, #6ee7b7 45%, #00d496)"
+                  : "linear-gradient(100deg, #00402c, #00724a 45%, #00955e)",
               }}
             >
-              <span className="login-submit-shimmer" aria-hidden />
-              {submitting ? (
-                <>
-                  <span className="login-spinner" />
-                  Logging in…
-                </>
-              ) : (
-                "Log in"
-              )}
-            </button>
+              Investigation AI that finds the best fit root cause for every QMS event
+            </h1>
 
-            <p style={{ margin: 0, textAlign: "center", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
-              © {new Date().getFullYear()} Strides Pharma Science
-            </p>
-          </form>
-        </div>
-      </section>
+            <div className="mt-5 flex flex-wrap items-center gap-6 text-[11.5px] font-semibold">
+              <span className={`inline-flex items-center gap-2 ${dark ? "text-emerald-200/80" : "text-[#00724a]"}`}>
+                <Activity className="size-4" /> {openInvestigations ?? "—"} investigations · live
+              </span>
+            </div>
+
+            <div className="mt-6 min-h-0 flex-1">
+              <Schematic dark={dark} />
+            </div>
+          </section>
+
+          {/* right: login card */}
+          <section className={`flex items-center justify-center ${enter} delay-150 ${shown}`}>
+            <div className="relative w-full max-w-md">
+              <div
+                aria-hidden
+                className="absolute -inset-6 rounded-[32px] blur-2xl"
+                style={{
+                  backgroundImage: dark
+                    ? "linear-gradient(135deg, rgba(0,212,150,0.28), rgba(110,231,183,0.12) 55%, transparent)"
+                    : "linear-gradient(135deg, rgba(113,215,126,0.4), rgba(197,232,150,0.25) 55%, transparent)",
+                }}
+              />
+
+              <div className={`relative rounded-3xl border p-8 shadow-2xl backdrop-blur-2xl ${cardShell}`}>
+                {/* corner ticks */}
+                {[
+                  "left-3 top-3 border-l border-t",
+                  "right-3 top-3 border-r border-t",
+                  "left-3 bottom-3 border-b border-l",
+                  "right-3 bottom-3 border-b border-r",
+                ].map((pos) => (
+                  <span
+                    key={pos}
+                    aria-hidden
+                    className={`pointer-events-none absolute size-3 border-emerald-400/40 ${pos}`}
+                  />
+                ))}
+
+                <p className={`text-[10px] font-bold uppercase ${label}`} style={{ letterSpacing: "0.25em" }}>
+                  Secure access
+                </p>
+                <h2 className={`font-display mt-2 text-[26px] font-bold tracking-tight ${heading}`}>
+                  Welcome back
+                </h2>
+
+                <form className="mt-7 space-y-5" onSubmit={signIn}>
+                  <div className="group relative">
+                    <label htmlFor="username" className={`block text-[10px] font-bold uppercase tracking-[0.18em] ${label}`}>
+                      Username
+                    </label>
+                    <input
+                      id="username"
+                      type="text"
+                      required
+                      autoFocus
+                      autoComplete="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className={`mt-2 w-full rounded-xl border px-4 py-3 text-[13px] outline-none transition focus:border-emerald-400/50 ${field}`}
+                    />
+                    <span
+                      aria-hidden
+                      className="absolute bottom-0 left-0 h-px w-full origin-left scale-x-0 bg-gradient-to-r from-[#6ee7b7] via-[#00d496] to-transparent transition-transform duration-500 group-focus-within:scale-x-100"
+                    />
+                  </div>
+
+                  <div className="group relative">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <label htmlFor="password" className={`block text-[10px] font-bold uppercase tracking-[0.18em] ${label}`}>
+                        Password
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="password"
+                        type={showPass ? "text" : "password"}
+                        required
+                        autoComplete="current-password"
+                        placeholder="••••••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={`mt-2 w-full rounded-xl border px-4 py-3 pr-11 text-[13px] outline-none transition focus:border-emerald-400/50 ${field}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass((s) => !s)}
+                        aria-label={showPass ? "Hide password" : "Show password"}
+                        className={`absolute right-3 top-1/2 mt-1 -translate-y-1/2 transition ${
+                          dark ? "text-emerald-100/50 hover:text-emerald-100" : "text-[#383536]/45 hover:text-[#00402c]"
+                        }`}
+                      >
+                        {showPass ? <EyeOff className="size-[16px]" /> : <Eye className="size-[16px]" />}
+                      </button>
+                    </div>
+                    <span
+                      aria-hidden
+                      className="absolute bottom-0 left-0 h-px w-full origin-left scale-x-0 bg-gradient-to-r from-[#6ee7b7] via-[#00d496] to-transparent transition-transform duration-500 group-focus-within:scale-x-100"
+                    />
+                  </div>
+
+                  {error && <p className="text-[12.5px] text-red-400">{error}</p>}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl py-3.5 text-[13.5px] font-semibold text-[#02160e] transition disabled:opacity-80"
+                    style={{
+                      backgroundImage: "linear-gradient(100deg, #6ee7b7, #00d496 52%, #00955e)",
+                      boxShadow: "0 12px 30px -12px rgba(0,212,150,0.65), inset 0 1px 0 rgba(255,255,255,0.45)",
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 -translate-x-full bg-white/30 transition-transform duration-700 group-hover:translate-x-full"
+                    />
+                    {submitting ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Authenticating…
+                      </>
+                    ) : (
+                      <>
+                        Enter Athena
+                        <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <p className={`mt-6 text-center text-[11px] ${body}`}>
+                  Protected by end-to-end encryption · {new Date().getFullYear()}
+                </p>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   );
 }

@@ -12,7 +12,7 @@ from archetype_models import Base, ArchetypeType, Archetype, Evidence
 
 EXCEL_PATH = os.path.join(
     os.path.dirname(__file__),
-    "Evidence_Library__4__corrected_aug22_grammarchecked.xlsx",
+    "/Users/114862/Desktop/Evidence_Library.xlsx",
 )
 
 engine = create_engine(settings.DATABASE_URL, connect_args={"sslmode": "require"})

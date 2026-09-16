@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { login as loginRequest } from "../api/auth";
 import { isTokenExpired, nameFromToken, rolesFromToken } from "./jwt";
+import { posthog, posthogEnabled } from "../telemetry/posthog";
 
 interface AuthContextValue {
   username: string | null;
@@ -28,15 +29,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [viewAsInvestigator, setViewAsInvestigator] = useState<string | null>(null);
 
+  const fullName = token ? nameFromToken(token) : null;
+  const roles = token ? rolesFromToken(token) : [];
+  const isAuthenticated = username !== null && token !== null && !isTokenExpired(token);
+
+  // Covers both a fresh login and an already-authenticated page reload (localStorage-restored
+  // session) — reactive on isAuthenticated rather than duplicated inside login() directly.
+  useEffect(() => {
+    if (!posthogEnabled || !isAuthenticated || !username) return;
+    posthog.identify(username, { name: fullName ?? username, roles });
+    if (roles[0]) posthog.group("role", roles[0], { name: roles[0] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, username]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       username,
-      fullName: token ? nameFromToken(token) : null,
-      roles: token ? rolesFromToken(token) : [],
+      fullName,
+      roles,
       viewAsInvestigator,
       setViewAsInvestigator,
-      // A cached username alone isn't enough — the token may have expired since it was stored.
-      isAuthenticated: username !== null && token !== null && !isTokenExpired(token),
+      isAuthenticated,
       login: async (usernameInput: string, password: string) => {
         const response = await loginRequest(usernameInput, password);
         localStorage.setItem("auth_token", response.access_token);
@@ -49,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("auth_username");
         setToken(null);
         setUsername(null);
+        if (posthogEnabled) posthog.reset();
       },
     }),
     [username, token, viewAsInvestigator]
