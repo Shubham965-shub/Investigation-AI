@@ -32,42 +32,20 @@ export function TaskCritiqueDetailPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [section, setSection] = useState<TaskCritiqueSection | null | undefined>(undefined);
-  // Same 1-based numbering as the main Task Critique list (index + 1 within
-  // the sections array, not the task_index route param) — carried forward
-  // here so a task's number stays consistent between the two pages
-  // (2026-08-14, per the user).
+  // Same 1-based numbering as the main Task Critique list (index + 1, not task_index) so it stays consistent between pages.
   const [sectionNumber, setSectionNumber] = useState<number | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  // Blanket accept/reject for the whole batch of recommendations at once
-  // (2026-08-26, per the user), replacing per-recommendation Accept/Reject —
-  // still one decision call per recommendation under the hood, since the
-  // backend has no bulk-decision endpoint, but driven by a single Yes at the
-  // top of the section instead of a button pair per row. Rejecting is done
-  // by unchecking recommendations before hitting "Yes" (below), which
-  // prompts for a shared reason — there's no separate "No" path anymore.
-  // Per-recommendation checkbox, defaulting to checked (2026-08-26, per the
-  // user) — lets the investigator deselect specific recommendations before
-  // hitting "Yes" instead of only ever accepting or rejecting the whole
-  // batch. Keyed by recommendation id; a missing entry means "checked" (see
-  // isRecChecked below), so this only needs writing to when something is
-  // actually unchecked.
+  // Blanket accept/reject via a single "Yes" — still one decision call per recommendation under the hood (no bulk endpoint). Unchecking before "Yes" rejects that recommendation instead; a missing entry here means "checked".
   const [uncheckedRecIds, setUncheckedRecIds] = useState<Set<number>>(new Set());
-  // Asks for a SEPARATE reason per deselected recommendation (2026-08-26,
-  // per the user — previously one shared reason covered every deselected
-  // recommendation in the batch; now each gets its own labeled box in a
-  // table) before the partial accept goes through. Keyed by recommendation id.
+  // A separate reason per deselected recommendation, keyed by recommendation id, required before the partial accept goes through.
   const [deselectPrompt, setDeselectPrompt] = useState(false);
   const [deselectReasons, setDeselectReasons] = useState<Record<number, string>>({});
   const [scoring, setScoring] = useState<ScoringReason | null>(null);
   const [history, setHistory] = useState<RecommendationHistoryAttempt[]>([]);
 
-  // Fires once every recommendation on this task's current report has been
-  // decided and a new upload becomes possible again — detected as
-  // can_upload's false -> true transition (2026-08-26, per the user), same
-  // approach as RcCapaCritiquePage.tsx. undefined -> true (e.g. on initial
-  // load of an already-fully-decided task) deliberately does NOT fire this.
+  // Fires only on a genuine can_upload false -> true transition (not undefined -> true on initial load), same approach as RcCapaCritiquePage.tsx.
   const [showIncorporateDialog, setShowIncorporateDialog] = useState(false);
   const prevCanUploadRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {
@@ -132,11 +110,7 @@ export function TaskCritiqueDetailPage() {
   async function handleUpload(file: File) {
     setBusy(true);
     setActionError("");
-    // Predicted client-side from the state as of this click — a gospel
-    // upload (all recs previously rejected) or the 3rd/final attempt both
-    // lock and get scored synchronously as part of this same request
-    // (2026-08-18, per the user: show that scoring is under way, correctly
-    // reflecting which of the two no-decision-needed cases this is).
+    // Predicted client-side — a gospel upload or the final attempt both lock and score synchronously in this same request.
     if (section!.next_upload_is_final) {
       setScoring("gospel");
     } else if (section!.upload_count + 1 >= section!.max_uploads) {
@@ -145,14 +119,11 @@ export function TaskCritiqueDetailPage() {
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
       if (updated.locked) {
-        // Final upload (gospel or 3rd attempt) — scored, nothing left to
-        // review, so go back to the main list page instead of showing this
-        // task's (now closed) detail page.
+        // Final upload — nothing left to review, so go back to the list page instead of this now-closed detail page.
         navigate(`/records/${recordId}/task-critique`);
         return;
       }
       setSection(updated);
-      // This upload just added a new attempt to the audit trail.
       getTaskCritiqueHistory(recordId!, taskIndex).then(setHistory);
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to upload report");
@@ -173,10 +144,7 @@ export function TaskCritiqueDetailPage() {
         updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "accepted");
       }
       if (updated.locked) {
-        // Scored and closed out — nothing left to review here, so go back
-        // to the main list instead of showing this task's now-closed detail
-        // page (2026-08-26, per the user, same as handleUpload's gospel/
-        // 3rd-attempt redirect).
+        // Scored and closed out — go back to the list instead of this now-closed detail page.
         navigate(`/records/${recordId}/task-critique`);
         return;
       }
@@ -188,11 +156,7 @@ export function TaskCritiqueDetailPage() {
     }
   }
 
-  // "Yes" respects the per-recommendation checkboxes (2026-08-26, per the
-  // user): fully checked accepts everything immediately as before; any
-  // deselected ones (with at least one still checked) prompt for a single
-  // shared reason first, then accept the checked ones and reject the
-  // deselected ones with that reason.
+  // "Yes" respects the per-recommendation checkboxes — fully checked accepts everything; any deselected ones prompt for reasons first.
   function handleYesClick() {
     const pending = report!.recommendations.filter((r) => r.decision === "pending");
     const hasDeselected = pending.some((r) => uncheckedRecIds.has(r.id));
@@ -209,17 +173,11 @@ export function TaskCritiqueDetailPage() {
     const toReject = pending.filter((r) => uncheckedRecIds.has(r.id));
     if (toAccept.length === 0 && toReject.length === 0) return;
     if (toReject.some((r) => !(deselectReasons[r.id] ?? "").trim())) return;
-    // Closed immediately, not just on success (2026-08-26, per the user) —
-    // ScoringDialog below renders at the same z-index the instant scoring
-    // is predicted, and this dialog previously stayed mounted for the whole
-    // (possibly long) scoring wait underneath/alongside it, looking like a
-    // broken white overlay.
+    // Closed immediately, not just on success — otherwise it stays mounted under ScoringDialog during the scoring wait, looking like a broken overlay.
     setDeselectPrompt(false);
     setBusy(true);
     setActionError("");
-    // Same all-rejected prediction as handleRejectAll — every deselected
-    // recommendation here plus nothing accepted (neither in this batch nor
-    // already) locks and scores the report immediately.
+    // Locks and scores immediately if nothing is accepted here and nothing was accepted before.
     if (toAccept.length === 0 && !report!.recommendations.some((r) => r.decision === "accepted")) {
       setScoring("all_decided");
     }
@@ -232,10 +190,7 @@ export function TaskCritiqueDetailPage() {
         updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "rejected", deselectReasons[rec.id].trim());
       }
       if (updated.locked) {
-        // Scored and closed out — nothing left to review here, so go back
-        // to the main list instead of showing this task's now-closed detail
-        // page (2026-08-26, per the user, same as handleUpload's gospel/
-        // 3rd-attempt redirect).
+        // Scored and closed out — go back to the list instead of this now-closed detail page.
         navigate(`/records/${recordId}/task-critique`);
         return;
       }
@@ -255,10 +210,7 @@ export function TaskCritiqueDetailPage() {
       const next = new Set(prev);
       if (next.has(recId)) next.delete(recId);
       else next.add(recId);
-      // Auto-open the reason prompt the moment every recommendation is
-      // deselected (2026-09-10, per the user) — previously this only opened
-      // via the "Yes" button, so unchecking the last one left the user with
-      // no visible next step until they clicked it themselves.
+      // Auto-opens the reason prompt the moment every recommendation is deselected.
       const pending = report!.recommendations.filter((r) => r.decision === "pending");
       if (pending.length > 0 && pending.every((r) => next.has(r.id))) {
         setDeselectPrompt(true);
@@ -341,18 +293,7 @@ export function TaskCritiqueDetailPage() {
                         <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{report.summary}</p>
                       </div>
                     )}
-                    {/* A genuinely zero-recommendation critique (no gaps
-                        found) now locks the section immediately (see
-                        db/critique_state.py's compute_upload_state) — say so
-                        explicitly instead of showing nothing, or worse,
-                        falling through to the "pending" message below, which
-                        previously fired here too and wrongly implied the
-                        critique hadn't run yet (2026-09-10, per the user).
-                        section.locked is only reachable via a real,
-                        already-persisted critique response at this point
-                        (there's no "insert a placeholder, critique arrives
-                        later" step for this endpoint) — never a race with an
-                        in-flight upload. */}
+                    {/* A zero-recommendation critique locks the section immediately (see compute_upload_state) — say so explicitly rather than falling through to the "pending" message below. */}
                     {report.recommendations.length === 0 && section.locked && (
                       <p style={{ margin: 0, fontSize: "var(--font-size-base)", color: "var(--color-success-text)", fontWeight: 600 }}>
                         ✓ No gaps identified — this report fully addresses the task, nothing further to review.
@@ -412,9 +353,7 @@ export function TaskCritiqueDetailPage() {
             </div>
           )}
 
-          {/* Full history across every attempt — independent of lock/complete
-              state, so it stays visible even once the task is scored and
-              done (2026-08-18, per the user). */}
+          {/* Stays visible independent of lock/complete state, even once the task is scored and done. */}
           {history.length > 0 && (
             <div style={{ border: "1px solid var(--color-card-border)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-card-border)", padding: "16px 24px" }}>
@@ -438,10 +377,7 @@ export function TaskCritiqueDetailPage() {
                           <div key={rec.id} style={{ border: "1px solid var(--color-card-border)", borderRadius: 4, padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ flex: 1, fontSize: "var(--font-size-base)", color: "var(--color-text-muted)" }}>{rec.description}</span>
-                              {/* Read-only mirror of the live section's Accept/Reject
-                                  pills — both options always shown, the actual
-                                  decision highlighted and the other dimmed
-                                  (2026-08-18, per the user), instead of buttons. */}
+                              {/* Read-only mirror of the live Accept/Reject pills — both shown, actual decision highlighted, other dimmed. */}
                               <div style={{ display: "flex", gap: 8 }}>
                                 <span
                                   className={rec.decision === "accepted" ? "status-pill complete" : undefined}

@@ -27,10 +27,8 @@ async def insert_sit_review(deviation_id: int, docx: bytes, approved_by: Optiona
 
 
 async def fetch_latest_sit_review_status(deviation_id: int) -> Optional[str]:
-    """Degrades to None (not yet pushed) if this table hasn't been run
-    against the live DB yet — same convention as generated_content.sql's
-    read paths, since this table shares that "not yet approved to run"
-    status (see schema.sql's comment on it)."""
+    """Degrades to None (not yet pushed) if this table doesn't exist yet —
+    same convention as generated_content.sql's read paths."""
     pool = get_pool()
     async with pool.acquire() as conn:
         try:

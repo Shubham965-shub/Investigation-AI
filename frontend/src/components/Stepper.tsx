@@ -34,23 +34,7 @@ function labelColor(status: StepStatus): string {
   return status === "open" ? "var(--color-text-muted)" : "var(--color-primary-text)";
 }
 
-// SLA target shown under each step's own label (2026-08-26, per the user) —
-// keyed by step, not by connector, since a couple of source stages
-// ("Evidence Collection and Interview Questionnaire") span two modules and
-// repeat verbatim under both. Phrased as a cumulative day range from the
-// investigation's own initiation — not from each stage's own local anchor
-// (2026-08-26, per the user: "not from its own anchor event") — since the
-// source table's later stages (Task Execution, Report Generation, Report
-// Sign Off) each count from the PRIOR stage's own deadline rather than from
-// initiation directly, the day range compounds: e.g. critical-tier Task
-// Execution is "within 8 days from RCI Plan sign-off", and RCI Plan sign-off
-// is itself "within 3 days from initiation", so Task Execution's cumulative
-// window from initiation is day 3 through day 11, not 0 through 8. The two
-// tiers only share an identical range for Problem Statement — every later
-// stage inherits and compounds whichever tier's earlier deadlines applied,
-// so both tiers diverge from Evidence Collection onward. End-of-chain totals
-// here (critical: day 15, other: day 19) match the source email's own
-// "Total days" row.
+// Cumulative day ranges from investigation initiation, not from each stage's own local anchor — later stages compound the prior stage's deadline (source table counts each stage from the PRIOR stage's deadline, not from initiation directly).
 type StepSla = string | { critical: string; other: string };
 const STEP_SLA: Record<string, StepSla> = {
   "problem-statement": "Day 0–1",
@@ -62,12 +46,7 @@ const STEP_SLA: Record<string, StepSla> = {
   "rci-report": { critical: "Day 13–15", other: "Day 13-15" },
 };
 
-// Shows only the tier that actually applies to this investigation when
-// known; both tiers (unlabeled) when the investigation's criticality
-// couldn't be determined (2026-08-26, per the user: "it should only show
-// applicable definitions for applicable investigations", then "remove the
-// text before the colon" — the header names were only needed to tell the
-// two figures apart when both showed at once).
+// Shows only the applicable tier when known; both (unlabeled) when criticality couldn't be determined.
 function renderStepSla(entry: StepSla, tier: "critical" | "other" | null | undefined) {
   if (typeof entry === "string") return entry;
   if (tier === "critical") return entry.critical;
@@ -80,8 +59,7 @@ function renderStepSla(entry: StepSla, tier: "critical" | "other" | null | undef
   );
 }
 
-// Native-tooltip fallback so the full figure is still reachable (on hover)
-// for the rare string long enough that the 2-line clamp above ellipsizes it.
+// Native-tooltip fallback so the full figure is reachable when the 2-line clamp above ellipsizes it.
 function slaTitle(entry: StepSla, tier: "critical" | "other" | null | undefined): string | undefined {
   if (typeof entry === "string") return entry;
   if (tier === "critical") return entry.critical;
@@ -89,9 +67,7 @@ function slaTitle(entry: StepSla, tier: "critical" | "other" | null | undefined)
   return `${entry.critical} / ${entry.other}`;
 }
 
-// What actually happens off-screen between these two step pairs — the app
-// itself has no workflow for it, so the person icon on the connecting line
-// explains it on hover (2026-08-26, per the user).
+// What happens off-screen between these step pairs — no in-app workflow for it, so the connector's person icon explains it on hover.
 const CONNECTOR_NOTES: Record<number, string[]> = {
   3: [
     "RCI Plan is taken to SIT Lead for review and signoff",
@@ -107,9 +83,7 @@ const CONNECTOR_NOTES: Record<number, string[]> = {
   ],
 };
 
-// Hover-only popover anchored to the connector's person icon, portaled to
-// document.body (position: fixed) so it isn't clipped by any ancestor's
-// overflow and never nudges the stepper's own layout.
+// Portaled to document.body (position: fixed) so it isn't clipped by any ancestor's overflow and never nudges the stepper's layout.
 function ConnectorPersonIcon({ color, notes }: { color: string; notes: string[] }) {
   const [hovered, setHovered] = useState(false);
   const [rect, setRect] = useState<{ left: number; top: number } | null>(null);
@@ -137,9 +111,7 @@ function ConnectorPersonIcon({ color, notes }: { color: string; notes: string[] 
       onMouseLeave={scheduleHide}
       style={{ position: "relative", display: "inline-flex", flexShrink: 0, margin: "0 6px" }}
     >
-      {/* Absolutely positioned so it doesn't add height to the connector row
-          (which would throw off the dotted lines' vertical centering on the
-          icon itself) (2026-08-26, per the user). */}
+      {/* Absolutely positioned so it doesn't add height to the connector row and throw off the dotted lines' centering. */}
       <span
         style={{
           position: "absolute",
@@ -207,30 +179,15 @@ export function Stepper({
   recordId: string;
   currentStep: string;
   stepStatuses: Record<string, StepStatus>;
-  // Market Complaint investigations can skip straight from Evidence
-  // Collection to RCI Plan Creation without completing Interview
-  // Questionnaire (2026-08-19, per the user) — RCI Plan Creation's own
-  // gating already never required it, so this is purely a visual "this step
-  // is optional" marker, not a real lock (nothing in this stepper actually
-  // blocks navigation today).
+  // Market Complaint can skip Interview Questionnaire — purely a visual "optional" marker, not a real lock (nothing here blocks navigation).
   eventType?: string;
-  // Which SLA tier applies to this specific investigation (2026-08-26, per
-  // the user) — null/undefined shows both tiers (unknown criticality), same
-  // as before this was wired up.
+  // null/undefined shows both tiers (unknown criticality).
   slaTier?: "critical" | "other" | null;
 }) {
   const navigate = useNavigate();
 
   return (
-    // paddingBottom reserves room for every step's label+SLA text, which is
-    // now absolutely positioned (see below) and so no longer contributes to
-    // this row's own layout height — without it, that text would overlap
-    // whatever renders directly below the stepper. paddingLeft/Right does
-    // the equivalent horizontally for step 1 and step 7 specifically —
-    // their label is centered on a circle sitting flush at the row's own
-    // edge, so without this buffer its centered (up to 170px wide) text
-    // would run off the edge of the page instead of just wrapping
-    // (2026-08-26, per the user: "now it's all extending too far").
+    // paddingBottom reserves room for each step's absolutely-positioned label+SLA text (no longer part of row height); paddingLeft/Right keeps first/last step's centered label from running off the page edge.
     <div
       style={{
         display: "flex",
@@ -249,11 +206,7 @@ export function Stepper({
         const isLast = index === RECORD_STEPS.length - 1;
         const clickable = step.path !== null;
         const isSkippable = step.key === "interview-questionnaire" && eventType === "Market Complaint";
-        // Small human-symbol marker between RCI Plan Creation (4) & Task
-        // Critique (5), and between Task Critique (5) & RC & CAPA Critique
-        // (6) (2026-08-26, per the user) — purely a visual marker on the
-        // connecting line, framed by dotted segments on both sides instead
-        // of the usual solid line.
+        // Visual marker (dotted line + person icon) between steps 4-5 and 5-6, instead of the usual solid line.
         const hasConnectorBox = index === 3 || index === 4;
         const lineColor = status === "completed" ? "var(--color-primary)" : "var(--color-open-border)";
 
@@ -278,13 +231,7 @@ export function Stepper({
               >
                 {index + 1}
               </div>
-              {/* Absolutely positioned, like the connector's "Manual Input"
-                  label — so a long module name or SLA line doesn't widen
-                  this step's own box in the row, which was leaving barely
-                  any room for the connecting line to the next circle
-                  (2026-08-26, per the user: "still not connected"). The
-                  row's own height is reserved separately below since this
-                  no longer contributes to it. */}
+              {/* Absolutely positioned so a long label/SLA line doesn't widen this step's box and crowd the connecting line. */}
               <div
                 style={{
                   position: "absolute",
@@ -319,10 +266,7 @@ export function Stepper({
                       maxWidth: 170,
                       textAlign: "center",
                       lineHeight: 1.3,
-                      // Hard-capped at 2 lines regardless of how long the
-                      // figure's text is (2026-08-26, per the user) —
-                      // ellipsis is the fallback for the rare string that
-                      // still wouldn't fit even at this width.
+                      // Hard-capped at 2 lines; ellipsis is the fallback for text too long to fit.
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: "vertical",
@@ -335,13 +279,7 @@ export function Stepper({
                 )}
               </div>
             </div>
-            {/* marginTop centers the connector on the 48px step circle
-                (circle's own vertical center sits 24px from the top of the
-                row, fixed regardless of how many lines of SLA text trail
-                below it now that the row top-aligns every step instead of
-                centering by each step's own — now variable — total height)
-                (2026-08-26, per the user: circles/lines were misaligning
-                once some steps' SLA text grew taller than others'). */}
+            {/* marginTop centers the connector on the 48px circle (fixed at 24px from row top) regardless of how much SLA text trails below it. */}
             {!isLast && (hasConnectorBox ? (
               <div style={{ display: "flex", alignItems: "center", flex: 1, margin: "10px 2px 0" }}>
                 <div style={{ flex: 1, height: 0, borderTop: `2px dotted ${lineColor}` }} />

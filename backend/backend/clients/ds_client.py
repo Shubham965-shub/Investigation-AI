@@ -1,9 +1,4 @@
-"""Thin async HTTP client for the InvestigationAi_DS service.
-
-All LLM/search/critique work is delegated to InvestigationAi_DS over HTTP;
-this module owns the shared httpx client and translates upstream failures
-into FastAPI HTTPExceptions the routers can let propagate.
-"""
+"""Shared async HTTP client for InvestigationAi_DS; translates upstream failures into FastAPI HTTPExceptions."""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -15,9 +10,7 @@ from backend.config.settings import settings
 
 _client: Optional[httpx.AsyncClient] = None
 
-# Short connect timeout so a genuinely down ds still fails fast; read/write/pool
-# get much more room since real ds calls (critique, scoring, generation) can
-# legitimately run long — see config/settings.py for where these are sourced.
+# Short connect timeout to fail fast; read/write/pool get much more room since ds calls can legitimately run long.
 HEAVY_DS_TIMEOUT = httpx.Timeout(
     connect=settings.DS_SERVICE_CONNECT_TIMEOUT_SECONDS,
     read=settings.DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS,
@@ -63,13 +56,7 @@ def _raise_for_upstream_error(exc: httpx.HTTPStatusError) -> None:
 
 
 def raise_for_ds_request_error(exc: httpx.RequestError) -> None:
-    """A connect failure and a read timeout are different situations, not the
-    same "unreachable" error (2026-08-26, per the user) — a ReadTimeout means
-    ds is still working (confirmed some ds calls fire ~20 concurrent LLM
-    requests and can legitimately run long), while a ConnectError/ConnectTimeout
-    means it genuinely can't be reached. Any other RequestError subtype
-    (write/pool timeout, etc.) falls back to the original "unreachable"
-    wording, matching prior behavior for untested edge cases."""
+    """ReadTimeout means ds is still working (long-running LLM calls); ConnectError means it's genuinely unreachable."""
     if isinstance(exc, httpx.ReadTimeout):
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,

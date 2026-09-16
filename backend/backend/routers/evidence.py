@@ -28,8 +28,7 @@ async def collect_evidence(record_id: str, request: EvidenceCollectionRequest) -
     data = await ds_post("/evidence/collect", json=request.model_dump())
     response = EvidenceCollectionResponse(**data)
 
-    # Persisting is best-effort — a DB/table issue must never break generation
-    # itself, especially before generated_content.sql has been run anywhere.
+    # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
         await replace_evidence_items(
@@ -69,11 +68,7 @@ async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def update_evidence(record_id: str, items: list[EvidenceItem]) -> None:
-    """Persist the current check/uncheck state and any user-added items —
-    called by the frontend on every toggle/add so a refresh no longer
-    reverts to the last-generated state. Full replace, same as /collect's
-    own persistence, just triggered by user edits instead of generation.
-    """
+    """Full replace of persisted evidence state, triggered by user edits instead of generation."""
     try:
         deviation_id = int(record_id)
     except ValueError:

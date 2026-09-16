@@ -1,12 +1,7 @@
 import { useState } from "react";
 import modalClose from "../assets/icons/modal-close.svg";
 
-// Name-only add dialog — matches the Figma "Add Evidence" modal's chrome
-// (top-left title + top-right X separated by a border, body, bottom-right
-// Cancel/primary footer) but stripped down to a single name field, per the
-// user's request: EC/IQ only need the name of the new evidence/question,
-// not the full multi-field form (Description/Type/Add To/Collection Time/
-// Historic Rate) shown in that Figma reference.
+// Single name field only — EC/IQ don't need the full multi-field form (Description/Type/etc).
 export function AddItemDialog({
   title,
   label,

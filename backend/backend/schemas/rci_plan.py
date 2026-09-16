@@ -21,17 +21,12 @@ class RciSectionItem(BaseModel):
     title: str
     correlation: Optional[str] = None
     tasks: List[RciTaskItem]
-    # Whole-section include/exclude from the final plan (2026-08-20, per the
-    # user) — same convention as RciTaskItem.is_checked, one level up.
+    # Whole-section include/exclude from the final plan.
     is_checked: bool = True
-    # Populated only when read back from investigation_rci_sections
-    # (generated_content.sql) — DS's generate response doesn't return these
-    # yet (see project memory: rci-plan-schema-gap).
+    # Only populated on read-back — DS's generate response doesn't return these.
     due_date: Optional[str] = None
     assignee: Optional[str] = None
-    # investigation_rci_sections.id — only populated on read-back (never on a
-    # freshly-generated, not-yet-persisted DS response). Consumed by Task
-    # Critique to attach report/recommendation history to a specific section.
+    # investigation_rci_sections.id, read-back only. Consumed by Task Critique to attach history to a specific section.
     id: Optional[int] = None
 
 
@@ -45,21 +40,14 @@ class RciPlanGenerateResponse(BaseModel):
 
 
 class RciPlanRecord(BaseModel):
-    """A real investigation record's Trackwise fields, hydrated from the STAR
-    schema. sections is None until a plan has been generated and persisted to
-    investigation_rci_sections/investigation_rci_tasks (generated_content.sql);
-    read-only for now."""
+    """Investigation record hydrated from the STAR schema; sections is None until a plan has been generated. Read-only for now."""
 
     record_id: str
     event_type: EventType
     trackwise_fields: Dict[str, Any]
     sections: Optional[List[RciSectionItem]] = None
-    # See src/schemas/problem_statement.py's stage field for what this means.
     stage: int = 0
-    # True once any section has Task Critique history (a report uploaded) —
-    # RCI Plan becomes read-only at that point, since further edits here
-    # would delete-then-recreate investigation_rci_sections rows (fresh IDs),
-    # cascading away that Task Critique history (2026-08-05, per the user).
+    # True once any section has Task Critique history — further edits would delete/recreate section rows and lose that history.
     locked_for_editing: bool = False
 
 

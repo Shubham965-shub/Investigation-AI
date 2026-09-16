@@ -14,16 +14,12 @@ export interface EventExplorerHandoffResponse {
   url: string;
 }
 
-// Mints a short-lived SSO handoff token and returns the full Event Explorer
-// URL (InvestigationAI_FE) with it attached — lets "Explore Events" land the
-// user there already authenticated (2026-08-19, per the user).
+// Mints a short-lived SSO handoff token so "Explore Events" lands the user in Event Explorer (InvestigationAI_FE) already authenticated.
 export function getEventExplorerHandoffUrl(): Promise<EventExplorerHandoffResponse> {
   return apiGet<EventExplorerHandoffResponse>("/auth/event-explorer-handoff");
 }
 
-// User Management (admin-only, 2026-09-08, per the user) — every call here
-// 403s server-side for a non-Admin token (backend/backend/routers/auth.py's
-// require_admin), the frontend route guard is just a UX nicety on top.
+// Admin-only: backend enforces 403 for non-Admin tokens (require_admin); the frontend route guard is just a UX nicety on top.
 export interface AdminUserRow {
   id: number;
   username: string;

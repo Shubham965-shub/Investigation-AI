@@ -67,9 +67,7 @@ class RciReportInputsRequest(BaseModel):
 
 @router.put("/{record_id}/inputs", response_model=RciReportRecord)
 async def update_rci_report_inputs(record_id: str, request: RciReportInputsRequest) -> RciReportRecord:
-    """Persists the mc_confirmed toggle / manual entries as the investigator
-    fills them in, independent of generation itself — lets these survive a
-    page reload before the first "Generate" click."""
+    """Persists mc_confirmed/manual_entries independent of generation, so they survive a reload before the first "Generate" click."""
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -112,17 +110,11 @@ async def generate_rci_report(record_id: str) -> RciReportRecord:
     data = await ds_post("/rci-report/generate", json=payload)
     report = RciReportSections(**data)
 
-    # The Executive Summary's problem_description is otherwise ds's own
-    # re-derivation from Description of Event / TrackWise fields — this
-    # overwrites it with the investigator's own already-approved Problem
-    # Statement text verbatim, per the user (2026-09-02), so the two don't
-    # silently diverge.
+    # Overwrite ds's own re-derived problem_description with the investigator's approved Problem
+    # Statement verbatim, so the two don't silently diverge.
     problem_statement = await fetch_problem_statement(deviation_id)
     if problem_statement and report.executive_summary:
-        # Kept as one bullet, not split — this is the investigator's own
-        # verbatim-approved text (see comment above), not LLM-generated
-        # content this app should be re-segmenting on its own judgment.
-        report.executive_summary.problem_description = [problem_statement]
+        report.executive_summary.problem_description = [problem_statement]  # kept as one bullet, not re-segmented
 
     await save_rci_report(
         deviation_id,
@@ -151,18 +143,9 @@ async def update_rci_report(record_id: str, request: RciReportSections) -> RciRe
 
 @router.get("/{record_id}/export")
 async def export_rci_report(record_id: str, username: str = Depends(get_current_username)) -> Response:
-    """The real .docx download for "Accept and Push to TW" (RciReportPage.tsx)
-    — fills the company's actual RCI Report template
-    (assets/rci_report_template.docx) with this investigation's persisted
-    report, per the user (2026-08-25). A section ds couldn't generate (see
-    RciReportSections.errors) shows up in the document as an explicit
-    "could not be generated" note rather than a silent gap — see
-    services/rci_report_export.py's module docstring for the full mapping.
-
-    Also persists this generated docx to investigation_rci_report_exports as
-    a frozen approval snapshot, same convention as RCI Plan's own export —
-    best-effort, since a persistence failure must never break the download
-    the user is actively waiting on."""
+    """Fills the RCI Report .docx template and returns it; a section ds couldn't generate shows an
+    explicit "could not be generated" note. Also persists a frozen approval snapshot (best-effort
+    — must not block the download), same convention as RCI Plan's export."""
     try:
         deviation_id = int(record_id)
     except ValueError:

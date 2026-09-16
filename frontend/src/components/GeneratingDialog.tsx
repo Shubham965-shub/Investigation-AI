@@ -1,11 +1,4 @@
-// Shown while a slow, ds-agent-backed generation call is in flight — e.g.
-// Evidence Collection's POST /evidence/{id}/collect or Interview
-// Questionnaire's POST /questionnaire/{id}/generate, both of which proxy to
-// ds and previously only showed a plain line of muted text with no visual
-// indication of an in-progress, non-trivial wait (2026-09-08, per the user).
-// Not dismissable — same non-cancelable spirit as ScoringDialog, which this
-// mirrors exactly (same overlay/box/spinner structure), just for a
-// generation call instead of a scoring one.
+// Not dismissable, same as ScoringDialog — shown during long ds-agent-backed generation calls.
 export function GeneratingDialog({ heading, message }: { heading: string; message: string }) {
   return (
     <>

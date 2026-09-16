@@ -1,18 +1,8 @@
-"""Queries backing the Analytics dashboard (GET /api/analytics/summary).
-
-Scope, first real-data pass (2026-08-03) — per the user, only the sections
-that map cleanly onto real columns are wired this pass: Event, CAPA
-with/without, Root Cause presence, and Failure Pattern (product/equipment
-frequency). Investigation Quality (IQ Score) and the CAPA L1-L5 hierarchy
-ranking have no backing column anywhere in the star schema (verified against
-the live DB) and are NOT computed here — the frontend keeps showing mock data
-for those, clearly commented, until a real formula/mapping is defined.
-
-Unlike action_center_queries.py (which scopes to ~170 open investigations),
-this covers the full event population (6,686 distinct deviation_ids as of
-2026-08-03) — still small enough to pull as one flat, deduped row set and
-aggregate in Python, matching this repo's existing convention rather than
-hand-rolling multi-CTE SQL.
+"""Queries backing the Analytics dashboard. Only Event, CAPA with/without,
+Root Cause presence, and Failure Pattern are wired to real columns; IQ Score
+and the CAPA L1-L5 hierarchy have no backing column in the star schema and
+stay mocked in the frontend. Covers the full event population (not just open
+investigations), pulled as one flat deduped row set and aggregated in Python.
 """
 from __future__ import annotations
 
@@ -22,10 +12,8 @@ import asyncpg
 
 from backend.clients.db_client import get_pool
 
-# Same known duplication as action_center_queries.py's _OPEN_INVESTIGATIONS_QUERY
-# (274 deviation_ids have more than one fact_qms_event row) — DISTINCT ON
-# picks the most recently updated snapshot per deviation_id so counts here
-# reflect real investigations, not fact-table rows.
+# Some deviation_ids have multiple fact_qms_event rows; DISTINCT ON picks
+# one snapshot per deviation_id so counts reflect investigations, not rows.
 _ANALYTICS_ROWS_QUERY = """
 SELECT deviation_id, date_opened, due_date, capa_record_id, qe_type,
        open_investigation_status, root_cause_category, root_cause_broad_category,

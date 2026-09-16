@@ -27,10 +27,7 @@ class QuestionnaireGenerateResponse(BaseModel):
 
 
 class QuestionnaireRecord(BaseModel):
-    """A real investigation record's Trackwise fields, hydrated from the STAR
-    schema. questions is None until a list has been generated and persisted
-    to investigation_questionnaire_items (generated_content.sql); read-only
-    for now."""
+    """Investigation record hydrated from the STAR schema; questions is None until generated. Read-only for now."""
 
     record_id: str
     event_type: EventType

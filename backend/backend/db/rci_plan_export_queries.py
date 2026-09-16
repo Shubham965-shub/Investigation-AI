@@ -29,9 +29,8 @@ async def insert_rci_plan_export(
 
 
 async def fetch_latest_rci_plan_export_docx(deviation_id: int) -> Optional[bytes]:
-    """Used by Task Critique (services/rci_plan_extraction.py) to read the
-    document module 4 generated. Append-only table — most recent row wins if
-    RCI Plan was ever re-exported after an edit."""
+    """Used by Task Critique to read the document module 4 generated; most
+    recent row wins if RCI Plan was re-exported after an edit."""
     pool = get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(

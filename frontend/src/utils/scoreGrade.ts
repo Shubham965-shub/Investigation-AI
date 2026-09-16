@@ -4,10 +4,7 @@ export type ScoreGrade = {
   border: string;
 };
 
-// 90+ dark green, 80+ light green, 70+ yellow, else red (per the user).
-// Reuses the app's existing color tokens rather than introducing new hex
-// values — --color-primary is a deeper green than --color-success-text,
-// giving two visually distinct green tiers without a new token.
+// 90+ dark green, 80+ light green, 70+ yellow, else red — reuses existing color tokens (--color-primary is a deeper green than --color-success-text) for two green tiers without adding a new token.
 export function scoreGrade(score: number): ScoreGrade {
   if (score >= 90) {
     return { text: "var(--color-primary)", bg: "var(--color-rail-active-bg)", border: "var(--color-primary)" };

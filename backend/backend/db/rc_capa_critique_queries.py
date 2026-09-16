@@ -1,17 +1,9 @@
-"""Queries against generated_content.sql's investigation_rc_capa_reports
-table. Follows the same conventions as task_critique_queries.py:
-UndefinedTableError degrades reads to an empty default, any other DB error
-propagates.
-
-One row per attempt — never replaced (each upload is a fresh INSERT), so
-history across all attempts is naturally preserved, unlike Task Critique's
-single upserted row. Each category's summary/recommendations live
-directly on that row as separate rc_*/capa_* columns (2026-08-07, per the
-user) — matching Task Critique's "one row, recommendations as an inline
-JSONB array" shape — rather than the previous normalized
-investigation_rc_capa_critiques/_recommendations child tables. Recommendation
-ids are unique per report, not globally: rc's ids run 0..len(rc)-1, capa's
-continue numbering from there — see save_critiques/set_recommendation_decision.
+"""Queries against generated_content.sql's investigation_rc_capa_reports.
+Follows task_critique_queries.py's conventions (UndefinedTableError degrades
+reads to empty, other errors propagate). One row per attempt — never
+replaced, so history is naturally preserved, unlike Task Critique's single
+upserted row. Recommendation ids are unique per report, not globally: rc runs
+0..len(rc)-1, capa continues from there.
 """
 from __future__ import annotations
 
@@ -44,9 +36,8 @@ def _parse_capa_items(raw: Any) -> List[Dict[str, Any]]:
 
 
 async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
-    """Returns all reports for this investigation ordered by attempt_number
-    — compute_rc_capa_state below only looks at the last one, but the full
-    history is returned so a caller could show it."""
+    """All reports for this investigation, ordered by attempt_number
+    (compute_rc_capa_state only looks at the last one)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         try:
@@ -83,11 +74,9 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                         "category": "rc_impact",
                         "summary": r["rc_summary"],
                         "recommendations": _parse_recommendations(r["rc_recommendations"]),
-                        # Added 2026-08-25: the report's own real extracted content — see
-                        # save_critiques' docstring. Not part of RcCapaCritique's public
-                        # schema (extra keys silently ignored there); consumed only by
-                        # RCI Report generation (backend/services/rci_report_request.py),
-                        # which reads this dict directly, bypassing that schema.
+                        # The report's own extracted content, not part of RcCapaCritique's
+                        # public schema (extra keys ignored there) — consumed only by RCI
+                        # Report generation, which reads this dict directly.
                         "rc_conclusion_text_raw": r["rc_conclusion_text_raw"],
                         "is_repeat_occurrence": r["is_repeat_occurrence"],
                         "impact_assessment_text": r["impact_assessment_text"],
@@ -151,27 +140,16 @@ async def save_critiques(
     capa_text_raw: str = "",
     capa_items: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    """Persists both fixed categories' critique directly onto the report row.
-    `rc_summary`/`capa_summary` are sourced from the report's own RC Conclusion / CAPA section
-    text, pulled by ds via plain docx parsing (extract_rci_report_sections, no LLM), then
-    condensed by ds to 3-4 plain-language sentences since the full verbatim section is too
-    long for a dashboard summary card (2026-08-20, per the user) — the condensation step is
-    forbidden from adding any fact not already in the extracted text, so this is still not a
-    critique verdict or an LLM's independent judgment of the report. No separate LLM
-    "strengths" verdict is generated or persisted anymore (2026-08-20, per the user — the
-    rc_strengths/capa_strengths columns still exist on the table but are no longer written or
-    read).
-    Recommendation ids are unique per report: rc_recommendations run
-    0..len(rc)-1, impact_recommendations continue from there, then capa's.
-    Each rc_impact recommendation is tagged "rc" or "impact" (2026-08-24, per
-    the user) so the frontend can render the two as separate subsections;
-    capa's own recommendations carry no type (not split this way).
-
-    rc_conclusion_text_raw/is_repeat_occurrence/impact_assessment_text/impact_conclusion_text/
-    correction_remedial_text/capa_text_raw/capa_items (2026-08-25, per the user): the same
-    extraction's real verbatim/structured content, persisted alongside the condensed
-    summaries above rather than instead of them — consumed only by RCI Report generation,
-    which needs the report's own text, not a dashboard-card blurb."""
+    """Persists both categories' critique onto the report row. Summaries are
+    extracted via plain docx parsing (no LLM) then condensed to a few
+    sentences for the dashboard card — condensation can't add facts, so this
+    is still not an independent critique verdict (rc_strengths/capa_strengths
+    columns still exist but are no longer written/read). Recommendation ids
+    run rc, then impact, then capa; each rc/impact one is tagged accordingly
+    so the frontend can split them into subsections. The raw
+    rc_conclusion_text_raw/impact_*/capa_text_raw/capa_items fields carry the
+    same extraction's raw content alongside the condensed summaries, for RCI
+    Report generation."""
     rc_recs = [
         {"id": i, "description": d, "type": "rc", "decision": "pending", "reason": None, "decided_at": None}
         for i, d in enumerate(rc_recommendations)
@@ -232,9 +210,8 @@ async def set_rc_capa_scores(
 
 
 async def set_recommendation_decision(report_id: int, recommendation_id: int, decision: str, reason: Optional[str]) -> None:
-    """recommendation_id is only unique within one report (see save_critiques)
-    — determine which category's array actually contains it, then rewrite
-    that array with the matching element's decision updated."""
+    """recommendation_id is unique only within one report — find which
+    category's array contains it, then rewrite that array."""
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -265,9 +242,8 @@ async def set_recommendation_decision(report_id: int, recommendation_id: int, de
 
 
 def compute_rc_capa_state(reports: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Thin wrapper around the shared state machine — flattens the latest
-    report's two categories' recommendation lists into one before delegating,
-    since compute_upload_state doesn't know or care about categories."""
+    """Flattens the latest report's two categories into one list before
+    delegating to the shared state machine."""
     if not reports:
         return compute_upload_state(None, 0)
     latest = reports[-1]

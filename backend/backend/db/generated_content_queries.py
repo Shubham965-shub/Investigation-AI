@@ -1,18 +1,7 @@
-"""Queries against generated_content.sql's tables.
-
-Read functions have existed since the GET endpoints were wired up. The write
-functions below (save_*/replace_*) are new — called from the POST
-generate/collect endpoints after a successful DS response — but are pure
-application code with no bearing on the real DB until generated_content.sql
-is actually run there (confirmed still not run as of 2026-07-24 — the tables
-don't exist on the live DB).
-
-The read functions below catch UndefinedTableError specifically (not a bare
-except) and degrade to the same "nothing generated yet" default the caller
-would see if the table existed but had no matching row — this table not
-existing yet is an expected, common state pre-approval, not an anomaly, so it
-is not logged as a warning. Any other DB error still propagates so a genuine
-problem isn't silently swallowed.
+"""Queries against generated_content.sql's tables. Reads catch
+UndefinedTableError specifically and degrade to the same "nothing generated
+yet" default as a missing row — the table not existing yet is an expected
+pre-approval state, not an anomaly. Other DB errors still propagate.
 """
 from __future__ import annotations
 
@@ -25,11 +14,9 @@ from backend.clients.db_client import get_pool
 
 
 def _parse_date(value: Any) -> Optional[datetime.date]:
-    """investigation_rci_sections.due_date is a real `date` column — asyncpg
-    requires an actual datetime.date object for it, not the "YYYY-MM-DD"
-    string the frontend's <input type="date"> (and JSON generally) sends;
-    passing the raw string through fails with "'str' object has no
-    attribute 'toordinal'" (confirmed live, 2026-07-31)."""
+    """asyncpg requires a real datetime.date for this column, not the
+    "YYYY-MM-DD" string the frontend sends — passing the raw string through
+    fails with "'str' object has no attribute 'toordinal'"."""
     if not value:
         return None
     if isinstance(value, datetime.date):
@@ -127,15 +114,10 @@ async def fetch_rci_sections(deviation_id: int) -> List[Dict[str, Any]]:
         ]
 
 
-# SIT Dashboard's per-row "Remark" column. Keyed by (deviation_id, rci_id) —
-# NOT deviation_id alone — because a deviation with multiple RCI IDs renders
-# as multiple table rows (see ActionCenterPage.tsx's explodedInvestigations)
-# and each of those rows carries its own independent remark. rci_id "" here
-# means "this row has no RCI ID" (matches the frontend's own
-# `rci_ids[0] ?? ""` row-key convention); it's normalized to real SQL NULL
-# for storage/matching against investigation_remarks' NULLS NOT DISTINCT key
-# so the "no rci_id" case still upserts onto a single row instead of a new
-# one every save.
+# Keyed by (deviation_id, rci_id), not deviation_id alone — a deviation with
+# multiple RCI IDs renders as multiple rows, each with its own remark. Empty
+# rci_id is normalized to SQL NULL to match the NULLS NOT DISTINCT key so
+# "no rci_id" still upserts onto one row instead of a new one every save.
 async def fetch_remarks(deviation_ids: List[int]) -> Dict[int, Dict[str, str]]:
     if not deviation_ids:
         return {}
@@ -189,9 +171,7 @@ async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]])
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # See replace_rci_sections' comment — same DELETE-then-INSERT
-            # race applies here (called on every checkbox toggle/add), so
-            # the same per-investigation advisory lock is needed.
+            # Same DELETE-then-INSERT race as replace_rci_sections — needs the same lock.
             await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             await conn.execute("DELETE FROM investigation_evidence_items WHERE deviation_id = $1", deviation_id)
             if items:
@@ -211,9 +191,7 @@ async def replace_questionnaire_items(deviation_id: int, items: List[Dict[str, A
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # See replace_rci_sections' comment — same DELETE-then-INSERT
-            # race applies here (called on every checkbox toggle/add), so
-            # the same per-investigation advisory lock is needed.
+            # Same DELETE-then-INSERT race as replace_rci_sections — needs the same lock.
             await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             await conn.execute("DELETE FROM investigation_questionnaire_items WHERE deviation_id = $1", deviation_id)
             if items:
@@ -234,17 +212,11 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
     async with pool.acquire() as conn:
         async with conn.transaction():
             # Serializes concurrent replace calls for the same investigation
-            # (e.g. a double-clicked "Generate" plus a burst of assignee-edit
-            # PUT calls firing close together) — without this, two
-            # overlapping DELETE-then-INSERT sequences can each see "nothing
-            # to delete yet" (the other call hasn't committed its INSERT
-            # yet) and both insert their own full section set, silently
-            # multiplying every section instead of one cleanly replacing the
-            # other. Confirmed live: deviation_id 504419 ended up with 6
-            # sections x 8 duplicate copies each, with different assignee
-            # values frozen from different in-flight PUT calls. Transaction-
-            # scoped — auto-released on commit/rollback, so callers just
-            # block-and-wait rather than needing to release it explicitly.
+            # (e.g. double-clicked Generate + assignee-edit PUTs) — without
+            # it, overlapping DELETE-then-INSERT sequences can each miss the
+            # other's uncommitted DELETE and duplicate every section
+            # (confirmed live: one deviation_id got 6 sections x 8 duplicate
+            # copies). Transaction-scoped, auto-released on commit/rollback.
             await conn.execute("SELECT pg_advisory_xact_lock($1)", deviation_id)
             # ON DELETE CASCADE on investigation_rci_tasks.section_id takes care of tasks.
             await conn.execute("DELETE FROM investigation_rci_sections WHERE deviation_id = $1", deviation_id)

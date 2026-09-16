@@ -8,17 +8,15 @@ import asyncpg
 from backend.clients.db_client import get_pool
 
 _INVESTIGATION_ROW_QUERY = """
--- dim_event.status was renamed to dim_event.module on 2026-07-27 (see project
--- memory: star_schema) — aliased back to `status` here since that's the key
--- the 4 module routers/module_stage.stage_for() already expect.
+-- dim_event.status was renamed to dim_event.module; aliased back to `status`
+-- here since that's the key module_stage.stage_for() expects.
 SELECT
     f.deviation_id,
     ec.qe_type,
     e.module AS status,
     e.failure_type,
-    -- OOT's failure_type is 0% filled live (2026-07-31) — these 3 are what
-    -- OOT's "Failure Type" trackwise field is actually built from instead
-    -- (see field_mapping.py's _merge_root_cause_category).
+    -- OOT's failure_type is ~0% filled; these 3 build OOT's "Failure Type"
+    -- field instead (see field_mapping._merge_root_cause_category).
     e.root_cause_broad_category,
     e.root_cause_category,
     e.root_cause_sub_category,
@@ -74,11 +72,9 @@ SELECT
     d.department,
     f.due_date,
     e.criticality,
-    -- Plain column on dim_event itself — distinct from dim_event_classification
-    -- (`ec` below, an unrelated qe_type lookup table). "Critical"/"Major"/
-    -- "Minor" for Deviation/Complaint, or NULL for OOS/OOT (no Major/Minor
-    -- concept for those types) or an unclassified/"Not Applicable" record
-    -- (2026-09-11, per the data engineer).
+    -- Distinct from dim_event_classification (`ec` below, an unrelated
+    -- qe_type lookup). Critical/Major/Minor for Deviation/Complaint only;
+    -- NULL for OOS/OOT or an unclassified record.
     e.event_classification
 FROM fact_qms_event f
 JOIN dim_event e ON e.deviation_id = f.deviation_id
@@ -100,10 +96,8 @@ async def fetch_investigation_row(deviation_id: int) -> Optional[asyncpg.Record]
         return await conn.fetchrow(_INVESTIGATION_ROW_QUERY, deviation_id)
 
 
-# Reuses the same open/closed/cancelled classification action_center_queries.py
-# established (module='Cancelled' -> Cancelled; closed_on set -> Closed;
-# else -> Open) — bool_or across GROUP BY handles deviation_ids with more
-# than one fact_qms_event row (a known, legitimate source-pipeline pattern).
+# Same open/closed/cancelled classification as action_center_queries.py;
+# bool_or handles deviation_ids with more than one fact_qms_event row.
 _INVESTIGATION_STATUS_QUERY = """
 SELECT
     f.deviation_id,
@@ -120,10 +114,8 @@ GROUP BY f.deviation_id
 
 
 async def fetch_investigation_statuses(deviation_ids: List[int]) -> Dict[int, str]:
-    """Open/Closed/Cancelled classification for a batch of deviation_ids —
-    used by the "View Historic Data" panel to annotate results returned by
-    ds's /api/search (which only knows about its own search corpus, not
-    Trackwise's own status fields)."""
+    """Open/Closed/Cancelled per deviation_id — used to annotate ds's
+    /api/search results with Trackwise's own status fields."""
     if not deviation_ids:
         return {}
     pool = get_pool()
@@ -132,17 +124,10 @@ async def fetch_investigation_statuses(deviation_ids: List[int]) -> Dict[int, st
         return {r["deviation_id"]: r["status"] for r in status_rows}
 
 
-# Only investigators currently assigned to an OPEN investigation (2026-08-19,
-# per the user, re-scoping the prior 2026-08-13 "every investigator who has
-# ever appeared, open or closed or cancelled" decision back down) — used to
-# populate RCI Plan Creation's task-assignee dropdown, which shouldn't offer
-# someone no longer actively working anything. `f.closed_on IS NULL` is the
-# authoritative "open" filter (same one action_center_queries.py's
-# _OPEN_INVESTIGATIONS_QUERY uses) — dim_event.open_investigation_status is a
-# different, severity/bucket field, not this. Joined through fact_qms_event
-# (not a bare SELECT DISTINCT investigator FROM dim_investigator) so this
-# only ever returns investigators actually referenced by a real investigation,
-# not any unused/orphaned dim_investigator row.
+# Only investigators on a currently open investigation (closed_on IS NULL,
+# not the unrelated open_investigation_status field) — populates RCI Plan's
+# assignee dropdown. Joined through fact_qms_event so this returns only
+# investigators actually referenced, not orphaned dim_investigator rows.
 _OPEN_INVESTIGATORS_QUERY = """
 SELECT DISTINCT di.investigator
 FROM fact_qms_event f

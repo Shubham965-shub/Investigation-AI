@@ -1,10 +1,4 @@
-"""Shared asyncpg pool for the STAR schema / auth tables Postgres instance.
-
-Mirrors backend.clients.ds_client's create/close/get singleton pattern. If the
-pool can't be created at startup (DB unreachable), we log and leave it unset
-rather than crashing the app — DS-only endpoints (generate/collect/upload)
-must keep working even when the DB is down.
-"""
+"""Shared asyncpg pool for the STAR schema / auth tables Postgres instance."""
 from __future__ import annotations
 
 import logging

@@ -1,8 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
-// Tracks whether any slide-in side panel (e.g. InvestigationPreviewPanel) is
-// currently open, so AppHeader can become sticky only while one is open —
-// otherwise the header scrolls away with the page as normal.
+// Tracks whether a slide-in side panel is open, so AppHeader can become sticky only while one is open.
 interface PanelStateContextValue {
   isPanelOpen: boolean;
   setPanelOpen: (open: boolean) => void;

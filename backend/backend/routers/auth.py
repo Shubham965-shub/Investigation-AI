@@ -1,33 +1,7 @@
-"""Authentication endpoints.
-
-Real credential store as of 2026-07-31: schema.sql's athena_users/
-athena_roles tables have been applied to the shared DB, and login verifies
-the submitted password against the stored bcrypt hash (bcrypt was already a
-declared dependency, previously unused). Tokens are signed, expiring JWTs
-(HS256) — not an opaque placeholder.
-
-JWT_SECRET is a platform-wide shared secret (see settings.py) — this app's
-own regular session token IS the token other ARGUS Lighthouse services (e.g.
-the feedback widget's service, AppFeedbackButton.tsx) accept too, no separate
-per-service token needed. That service's own AuthFilter (confirmed
-2026-08-03 by reading Strides-Pharma-Science-Ltd/feedback-platform directly)
-does `UUID.fromString(claims.getSubject())` — `sub` MUST be a UUID string, a
-generic RuntimeException there (e.g. from a non-UUID sub) is caught and
-reported back as the exact opaque "Invalid bearer token" this app hit before
-this was found. This app's athena_users has no real UUID column, so `sub`
-here is `uuid_for_user_id()` — a deterministic UUID derived from the
-integer id (stable per user, no schema change needed; the feedback service
-never looks it up against anything, it's opaque to them). The ACTUAL
-username now travels as a separate `username` claim instead — every internal
-reader of this token (get_current_username(), the audit-trail middleware)
-was updated to read that claim, not `sub`, accordingly. `roles`/`email` are
-the other half of the interop contract, read by the feedback service to
-attribute a submission without a DB lookup back to this app.
-
-get_current_username() is the shared dependency both /auth/me and every
-other (non-auth) router use to require a valid token — see app.py's
-include_router(..., dependencies=[Depends(get_current_username)]) calls.
-"""
+"""Auth endpoints. JWT_SECRET is shared with other ARGUS Lighthouse services (e.g. the
+feedback widget), whose AuthFilter requires `sub` to be a UUID string — so `sub` here is a
+deterministic UUID derived from the user id, and the real username travels as a separate
+`username` claim instead (read by get_current_username() and the audit-trail middleware)."""
 from __future__ import annotations
 
 import logging
@@ -75,22 +49,12 @@ _INVALID_CREDENTIALS_DETAIL = "Invalid username or password"
 
 
 def uuid_for_user_id(user_id: int) -> str:
-    """A stable, deterministic UUID string for a given athena_users.id — see
-    this module's docstring for why `sub` needs to be UUID-shaped at all."""
+    """Deterministic UUID for a user id — `sub` must be UUID-shaped for cross-service interop."""
     return str(uuid.UUID(int=user_id))
 
 
 def display_name_for_username(username: str) -> str:
-    """Fallback only — used when athena_users.full_name is unset for an
-    account. Derives a best-effort display name from the email-shaped
-    username, e.g. "Saksham.Shankar@strides.com" -> "Saksham Shankar",
-    "kaberi_nath@mckinsey.com" -> "Kaberi Nath". Known to get concatenated
-    names wrong (e.g. "SatyanarayanSingh.Rajput" -> "SatyanarayanSingh
-    Rajput", not the real "Satyanarayan Singh Rajput") — real full_name
-    values take priority (see issue_token) precisely because of cases like
-    that. A part already containing a capital letter is left as-is rather
-    than forced to lowercase-then-capitalize, since it may already be an
-    intentional concatenation."""
+    """Fallback display name derived from an email-shaped username, used only when full_name is unset; can mis-split already-concatenated name parts."""
     local_part = username.split("@", 1)[0]
     parts = [p for p in re.split(r"[._]+", local_part) if p]
     if not parts:
@@ -110,17 +74,10 @@ def issue_token(
         "sub": uuid_for_user_id(user_id),
         "username": username,
         "uid": user_id,
-        # username IS an email address in this app's data (see the 7 seeded
-        # accounts), so it doubles as the "email" identity claim the
-        # reference platform's own tokens carry — no separate field needed.
-        "email": username,
+        "email": username,  # username is already an email address in this app's data
         "name": full_name or display_name_for_username(username),
         "roles": roles or [],
-        # Investigator-role scoping hook (2026-09-09, per the user) — see
-        # schema.sql's athena_users.investigator_name comment. Embedded in
-        # the token so action_center.py's per-request scoping doesn't need
-        # its own DB round trip; only meaningful when "Investigator" is in
-        # roles above.
+        # Embedded so action_center.py's Investigator-role scoping avoids a DB round trip.
         "investigator_name": investigator_name,
         "iat": now,
         "exp": now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES),
@@ -130,16 +87,13 @@ def issue_token(
 
 def _decode_token_payload(token: str) -> dict:
     try:
-        # ExpiredSignatureError is a subclass of InvalidTokenError — must be
-        # caught first, or "expired" would be misreported as "invalid".
+        # ExpiredSignatureError subclasses InvalidTokenError — must be caught first.
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
-    # NOT "sub" — see module docstring (sub is now a UUID derived from uid,
-    # not the username).
-    if not payload.get("username"):
+    if not payload.get("username"):  # NOT "sub" — sub is a UUID derived from uid
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return payload
 
@@ -149,13 +103,7 @@ def _decode_token(token: str) -> str:
 
 
 def try_decode_payload(token: str) -> Optional[dict]:
-    """Best-effort, never-raising decode used only by app.py's request
-    middleware — for the audit trail (a request with a missing/invalid/
-    expired token still gets logged as an anonymous call, user_id=None) and
-    for sliding-expiry token refresh (only a STILL-VALID token's payload is
-    returned — an already-expired token returns None here too, same as an
-    invalid one, so refresh can only extend a live session, never resurrect
-    a dead one; the user must fully re-login once actually expired)."""
+    """Never-raising decode for audit logging and sliding-expiry refresh; an expired token returns None (same as invalid), so refresh can extend a live session but never resurrect a dead one."""
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except jwt.InvalidTokenError:
@@ -170,11 +118,7 @@ def get_current_username(
     return _decode_token(credentials.credentials)
 
 
-# Used where a route needs more than just the username — e.g.
-# action_center.py's Investigator-role scoping needs `roles` and
-# `investigator_name` too. Re-decodes the token independently rather than
-# building on get_current_username, same pattern require_admin below already
-# uses.
+# For routes needing more than the username, e.g. action_center.py's roles/investigator_name scoping.
 def get_current_payload(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> dict:
@@ -183,14 +127,7 @@ def get_current_payload(
     return _decode_token_payload(credentials.credentials)
 
 
-# Gate for the User Management endpoints below (2026-09-08, per the user) —
-# the first role-based authorization check in this codebase; every other
-# router only ever required a valid token (see module docstring), never a
-# specific role. Checks the JWT's own `roles` claim (already embedded at
-# login, see issue_token) rather than re-querying the DB, so a role change
-# only takes effect on that user's next login — same characteristic already
-# true of the frontend's role-based UI (e.g. Action Center's "SIT Dashboard"
-# title), not a new inconsistency introduced here.
+# Checks the JWT's roles claim rather than the DB, so a role change takes effect only on next login.
 def require_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
@@ -202,10 +139,7 @@ def require_admin(
     return payload["username"]
 
 
-# Gate for the SIT Dashboard's "Remark" field (2026-09-11, per the user) —
-# editable by SIT only, same pattern as require_admin above. Deliberately
-# SIT-only, not SIT-or-Admin — the user's own words ("editable by SITs and
-# visible to SITs only") scope this to that one role.
+# Gate for the SIT Dashboard's "Remark" field — deliberately SIT-only, not SIT-or-Admin.
 def require_sit(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
@@ -235,12 +169,8 @@ async def me(username: str = Depends(get_current_username)) -> CurrentUser:
     return CurrentUser(username=username)
 
 
-# Event Explorer SSO handoff (2026-08-19, per the user) — mints a short-lived,
-# single-purpose token InvestigationAI_BE exchanges for its own local session,
-# so clicking "Explore Events" lands the user in InvestigationAI_FE's Event
-# Explorer already authenticated as the same athena_users identity. Signed
-# with EVENT_EXPLORER_HANDOFF_SECRET (NOT settings.JWT_SECRET — see that
-# setting's docstring for why this is a deliberately separate secret).
+# Short-lived SSO handoff token InvestigationAI_BE exchanges for its own session; signed with a
+# separate secret (EVENT_EXPLORER_HANDOFF_SECRET), not settings.JWT_SECRET.
 _HANDOFF_TOKEN_TTL_SECONDS = 60
 
 
@@ -257,8 +187,7 @@ async def event_explorer_handoff(username: str = Depends(get_current_username)) 
     return EventExplorerHandoffResponse(url=url)
 
 
-# User Management (2026-09-08, per the user) — admin-only: list every
-# athena_users row, create a new one, or change an existing one's role.
+# User Management: admin-only list/create/role-change endpoints.
 _USERNAME_TAKEN_DETAIL = "That username/email is already in use"
 _UNKNOWN_ROLE_DETAIL = "Unknown role"
 

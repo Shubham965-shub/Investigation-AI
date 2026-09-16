@@ -40,12 +40,7 @@ function RecommendationList({ recs }: { recs: RcCapaRecommendation[] }) {
   );
 }
 
-// Full audit trail across every RC & CAPA Critique attempt — unlike Task
-// Critique, investigation_rc_capa_reports already keeps a real row per
-// attempt, so this is just every report, oldest first. Independent of lock/
-// complete state (2026-08-18, per the user) — shown behind its own button
-// in a separate panel rather than inline, since it's the whole history, not
-// just the current report.
+// Full audit trail across every attempt (investigation_rc_capa_reports keeps a row per attempt), oldest first, independent of lock/complete state.
 export function RcCapaHistoryPanel({ reports, loading, onClose }: { reports: RcCapaReport[]; loading: boolean; onClose: () => void }) {
   return (
     <>

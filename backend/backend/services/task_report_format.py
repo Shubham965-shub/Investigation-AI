@@ -1,23 +1,5 @@
-"""Validates an uploaded task report against the real Task Report Template
-(/Users/114862/Desktop/Task Report Template.docx, 2026-08-12, per the user) —
-before a report is sent to ds for critique, not after. The template's actual
-structure (confirmed via python-docx): a "Problem statement:" label, an
-"Investigation tasks" heading, and per-task blocks each labelled "Title of
-the task:", "Objective:", "Findings:", "Inference". The company logo/location
-live in the header, not the body, so ignoring them is automatic — this only
-ever scans body paragraphs/tables, never the header.
-
-"Title of the task:" is deliberately NOT in REQUIRED_MARKERS — confirmed
-against a real, already-successfully-critiqued report (Desktop/"Deviation
-Task report - 1 task.docx") that it's a blank-template-only instructional
-label; once filled in, the task's title becomes a plain heading line with no
-literal "Title of the task" prefix at all. Requiring it would reject
-genuinely well-formed, real reports.
-
-This is a structural check (are the expected section labels present at all),
-not a content/quality check — that's what ds's critique does. A report
-missing these labels almost certainly isn't the right template at all, and
-ds's critique would have nothing real to parse from it anyway.
+"""Validates an uploaded task report against the real Task Report Template's structure (before sending to ds for critique) — a structural label check, not a content/quality check.
+"Title of the task:" is deliberately excluded from REQUIRED_MARKERS: once filled in, the title becomes a plain heading with no literal prefix, so requiring it would reject well-formed real reports.
 """
 from __future__ import annotations
 
@@ -37,19 +19,8 @@ REQUIRED_MARKERS = [
 
 
 def missing_task_report_markers(file_bytes: bytes) -> List[str]:
-    """Returns the subset of REQUIRED_MARKERS not found anywhere in the
-    document body (case-insensitive) — empty list means the format checks out.
-
-    Walks every <w:t> text node under the body via the raw XML tree rather
-    than doc.paragraphs/doc.tables (2026-08-25, found live: a genuinely
-    correct .docx was intermittently rejected as "wrong format"). Those two
-    python-docx properties only see paragraphs/tables that are DIRECT
-    children of the body — text inside a nested table-within-a-table, or
-    inside a content control (a <w:sdt> block, which Word can wrap a
-    section in depending on how the template was filled/edited), sits one
-    or more levels deeper in the XML and is invisible to them even though
-    the text is genuinely there and Word renders it normally. Iterating
-    every <w:t> under the body finds it regardless of nesting depth."""
+    """Returns REQUIRED_MARKERS missing from the document body (case-insensitive); empty list means it checks out.
+    Walks every <w:t> node via the raw XML tree rather than doc.paragraphs/doc.tables, which miss text nested inside a table-within-a-table or a content control (<w:sdt>) block."""
     try:
         doc = docx.Document(io.BytesIO(file_bytes))
     except Exception:

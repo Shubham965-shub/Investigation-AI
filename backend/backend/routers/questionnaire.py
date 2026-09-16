@@ -31,8 +31,7 @@ async def generate_questionnaire(
     data = await ds_post("/interview/questionnaire", json=request.model_dump())
     response = QuestionnaireGenerateResponse(**data)
 
-    # Persisting is best-effort — a DB/table issue must never break generation
-    # itself, especially before generated_content.sql has been run anywhere.
+    # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
         await replace_questionnaire_items(
@@ -72,11 +71,7 @@ async def get_questionnaire(record_id: str) -> QuestionnaireRecord:
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def update_questionnaire(record_id: str, items: list[InterviewQuestion]) -> None:
-    """Persist the current check/uncheck state and any user-added questions —
-    called by the frontend on every toggle/add so a refresh no longer
-    reverts to the last-generated state. Full replace, same as /generate's
-    own persistence, just triggered by user edits instead of generation.
-    """
+    """Full replace of persisted questionnaire state, triggered by user edits instead of generation."""
     try:
         deviation_id = int(record_id)
     except ValueError:

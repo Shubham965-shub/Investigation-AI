@@ -20,19 +20,14 @@ import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkIcon from "../assets/icons/evidence-checkbox.svg";
 import "./RecordModulePage.css";
 
-// TCD (target completion date) must be a future date — per the user
-// (2026-07-31), the calendar picker should only allow dates after today, so
-// this is used as the <input type="date">'s min (exclusive of today itself).
+// TCD must be a future date — used as the <input type="date">'s min (exclusive of today).
 function tomorrowIso(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
-// Default Target Date for any section that doesn't have one yet (2026-09-10,
-// per the user) — today + 5 WORKING days (Mon-Fri, weekends skipped, today
-// itself not counted as one of the 5), not just today+5 calendar days.
-// Always later than tomorrowIso()'s min, so it never violates that bound.
+// Default Target Date: today + 5 working days (weekends skipped, today not counted) — always later than tomorrowIso()'s min.
 function defaultDueDateIso(): string {
   const d = new Date();
   let remaining = 5;
@@ -44,10 +39,7 @@ function defaultDueDateIso(): string {
   return d.toISOString().slice(0, 10);
 }
 
-// due_date is always a plain "yyyy-mm-dd" string (native <input type="date">'s
-// value format) — displayed as dd/mm/yyyy once locked/read-only (2026-08-18,
-// per the user). The editable native date input itself still renders
-// according to the browser's own locale — that's outside app-level control.
+// due_date is a plain "yyyy-mm-dd" string — displayed as dd/mm/yyyy once locked/read-only; the editable input itself follows the browser's own locale.
 function formatDdMmYyyy(iso: string): string {
   const [y, m, d] = iso.split("-");
   return y && m && d ? `${d}/${m}/${y}` : iso;
@@ -63,23 +55,15 @@ export function RciPlanPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
-  // True once Task Critique has started on any section — RCI Plan becomes
-  // read-only at that point (2026-08-05, per the user), since editing here
-  // would delete-then-recreate section rows and cascade away that history.
+  // True once Task Critique has started on any section — RCI Plan becomes read-only since editing would delete-then-recreate rows and lose that history.
   const [lockedForEditing, setLockedForEditing] = useState(false);
   const [eventType, setEventType] = useState<EventType | undefined>(undefined);
   const [trackwiseFields, setTrackwiseFields] = useState<TrackwiseFields | undefined>(undefined);
   const [sections, setSections] = useState<RciSectionItem[] | null>(null);
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({});
-  // Toggled by the header "Edit" button — gates every edit affordance in
-  // the plan (section title/correlation, TCD, assignee, task text/check,
-  // include/exclude, add task/section). Previously several of these
-  // (TCD, assignee, task text/check, include/exclude) were editable
-  // whenever the plan merely wasn't locked, regardless of this flag —
-  // fixed 2026-08-25, per the user: edits must only be possible in edit mode.
+  // Toggled by the header "Edit" button — gates every edit affordance in the plan; edits must only be possible in edit mode.
   const [editMode, setEditMode] = useState(false);
-  // Per-section draft text for the new-task input, keyed by section index —
-  // each section's "Add Task" row needs its own independent in-progress text.
+  // Per-section draft text for the new-task input, keyed by section index.
   const [newTaskDrafts, setNewTaskDrafts] = useState<Record<number, string>>({});
   const [additionalValues, setAdditionalValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -87,24 +71,13 @@ export function RciPlanPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [pushed, setPushed] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  // Surfaces a persistSections failure (2026-09-10, per the user — every
-  // section/subtask edit must actually be persisted, not just silently
-  // fail). Previously only logged to the console — the optimistic local
-  // setSections() update still made the edit LOOK saved on screen even when
-  // the backend call never went through, so a real failure was invisible.
+  // Surfaces a persistSections failure — without this the optimistic setSections() update still looked saved even when the backend call failed.
   const [persistError, setPersistError] = useState<string | null>(null);
   const [investigators, setInvestigators] = useState<string[]>([]);
-  // "Explore Events" now lives only on this page's Problem Statement card,
-  // not the RecordDetailsModal popup it used to share with Problem Statement
-  // itself (2026-08-21, per the user).
+  // "Explore Events" lives only on this page's Problem Statement card, not the RecordDetailsModal popup.
   const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
 
-  // Everything comes from the DB — no localStorage. RCI Plan depends on the
-  // Problem Statement record existing (fetched here directly rather than
-  // assumed from a prior page visit), plus its own record for
-  // event_type/trackwise_fields/already-generated plan. A 404 on either is a
-  // valid "not generated/no record yet" state; any other failure blocks the
-  // page via DbErrorModal.
+  // Depends on the Problem Statement record existing — a 404 on either fetch is a valid "not generated yet" state; any other failure blocks the page via DbErrorModal.
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
@@ -125,32 +98,19 @@ export function RciPlanPage() {
           setTrackwiseFields(rciRecord.trackwise_fields);
           setLockedForEditing(rciRecord.locked_for_editing ?? false);
           if (rciRecord.sections) {
-            // Any section still missing a Target Date gets the same
-            // computed default a fresh generate() gives every section below
-            // (2026-09-10, per the user) — covers plans generated before
-            // this default existed. Skipped once the plan is locked (Task
-            // Critique already started) — nothing should change on a frozen
-            // plan, defaulted or not.
+            // Backfills a Target Date for plans generated before this default existed — skipped once the plan is locked.
             const filled = rciRecord.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
             setSections(filled);
             if (!rciRecord.locked_for_editing && filled.some((s, i) => s.due_date !== rciRecord.sections![i].due_date)) {
               persistSections(filled);
             }
           }
-          // The GET response's trackwise_fields already includes the
-          // extended field set (Deviation Number, Date Opened, etc.) — pull
-          // those straight from the backend instead of leaving the
-          // "Additional Details" inputs blank for the user to retype.
+          // Prefill "Additional Details" from the backend's trackwise_fields instead of leaving them blank to retype.
           const fieldsNeeded = getAdditionalFieldsForModule("rci-plan", rciRecord.event_type);
           const prefill: Record<string, string> = {};
           for (const field of fieldsNeeded) {
             const value = rciRecord.trackwise_fields[field.key];
-            // "list"-kind fields (Immediate Actions, Impact Details, Proposal
-            // for Resolution) come back as arrays — join with "\n" to match
-            // the same one-per-line textarea convention handleGenerate's
-            // split("\n") expects on submit, instead of dropping the field
-            // (typeof value === "string" alone would silently leave it
-            // blank, same class of bug as Related Market/Related Customer).
+            // "list"-kind fields come back as arrays — join with "\n" to match handleGenerate's split("\n") convention, instead of silently dropping them.
             if (typeof value === "string") prefill[field.key] = value;
             else if (Array.isArray(value)) prefill[field.key] = value.join("\n");
           }
@@ -201,13 +161,7 @@ export function RciPlanPage() {
     setError(null);
     setLoading(true);
     try {
-      // DS's schema requires every "list"-kind field (Immediate Actions,
-      // Impact Details, Proposal for Resolution) as an actual array, not a
-      // string — split each "one per line" text value on newlines. Also
-      // make sure every additional field key is present in the payload even
-      // if the user never touched it (e.g. "Equipment Number" has no real
-      // data source since that DB column was dropped) — DS rejects the
-      // request outright if a required key is missing entirely.
+      // DS requires "list"-kind fields as real arrays (split on newlines) and every additional field key present even if untouched, or it rejects the request.
       const mergedFields: TrackwiseFields = { ...trackwiseFields };
       for (const field of additionalFields) {
         const raw = additionalValues[field.key] ?? "";
@@ -217,15 +171,10 @@ export function RciPlanPage() {
             : raw;
       }
       const response = await generateRciPlan(recordId!, { event_type: eventType!, trackwise_fields: mergedFields });
-      // Every freshly generated section defaults its Target Date to today +
-      // 5 working days (2026-09-10, per the user) rather than staying blank
-      // until someone picks one — still freely editable per-section
-      // afterward, same as the assignee convenience-default above.
+      // Defaults each generated section's Target Date to today + 5 working days instead of leaving it blank; still freely editable after.
       const filled = response.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
       setSections(filled);
-      // The generate call's own best-effort persist (mentioned above) ran
-      // before this default was computed, so push it through the normal
-      // persist path too rather than leaving the backend's copy blank.
+      // The generate call's own persist ran before this default was computed — push it through the normal persist path too.
       persistSections(filled);
     } catch (err) {
       setError(err instanceof ApiError ? String(err.detail) : "Failed to generate RCI plan");
@@ -238,13 +187,7 @@ export function RciPlanPage() {
     setOpenSections((prev) => ({ ...prev, [index]: !prev[index] }));
   }
 
-  // Persisted best-effort, debounced 600ms after the last edit — typing in
-  // the investigator field fired a full replace-all-sections PUT on every
-  // keystroke, which (combined with a since-fixed backend race — see
-  // replace_rci_sections) produced duplicated sections with different
-  // partially-typed substrings of "Unassigned" as the assignee. The backend
-  // fix alone prevents the corruption; debouncing here also cuts the sheer
-  // number of full-replace round-trips a fast typist fires.
+  // Debounced 600ms — an undebounced full-replace PUT per keystroke, combined with a since-fixed backend race, used to produce duplicated sections with partial "Unassigned" substrings.
   function persistSections(list: RciSectionItem[]) {
     if (!recordId) return;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
@@ -275,8 +218,7 @@ export function RciPlanPage() {
     const newSections = [...sections, newSection];
     setSections(newSections);
     persistSections(newSections);
-    // Open it immediately so the new (blank) title/correlation inputs are
-    // visible to fill in right away, same as landing on any other section.
+    // Open immediately so the new section's blank inputs are visible to fill in right away.
     setOpenSections((prev) => ({ ...prev, [newSections.length - 1]: true }));
   }
 
@@ -296,11 +238,7 @@ export function RciPlanPage() {
 
   function setSectionAssignee(index: number, assignee: string | null) {
     if (!sections) return;
-    // First-ever assignee pick on this plan (no section has one yet) also
-    // populates every other still-unassigned section with the same
-    // investigator, as a convenience default — still freely editable
-    // per-section afterward, and this bulk-fill never fires again once any
-    // section has a real assignee (2026-08-21, per the user).
+    // First-ever assignee pick on this plan bulk-fills every other still-unassigned section as a convenience default; never fires again once any section has a real assignee.
     const isFirstAssignee = !!assignee && sections.every((s) => !s.assignee);
     const newSections = sections.map((s, i) =>
       i === index ? { ...s, assignee } : isFirstAssignee ? { ...s, assignee } : s
@@ -311,12 +249,7 @@ export function RciPlanPage() {
 
   function setSectionDueDate(index: number, dueDate: string) {
     if (!sections) return;
-    // Same convenience-default bulk-fill as setSectionAssignee above
-    // (2026-09-10, per the user — due_date should get the same default
-    // treatment already given to assignee): the first-ever date picked on
-    // this plan also populates every other still-date-less section, freely
-    // editable per-section afterward, and never fires again once any
-    // section already has a real due_date.
+    // Same convenience-default bulk-fill as setSectionAssignee, but for due_date.
     const isFirstDueDate = !!dueDate && sections.every((s) => !s.due_date);
     const newSections = sections.map((s, i) =>
       i === index ? { ...s, due_date: dueDate || null } : isFirstDueDate ? { ...s, due_date: dueDate } : s
@@ -361,11 +294,7 @@ export function RciPlanPage() {
 
   function handleExploreEvents() {
     setExploreEventsError(null);
-    // Opened synchronously on the click itself, before the async handoff
-    // call — a tab opened only after an awaited fetch resolves is not
-    // considered a direct result of the user gesture by most browsers and
-    // gets popup-blocked. Redirect this already-open tab once the token
-    // arrives instead.
+    // Opened synchronously on the click, before the async handoff call — a tab opened after an awaited fetch resolves gets popup-blocked by most browsers.
     const newTab = window.open("", "_blank");
     getEventExplorerHandoffUrl()
       .then(({ url }) => {
@@ -377,9 +306,7 @@ export function RciPlanPage() {
       });
   }
 
-  // Real .docx download — the backend fills the company's actual RCI Plan
-  // Word template (assets/rci_plan_template.docx) with this investigation's
-  // persisted sections and returns the file directly.
+  // Backend fills the company's RCI Plan Word template (assets/rci_plan_template.docx) with this investigation's persisted sections and returns the file directly.
   async function downloadRciPlanDocument() {
     if (!recordId) return;
     const blob = await exportRciPlanDocx(recordId);
@@ -393,12 +320,7 @@ export function RciPlanPage() {
     URL.revokeObjectURL(url);
   }
 
-  // Every task needs both an investigator and a TCD before the plan can be
-  // pushed to Trackwise / proceed to Task Critique (2026-08-16, per the
-  // user) — checked across every section, not just the ones with real
-  // checklist items, since the assignee/TCD fields are always shown.
-  // Excluded sections don't need an assignee/TCD — they're being left out of
-  // the final plan entirely (2026-08-20, per the user).
+  // Every included section needs an investigator and a TCD before pushing to Trackwise; excluded sections don't need either since they're left out of the final plan.
   const missingAssignments = (sections ?? []).some((s) => (s.is_checked ?? true) && (!s.assignee || !s.due_date));
 
   async function handleAcceptAndPush() {
@@ -420,9 +342,7 @@ export function RciPlanPage() {
         <div className="card">
           <div className="card-header">
             <p className="card-title">Problem Statement</p>
-            {/* Event Explorer button removed from the UI while keeping the
-                handler/state intact (2026-08-26, per the user), same pattern
-                as Action Center's "Show Cancelled" button. */}
+            {/* Event Explorer button removed from the UI while keeping the handler/state intact. */}
             {false && (
               <button type="button" onClick={handleExploreEvents} className="btn-outline">
                 Explore Events
@@ -451,9 +371,7 @@ export function RciPlanPage() {
       <div className="card">
         <div className="card-header">
           <p className="card-title">Problem Statement</p>
-          {/* Event Explorer button removed from the UI while keeping the
-              handler/state intact (2026-08-26, per the user), same pattern
-              as Action Center's "Show Cancelled" button. */}
+          {/* Event Explorer button removed from the UI while keeping the handler/state intact. */}
           {false && (
             <button type="button" onClick={handleExploreEvents} className="btn-outline">
               Explore Events
@@ -492,10 +410,7 @@ export function RciPlanPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", fontSize: "var(--font-size-base)", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
           <span style={{ width: 20, flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0 }}>Task</span>
-          {/* Right-aligned to match the now content-fit, right-aligned date
-              box beneath it (2026-09-10, per the user) — Investigator's
-              header/value are still both left-aligned, so only this one
-              changes. */}
+          {/* Right-aligned to match the content-fit date box beneath it — Investigator stays left-aligned. */}
           <span style={{ width: 200, flexShrink: 0, textAlign: "right" }}>Target Date</span>
           <span style={{ minWidth: 200 }}>Investigator</span>
           <span style={{ width: 24, flexShrink: 0 }} />
@@ -557,12 +472,7 @@ export function RciPlanPage() {
                     </>
                   )}
                 </div>
-                {/* Outer slot stays the same 200px width as the "Target Date"
-                    header above/the Investigator column beside it, so
-                    shrinking the actual date box to fit its content doesn't
-                    shift anything else in the row — the box itself is just
-                    right-aligned within that reserved width instead of
-                    stretching to fill it (2026-09-10, per the user). */}
+                {/* Outer slot keeps the 200px width so the content-fit date box doesn't shift the rest of the row; the box is right-aligned within it. */}
                 <div style={{ width: 200, flexShrink: 0, display: "flex", justifyContent: "flex-end", boxSizing: "border-box" }}>
                   <div style={{ background: "var(--color-bg)", border: "1px solid var(--color-card-border)", borderRadius: 4, padding: "9px 13px", display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-md)", color: "var(--color-text-faint)", width: "fit-content", boxSizing: "border-box" }}>
                     {editMode && !lockedForEditing ? (

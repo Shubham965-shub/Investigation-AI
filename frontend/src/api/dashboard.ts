@@ -14,10 +14,7 @@ interface TrackwiseRequest {
   trackwise_fields: TrackwiseFields;
 }
 
-/** GET /{module}/{recordId}: 404 means "no real DB record for this id yet" —
- * an expected, non-error outcome (the page shows its blank entry form), so it
- * resolves to null instead of throwing. Any other failure still throws, and
- * callers surface it as a blocking error (see DbErrorModal). */
+// 404 means "no record yet" (expected — page shows a blank form), so resolve to null instead of throwing; any other failure still throws (see DbErrorModal).
 async function getRecordOrNull<T>(path: string): Promise<T | null> {
   try {
     return await apiGet<T>(path);
@@ -46,21 +43,11 @@ export interface ProblemStatementRecordResponse {
   event_type: EventType;
   trackwise_fields: TrackwiseFields;
   problem_statement: string | null;
-  // True once Evidence Collection has any real data — Problem Statement is
-  // read-only at that point (see ProblemStatementPage.tsx's lockedForEditing).
+  // True once Evidence Collection has data — Problem Statement becomes read-only (see ProblemStatementPage.tsx's lockedForEditing).
   locked_for_editing?: boolean;
-  // Verbatim dim_event.criticality (upstream/Trackwise) — only meaningful
-  // for Deviation/Market Complaint (2026-08-26, per the user: used by
-  // Stepper to pick which SLA tier applies to this investigation).
+  // Verbatim dim_event.criticality; only meaningful for Deviation/Market Complaint — drives which SLA tier the Stepper applies.
   criticality?: string | null;
-  // dim_event.event_classification (2026-09-11, per the data engineer) — a
-  // separate, additive field, NOT a replacement for criticality above
-  // (which stays binary "Critical"/"Non-Critical"). "Critical" | "Major" |
-  // "Minor", or null for OOS/OOT (no Major/Minor concept), an unclassified
-  // Deviation/Complaint, or a Complaint marked "Not Applicable" (collapsed
-  // to null upstream). Shown as a tag on the Record Details header —
-  // "Critical" reuses the existing Critical badge look, "Major"/"Minor" get
-  // their own tag, null shows no tag at all.
+  // dim_event.event_classification — additive, not a replacement for criticality (which stays binary Critical/Non-Critical); "Critical"|"Major"|"Minor" or null. Shown as a tag on the Record Details header.
   event_classification?: string | null;
 }
 
@@ -70,9 +57,7 @@ export function getProblemStatementRecord(
   return getRecordOrNull<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`);
 }
 
-// Persists a manual edit to an already-generated problem statement
-// (2026-09-10, per the user) — previously session-only, lost on
-// refresh/navigation with no backend call at all.
+// Persists a manual edit to the generated problem statement — previously session-only, lost on refresh/navigation.
 export function updateProblemStatement(
   recordId: string,
   problemStatement: string
@@ -127,8 +112,7 @@ export function getEvidenceRecord(
   return getRecordOrNull<EvidenceCollectionRecordResponse>(`/evidence/${recordId}`);
 }
 
-/** Persists the current check/uncheck state + any user-added items — full
- * replace, same as generation's own persistence, just triggered by edits. */
+// Full replace of check/uncheck state + user-added items, same persistence pattern as generation.
 export function updateEvidenceItems(recordId: string, items: EvidenceItem[]): Promise<void> {
   return apiPut<void>(`/evidence/${recordId}`, items);
 }
@@ -169,8 +153,7 @@ export function getQuestionnaireRecord(
   return getRecordOrNull<QuestionnaireRecordResponse>(`/questionnaire/${recordId}`);
 }
 
-/** Persists the current check/uncheck state + any user-added questions —
- * full replace, same as generation's own persistence, just triggered by edits. */
+// Full replace of check/uncheck state + user-added questions, same persistence pattern as generation.
 export function updateQuestionnaireItems(recordId: string, items: InterviewQuestion[]): Promise<void> {
   return apiPut<void>(`/questionnaire/${recordId}`, items);
 }
@@ -188,11 +171,9 @@ export interface RciSectionItem {
   tasks: RciTaskItem[];
   due_date?: string | null;
   assignee?: string | null;
-  // Whole-section include/exclude from the final plan (2026-08-20, per the
-  // user) — same convention as RciTaskItem.is_checked, one level up.
+  // Whole-section include/exclude from the final plan — same convention as RciTaskItem.is_checked, one level up.
   is_checked?: boolean;
-  // investigation_rci_sections.id — only populated on read-back, used by
-  // Task Critique to attach report/recommendation history to a section.
+  // investigation_rci_sections.id — only populated on read-back; used by Task Critique to attach history to a section.
   id?: number | null;
 }
 
@@ -217,8 +198,7 @@ export interface RciPlanRecordResponse {
   event_type: EventType;
   trackwise_fields: TrackwiseFields;
   sections: RciSectionItem[] | null;
-  // True once Task Critique has started on any section — RCI Plan is
-  // read-only at that point (see RciPlanPage.tsx's lockedForEditing).
+  // True once Task Critique has started on any section — RCI Plan becomes read-only (see RciPlanPage.tsx's lockedForEditing).
   locked_for_editing?: boolean;
 }
 
@@ -226,11 +206,7 @@ export function getRciPlanRecord(recordId: string): Promise<RciPlanRecordRespons
   return getRecordOrNull<RciPlanRecordResponse>(`/rci-plan/${recordId}`);
 }
 
-/** Investigators currently assigned to an OPEN investigation only
- * (2026-08-19, per the user, re-scoping the prior 2026-08-13 all-time list)
- * — populates the per-section Investigator dropdown. Registered ahead of
- * GET /rci-plan/{record_id} on the backend so this literal path isn't
- * shadowed by that catch-all. */
+// Investigators on OPEN investigations only, for the per-section dropdown. Registered ahead of GET /rci-plan/{record_id} on the backend so this literal path isn't shadowed by that catch-all.
 export function getOpenInvestigators(): Promise<string[]> {
   return apiGet<string[]>("/rci-plan/investigators");
 }
@@ -244,14 +220,12 @@ export interface RciTemplateUploadResponse {
   tasks_created: number;
 }
 
-/** Persists investigator-name edits (and any other section field changes) —
- * full replace, same pattern as evidence/questionnaire persistence. */
+// Full replace of section fields (investigator edits etc.), same pattern as evidence/questionnaire persistence.
 export function updateRciPlanSections(recordId: string, sections: RciSectionItem[]): Promise<void> {
   return apiPut<void>(`/rci-plan/${recordId}`, sections);
 }
 
-/** The real .docx file — filled from the company's RCI Plan Word template
- * (backend/assets/rci_plan_template.docx) with this investigation's data. */
+// Filled from the company's RCI Plan Word template (backend/assets/rci_plan_template.docx).
 export function exportRciPlanDocx(recordId: string): Promise<Blob> {
   return apiGetBlob(`/rci-plan/${recordId}/export`);
 }
@@ -271,10 +245,7 @@ export interface TaskCritiqueRecommendation {
   reason: string | null;
 }
 
-// One row / one section table of ds's /score/report `info` breakdown —
-// mirrors ds's InfoRow/InfoTable (2026-08-14, per the user: shown via a small
-// info icon next to each generated score). Shared shape for both Task
-// Critique and RC & CAPA Critique.
+// One row of ds's /score/report `info` breakdown (mirrors ds's InfoRow); shown via an info icon next to each score. Shared by Task Critique and RC & CAPA.
 export interface ScoreBreakdownRow {
   id: string;
   checkpoint: string;
@@ -299,22 +270,18 @@ export interface TaskCritiqueReport {
   attempt_number: number;
   file_name: string;
   is_gospel: boolean;
-  // DS-generated (/critique/analyse-task-report) — task_score stays null
-  // until DS returns one (or permanently, for an is_gospel report).
+  // DS-generated; task_score stays null until DS returns one (or permanently, for an is_gospel report).
   summary: string | null;
   task_score: number | null;
   score_breakdown: ScoreBreakdownTable[];
-  // True when ds's critique came back degenerate (no real tasks found to
-  // review) — only ever true for reports uploaded before the pre-upload
-  // format/degenerate-result checks existed.
+  // True when ds's critique came back degenerate (no tasks found) — only possible for reports uploaded before pre-upload checks existed.
   critique_failed: boolean;
   uploaded_at: string;
   recommendations: TaskCritiqueRecommendation[];
 }
 
 export interface TaskCritiqueSection {
-  // 0-based position within the RCI Plan document's extracted task list —
-  // not a DB row id.
+  // 0-based position within the RCI Plan document's extracted task list — not a DB row id.
   task_index: number;
   title: string;
   correlation: string | null;
@@ -333,8 +300,7 @@ export interface TaskCritiqueSection {
 export interface TaskCritiqueListResponse {
   record_id: string;
   sections: TaskCritiqueSection[];
-  // False when neither module 4's RCI Plan export nor a manually-uploaded
-  // stand-in document exists yet.
+  // False when neither the RCI Plan export nor a manually-uploaded stand-in document exists yet.
   has_source_document: boolean;
   source_document_name: string | null;
 }
@@ -368,10 +334,7 @@ export function decideTaskCritiqueRecommendation(
   );
 }
 
-// The full audit trail across every attempt for one task — independent of
-// lock/complete state, so it stays available even once the task is scored
-// and done (2026-08-18, per the user). Same rich decision-tracking shape as
-// the live report's recommendations, kept in sync as decisions are made.
+// Full audit trail across every attempt for one task; stays available even once the task is scored and done.
 export interface RecommendationHistoryAttempt {
   attempt_number: number;
   summary: string | null;
@@ -388,10 +351,7 @@ export function getTaskCritiqueHistory(recordId: string, taskIndex: number): Pro
 export interface RcCapaRecommendation {
   id: number;
   description: string;
-  // Only set for rc_impact category recommendations — "rc" (evidence/
-  // traceability/history) vs "impact" (impact linkage), rendered as two
-  // separate subsections. null for capa recommendations, and for any
-  // rc_impact recommendation saved before this field existed.
+  // Only set for rc_impact recommendations — "rc" vs "impact", rendered as two subsections; null for capa recommendations (and older rc_impact rows).
   type: "rc" | "impact" | null;
   decision: "pending" | "accepted" | "rejected";
   reason: string | null;
@@ -450,11 +410,7 @@ export function decideRcCapaRecommendation(
   return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/recommendations/${recommendationId}/decision`, { decision, reason });
 }
 
-// The full audit trail across every attempt — unlike Task Critique,
-// investigation_rc_capa_reports already keeps a real row per attempt
-// (never upserted in place), so this is just every report, oldest first.
-// Independent of lock/complete state (2026-08-18, per the user) — surfaced
-// behind its own button/panel rather than inline.
+// Every report, oldest first — investigation_rc_capa_reports keeps a real row per attempt (never upserted), unlike Task Critique.
 export function getRcCapaHistory(recordId: string): Promise<RcCapaReport[]> {
   return apiGet<RcCapaReport[]>(`/rc-capa-critique/${recordId}/history`);
 }
@@ -520,29 +476,11 @@ export interface InvestigationRowResponse {
   escalation_level: string | null;
   oos_oot_phase: "Phase 1" | "Phase 2" | null;
   criticality: string | null;
-  // dim_event.event_classification (2026-09-11, per the data engineer) — a
-  // separate, additive field from criticality above (which stays binary
-  // "Critical"/"Non-Critical"). "Critical" | "Major" | "Minor", or null for
-  // an OOS/OOT record (no Major/Minor concept exists for those types), an
-  // unclassified Deviation/Complaint, or a Complaint marked "Not
-  // Applicable" (collapsed to null upstream). Drives the Major/Minor/
-  // Non-Critical flag shown in front of the event-type badge.
+  // dim_event.event_classification — additive, not a replacement for criticality (binary Critical/Non-Critical); "Critical"|"Major"|"Minor" or null. Drives the flag shown in front of the event-type badge.
   event_classification: string | null;
-  // SIT Dashboard's "Remark" column — keyed by rci_id ("" for a row with
-  // none, matching rci_ids[0] above), since a deviation with multiple RCI
-  // IDs renders as multiple rows, each with its own independent remark.
-  // Only ever populated for a caller with the SIT role — {} otherwise.
+  // SIT Dashboard's "Remark" column, keyed by rci_id ("" for none) — a deviation with multiple RCI IDs renders as multiple rows, each with its own remark. Populated only for the SIT role.
   remarks: Record<string, string>;
-  // [BUGFIX 2026-09-15] `investigator` above is just whichever single
-  // fact_qms_event row the backend's dedup happened to pick for this
-  // deviation_id — fine for a single-RCI investigation, but WRONG for one
-  // with multiple RCI IDs, since each rci_key can carry a genuinely
-  // different investigator (confirmed live: e.g. deviation 507894's two
-  // RCIs have two different investigators). Keyed by rci_id, same
-  // convention as remarks above — use this to look up the investigator for
-  // a specific exploded row (see ActionCenterPage.tsx's
-  // explodedInvestigations), falling back to `investigator` only when this
-  // map has no entry for that rci_id at all.
+  // `investigator` above is just whichever fact_qms_event row the backend's dedup picked — wrong for multi-RCI investigations, where each rci_key can have a different investigator. Keyed by rci_id; fall back to `investigator` if absent.
   investigator_by_rci: Record<string, string | null>;
 }
 
@@ -565,16 +503,13 @@ export interface ActionCenterSummaryResponse {
   event_type_counts: EventTypeCount[];
   opened_trend: MonthlyTrend;
   status_cards: StatusCardResponse[];
-  // Same 4 cards as status_cards, scoped to just that event type — keyed by
-  // the same labels as event_type_counts[].label.
+  // Same 4 cards as status_cards, scoped per event type — keyed by event_type_counts[].label.
   status_cards_by_event_type: Record<string, StatusCardResponse[]>;
   pending_actions: PendingActionResponse[];
   chart: ChartBarResponse[];
   investigations: InvestigationRowResponse[];
   filter_options: FilterOptions;
-  // "Last updated" stamp shown top-right of the page (2026-09-09, per the
-  // user) — raw fact_qms_event.pg_updated_at_timestamp, an ISO datetime
-  // string once JSON-serialized. null only if the table is entirely empty.
+  // "Last updated" stamp shown top-right of the page — raw fact_qms_event.pg_updated_at_timestamp; null only if the table is empty.
   last_updated_at: string | null;
 }
 
@@ -585,17 +520,11 @@ export interface ActionCenterFilters {
   investigator?: string;
   startDateFrom?: string;
   startDateTo?: string;
-  // "cancelled" shows only cancelled investigations instead of the default
-  // open-only list (2026-08-13, per the user) — stat cards/chart/pending
-  // actions are unaffected either way, they've always been open-only.
+  // "cancelled" shows only cancelled investigations instead of the default open-only list; stat cards/chart/pending actions are always open-only regardless.
   status?: "open" | "cancelled";
-  // Page-wide filter (2026-08-14, per the user) — unlike `status` above, this
-  // narrows stat cards/chart/pending actions AND the investigations table.
+  // Page-wide filter, unlike `status` above — narrows stat cards/chart/pending actions AND the investigations table.
   criticality?: "critical" | "non_critical";
-  // OOS/OOT-only equivalent of `criticality` above (2026-08-25, per the
-  // user) — those two event types show Phase 1/Phase 2 instead of Major &
-  // Minor in the same toggle, so this is a separate param rather than
-  // overloading criticality's values. Same page-wide scope as criticality.
+  // OOS/OOT-only equivalent of `criticality` — those event types show Phase 1/Phase 2 instead of Major/Minor, so it's a separate param rather than overloading criticality's values.
   oosOotPhase?: "phase1" | "phase2";
 }
 
@@ -614,19 +543,13 @@ export function getActionCenterSummary(filters?: ActionCenterFilters): Promise<A
   return apiGet<ActionCenterSummaryResponse>(`/action-center/summary${qs ? `?${qs}` : ""}`);
 }
 
-// SIT Dashboard's "Remark" column — editable by the SIT role only; the
-// backend enforces this too (403 for anyone else), this isn't just a UI
-// gate. rciId is "" for a row with no RCI ID, matching InvestigationRowResponse.remarks'
-// keying convention.
+// SIT-only edit; backend enforces this too (403 for anyone else), not just a UI gate. rciId is "" for a row with no RCI ID, matching InvestigationRowResponse.remarks.
 export function updateInvestigationRemark(recordId: string, rciId: string, remark: string): Promise<{ remark: string }> {
   return apiPut<{ remark: string }>(`/action-center/${recordId}/remark`, { rci_id: rciId, remark });
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────
-// Only the data-groundable sections are real (see backend/routers/analytics.py
-// module docstring) — Investigation Quality (IQ Score) and the CAPA L1-L5
-// hierarchy ranking have no backing data anywhere in the star schema and stay
-// mock in AnalyticsPage.tsx until a real formula/mapping is defined.
+// IQ Score and the CAPA L1-L5 ranking have no backing data in the star schema and stay mock in AnalyticsPage.tsx (see backend/routers/analytics.py docstring).
 
 export interface EventTypeCardResponse {
   key: string;
@@ -687,8 +610,7 @@ export interface AnalyticsSummaryResponse {
   capa: CapaStatusResponse;
   failure_patterns: FailurePatternsResponse;
   filter_options: AnalyticsFilterOptions;
-  // Same "last updated" stamp as ActionCenterSummaryResponse (2026-09-09,
-  // per the user).
+  // Same "last updated" stamp as ActionCenterSummaryResponse.
   last_updated_at: string | null;
 }
 
@@ -712,17 +634,14 @@ export function getAnalyticsSummary(filters?: AnalyticsFilters): Promise<Analyti
 }
 
 // ── RCI Report ──────────────────────────────────────────────────────────
-// Field names/types mirror backend/backend/schemas/rci_report.py 1:1, which
-// itself mirrors ds's own schemas verbatim — see that file's docstring.
+// Field names/types mirror backend/backend/schemas/rci_report.py 1:1 (which itself mirrors ds's schemas).
 
 export interface SourcedTextItem {
   value: string;
   source: "trackwise" | "manual_entry_required" | "manual_entry_provided" | "synthesized";
 }
 
-// Each field is a list of bullet-point strings, not one prose string
-// (2026-09-10, per the user: broken into bullets for readability) — mirrors
-// the backend/ds ExecutiveSummarySection exactly.
+// Each field is a list of bullet-point strings, not one prose string (readability) — mirrors backend/ds ExecutiveSummarySection exactly.
 export interface ExecutiveSummarySection {
   summary: string[];
   problem_description: string[];
@@ -878,9 +797,7 @@ export interface ImpactAssessmentBatchDispositionSection {
   impact_justification?: string | null;
 }
 
-// Plain (non-table) ImpactSubsection fields on ImpactAssessmentBatchDispositionSection,
-// in display order — impact_on_affected_batches is handled separately (it has the
-// extra batch_shipper_table).
+// Plain (non-table) ImpactSubsection fields, in display order — impact_on_affected_batches is handled separately (it has the extra batch_shipper_table).
 export const IMPACT_SUBSECTION_FIELDS: { key: keyof ImpactAssessmentBatchDispositionSection; label: string }[] = [
   { key: "impact_on_marketed_released_batches", label: "Impact on Marketed / Released Batches" },
   { key: "impact_on_other_product_material_area_process", label: "Impact on Other Product / Material / Area / Process" },
@@ -1013,9 +930,7 @@ export interface ApprovalSection {
 
 export interface RciReportSections {
   event_type: string;
-  // Every section is nullable — ds skips one rather than failing the whole
-  // request when a required TrackWise field is blank, or when a section it
-  // depends on was itself skipped. `errors` explains why, keyed by field name.
+  // Every section is nullable — ds skips one rather than failing the whole request when a required field is blank; `errors` explains why, keyed by field name.
   executive_summary: ExecutiveSummarySection | null;
   description_of_event: DescriptionOfEventSection | null;
   initial_impact_assessment: InitialImpactAssessmentSection | null;
@@ -1062,9 +977,7 @@ export function updateRciReportSections(recordId: string, report: RciReportSecti
   return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}`, report);
 }
 
-/** The real .docx download for "Download and View" — filled from the
- * company's RCI Report Word template with this investigation's persisted
- * report (2026-08-25, per the user). */
+// The real .docx for "Download and View" — filled from the company's RCI Report Word template with the persisted report.
 export function exportRciReportDocx(recordId: string): Promise<Blob> {
   return apiGetBlob(`/rci-report/${recordId}/export`);
 }

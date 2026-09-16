@@ -11,10 +11,7 @@ import { AddItemDialog } from "../components/AddItemDialog";
 interface ChecklistItem {
   description: string;
   checked: boolean;
-  // Client-side only — distinguishes AI-generated suggestions (whether just
-  // generated or loaded from a previously-persisted record) from items the
-  // user typed in via "Add Evidence" in this session. Drives the "can't
-  // deselect more than half the generated suggestions" cap below.
+  // Distinguishes AI-generated suggestions from user-added items — drives the "can't deselect more than half" cap below.
   isUserAdded: boolean;
 }
 import checkIcon from "../assets/icons/evidence-checkbox.svg";
@@ -44,12 +41,7 @@ export function EvidenceCollectionPage() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
-  // Everything comes from the DB — no localStorage. Evidence Collection
-  // depends on the Problem Statement record existing (fetched here directly
-  // rather than assumed from a prior page visit), plus its own record for
-  // event_type/trackwise_fields/already-generated evidence. A 404 on either
-  // is a valid "not generated/no record yet" state; any other failure blocks
-  // the page via DbErrorModal.
+  // Depends on the Problem Statement record existing — a 404 on either fetch is a valid "not generated yet" state; any other failure blocks the page via DbErrorModal.
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
@@ -87,8 +79,7 @@ export function EvidenceCollectionPage() {
     setError(null);
     collectEvidence(recordId, { event_type: eventType, trackwise_fields: trackwiseFields })
       .then((response) => {
-        // Session-only display — the backend persists this (best-effort) as
-        // part of the collect call.
+        // Session-only display — the backend persists this (best-effort) as part of the collect call.
         setItems(response.evidence.map((e) => ({ description: e.description, checked: true, isUserAdded: false })));
       })
       .catch((err) => {
@@ -123,8 +114,7 @@ export function EvidenceCollectionPage() {
     );
   }
 
-  // Persisted best-effort on every toggle/add — a failed PUT is logged but
-  // never blocks the UI; the change stays reflected locally either way.
+  // Best-effort persist — a failed PUT is logged but never blocks the UI.
   function persistItems(list: ChecklistItem[]) {
     if (!recordId) return;
     updateEvidenceItems(
@@ -135,10 +125,7 @@ export function EvidenceCollectionPage() {
     });
   }
 
-  // Deselection cap: the user can't uncheck more than half of the AI-
-  // generated suggestions (isUserAdded: false) — user-added evidence is
-  // exempt in both directions, and re-checking a generated item is always
-  // allowed since it only lowers the deselected count.
+  // Can't uncheck more than half of the AI-generated suggestions; user-added evidence is exempt.
   function toggleItem(index: number) {
     if (!items) return;
     const item = items[index];
@@ -181,9 +168,7 @@ export function EvidenceCollectionPage() {
   function handleCopyItem(index: number, description: string) {
     navigator.clipboard.writeText(description).then(() => {
       if (copiedIndex === index) {
-        // Already showing "Copied" — flash back to "Copy" for a split second
-        // first, so re-clicking while already copied is visibly acknowledged
-        // instead of looking like the click did nothing.
+        // Flash back to "Copy" briefly first, so re-clicking while already copied is visibly acknowledged.
         setCopiedIndex(null);
         setTimeout(() => showCopied(index), 150);
       } else {

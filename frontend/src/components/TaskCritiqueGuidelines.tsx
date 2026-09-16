@@ -54,8 +54,7 @@ const DIMENSIONS: { title: string; points: string[] }[] = [
   },
 ];
 
-// Only on the Task Critique list page heading (2026-08-13, per the user) —
-// the 6 rubric dimensions ds's task-report critique grades against.
+// The 6 rubric dimensions ds's task-report critique grades against.
 export function TaskCritiqueGuidelines() {
   return (
     <InfoTooltip label="Task critique guidelines" width={460}>

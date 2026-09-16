@@ -1,17 +1,10 @@
-/** Decodes a base64url string (JWT segments use base64URL — `-`/`_` instead
- * of `+`/`/`, and no padding) — plain atob() throws on those characters,
- * which happens whenever the underlying bytes happen to produce one, i.e.
- * unpredictably per-token, not something a fixed test token would catch. */
+// JWT segments use base64URL (`-`/`_`, no padding); plain atob() throws on those chars, so convert to standard base64 first.
 function base64UrlDecode(segment: string): string {
   const base64 = segment.replace(/-/g, "+").replace(/_/g, "/").padEnd(segment.length + ((4 - (segment.length % 4)) % 4), "=");
   return atob(base64);
 }
 
-/** Client-side JWT expiry inspection — no signature verification (that's the
- * backend's job), purely so a stale/expired/malformed token in localStorage
- * doesn't show the user as authenticated before their first API call.
- * Treats anything that can't be decoded (including the old opaque
- * placeholder tokens some browsers may still have cached) as expired. */
+// Client-side expiry check only, no signature verification (that's the backend's job); anything undecodable counts as expired.
 export function isTokenExpired(token: string): boolean {
   try {
     const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));
@@ -22,12 +15,7 @@ export function isTokenExpired(token: string): boolean {
   }
 }
 
-/** Pulls the display name embedded in the token's `name` claim (see
- * backend/backend/routers/auth.py's issue_token — athena_users.full_name, or
- * a username-derived fallback) — client-side only, same no-verification
- * caveat as isTokenExpired above. Used by AppHeader to show the signed-in
- * user's name (2026-08-18, per the user) without a separate /auth/me round
- * trip, since it's already right here in the token. */
+// Reads the `name` claim (athena_users.full_name) so AppHeader can show it without a separate /auth/me round trip.
 export function nameFromToken(token: string): string | null {
   try {
     const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));
@@ -37,11 +25,7 @@ export function nameFromToken(token: string): string | null {
   }
 }
 
-/** Pulls the `roles` claim (see backend/backend/routers/auth.py's
- * issue_token — athena_users.role_id -> athena_roles.name, e.g. "Admin",
- * "User", "SIT") — same no-verification caveat as isTokenExpired above.
- * Used to branch UI on role (e.g. Action Center's "SIT View" label) instead
- * of hardcoding a specific user's identity. */
+// Reads the `roles` claim (athena_roles.name, e.g. "Admin"/"SIT") so UI can branch on role instead of a hardcoded username.
 export function rolesFromToken(token: string): string[] {
   try {
     const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));

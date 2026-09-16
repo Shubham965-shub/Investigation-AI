@@ -4,20 +4,11 @@ import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
 import { createAdminUser, getAdminUsers, updateAdminUserRole, type AdminUserRow } from "../api/auth";
 import { CreateUserDialog } from "../components/CreateUserDialog";
-// Reuses .ac-page/.ac-card/.ac-title/.ac-table from ActionCenterPage.css and
-// .field-label/.field-value/.btn-primary/.btn-outline/.error-banner from
-// RecordModulePage.css — plain CSS imports (no CSS Modules scoping in this
-// app), so importing both here is the same convention other pages already
-// follow rather than duplicating these rules into a third file.
+// Reuses shared classes from ActionCenterPage.css/RecordModulePage.css — plain CSS, no module scoping, same convention as other pages.
 import "./ActionCenterPage.css";
 import "./RecordModulePage.css";
 
-// Admin-only page (2026-09-08, per the user) — lists every athena_users row
-// with role/created/last-login, plus create-user and edit-role actions. The
-// backend independently re-checks the Admin role on every call here
-// (require_admin) — this page's own role check is just so a non-admin who
-// somehow lands on the URL sees a plain message instead of a page full of
-// requests that immediately 403.
+// Backend independently re-checks Admin on every call (require_admin) — this page's own check is just so a non-admin sees a message instead of a page full of 403s.
 function formatTimestamp(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
@@ -43,8 +34,7 @@ export function UserManagementPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  // Tracks which row's role select is mid-save, so its own dropdown can
-  // disable without blocking every other row's (2026-09-08, per the user).
+  // Tracks which row's role select is mid-save, so only that dropdown disables.
   const [savingRoleFor, setSavingRoleFor] = useState<number | null>(null);
 
   useEffect(() => {
@@ -85,8 +75,7 @@ export function UserManagementPage() {
   async function handleRoleChange(userId: number, role: string) {
     setSavingRoleFor(userId);
     setError(null);
-    // Optimistic update, reverted on failure — same convention as the
-    // filter/toggle state elsewhere in Action Center.
+    // Optimistic update, reverted on failure.
     const previous = users;
     setUsers((prev) => prev?.map((u) => (u.id === userId ? { ...u, role } : u)) ?? prev);
     try {
@@ -152,11 +141,7 @@ export function UserManagementPage() {
                     <td>
                       <select
                         className="field-value"
-                        // .field-value's fixed 3-line height (built for the
-                        // multi-line grid fields it was designed for
-                        // elsewhere) makes no sense for this single-line
-                        // role dropdown (2026-09-08, per the user) — just
-                        // let it size to its own natural content.
+                        // .field-value's fixed 3-line height doesn't suit this single-line dropdown — let it size naturally.
                         style={{ height: "auto", overflowY: "visible" }}
                         value={u.role ?? ""}
                         disabled={savingRoleFor === u.id}

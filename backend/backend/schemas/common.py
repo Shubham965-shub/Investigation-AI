@@ -1,10 +1,4 @@
-"""Schemas shared across the trackwise-fields-driven modules.
-
-Mirrors backend.agents.shared.schemas in InvestigationAi_DS: event_type is the
-same literal there, and trackwise_fields is deliberately kept as a loose
-dict here — the DS service is the source of truth for per-event-type field
-validation, and its 422 responses are forwarded to the frontend as-is.
-"""
+"""Schemas shared across trackwise-fields-driven modules; trackwise_fields is a loose dict since DS owns field validation (its 422s pass through as-is)."""
 from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional

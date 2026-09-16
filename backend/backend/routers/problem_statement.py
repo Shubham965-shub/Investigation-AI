@@ -32,8 +32,7 @@ async def generate_problem_statement(
     data = await ds_post("/ps/v2/generate", json=request.model_dump())
     response = ProblemStatementGenerateResponse(**data)
 
-    # Persisting is best-effort — a DB/table issue must never break generation
-    # itself, especially before generated_content.sql has been run anywhere.
+    # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
         await save_problem_statement(deviation_id, response.problem_statement)
@@ -74,17 +73,7 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
 
 @router.put("/{record_id}", response_model=ProblemStatementRecord)
 async def update_problem_statement(record_id: str, request: ProblemStatementUpdateRequest) -> ProblemStatementRecord:
-    """Persists a manual edit to an already-generated problem statement
-    (2026-09-10, per the user) — previously session-only (ProblemStatementPage.tsx's
-    onSaveEdit just called setProblemStatement(newText) with no backend call at
-    all), so an edit was silently lost on refresh/navigation and every
-    downstream module (Evidence Collection, RCI Plan, ...) kept seeing the
-    original generated text regardless of what was shown on screen here.
-
-    Same locked_for_editing rule GET already reports and generate_problem_statement
-    doesn't otherwise enforce at this layer — Evidence Collection having any real
-    data means the wizard has moved on, so upstream edits stop here (2026-08-21,
-    per the user, ProblemStatementRecord's own docstring)."""
+    """Persists a manual edit to an already-generated problem statement; locked once Evidence Collection has data, same as GET's locked_for_editing rule."""
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -124,14 +113,7 @@ _HISTORIC_RESULTS_LIMIT = 5
 
 @router.get("/{record_id}/historic", response_model=list[SimilarInvestigation])
 async def get_similar_historic_investigations(record_id: str) -> list[SimilarInvestigation]:
-    """Historic investigations this one is most similar to (open, closed, or
-    cancelled), for the "View Historic Data" panel — routed through ds's
-    /api/search (contextual/semantic search over its search corpus, joined to
-    the full event-details table). Returns [] on any failure (no problem
-    statement/description yet to search on, ds unreachable, no candidates)
-    rather than raising — this is a supplementary panel, not a hard
-    requirement for the Problem Statement page to work.
-    """
+    """Similar historic investigations for the "View Historic Data" panel; returns [] on any failure since this is a supplementary panel, not a hard requirement."""
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -141,26 +123,18 @@ async def get_similar_historic_investigations(record_id: str) -> list[SimilarInv
     if row is None:
         return []
 
-    # Prefer the generated problem statement (more focused/normalized text);
-    # fall back to the raw Trackwise description/title if one hasn't been
-    # generated yet — same "search_query or ... or 'unknown'" fallback chain
-    # ds's own shared/nodes.py::fetch_historical_data already uses internally.
+    # Fall back to raw Trackwise description/title if no problem statement has been generated yet.
     query_text = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
     if not query_text:
         return []
 
     try:
-        # search_route.py's router is uniquely prefixed with "/api" (unlike
-        # /ps/v2, /evidence, /rci — no other ds route needs it), so the real
-        # path is /api/search, not /search.
         data = await ds_post(
-            "/api/search",
+            "/api/search",  # unlike /ps/v2, /evidence, /rci, this ds route is prefixed with /api
             json={
                 "problem_statement": query_text,
                 "search_type": "Contextual",
-                # +1 for the current record itself, which ds's search has no
-                # way to exclude up front — filtered out below instead.
-                "top_k": _HISTORIC_RESULTS_LIMIT + 1,
+                "top_k": _HISTORIC_RESULTS_LIMIT + 1,  # +1 for the current record, filtered out below
             },
         )
     except HTTPException:

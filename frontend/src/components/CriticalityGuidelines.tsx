@@ -45,13 +45,7 @@ function RuleList({ title, rules }: { title: string; rules: { label: string; tex
   );
 }
 
-// Next to the All/Critical/Major & Minor criticality filter toggle in
-// ActionCenterPage.tsx (2026-08-24, per the user). Only shows a definition
-// set once a specific event type is picked from the top-level Deviation/
-// OOS/OOT/Market Complaint filter pills (2026-08-25, per the user) — no
-// defined criticality tiers exist for OOS/OOT, and showing both
-// Deviation/Market Complaint definitions together when nothing (or an
-// unrelated type) is selected was ambiguous about which applied.
+// Only renders once a specific event type is picked — OOS/OOT have no defined criticality tiers, and showing both rule sets at once is ambiguous.
 export function CriticalityGuidelines({ eventType }: { eventType: string | null }) {
   const rules = eventType === "Deviation" ? DEVIATION_RULES : eventType === "Market Complaint" ? MARKET_COMPLAINT_RULES : null;
   if (!rules) return null;

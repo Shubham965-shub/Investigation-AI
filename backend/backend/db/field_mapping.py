@@ -1,41 +1,15 @@
-"""Maps a joined STAR-schema row to the exact trackwise_fields keys the
-frontend (constants/trackwiseFields.ts) and InvestigationAi_DS
-(agents/shared/schemas.py, agents/problem_statement_evaluation/v2/schemas.py)
-both expect — confirmed identical between the two, no renaming layer between
-frontend and DS.
+"""Maps a joined STAR-schema row to the trackwise_fields keys frontend and
+InvestigationAi_DS both expect (confirmed identical between the two).
 
-Known gaps (best-effort, not silently guessed — flag for the DB owner):
-- OOS/OOT's "Batches Details" has no clear source column; omitted. NOTE: the
-  2026-07-24 dim_event expansion added two candidate array pairs
-  (affected_batches_batch_ar_number/_product_material_name and
-  batches_details_batch_no_ar_no/_product_or_material_name) that look
-  related to this concept — not wired up here yet since it's unconfirmed
-  which (if either) maps to "Batches Details" vs. some other UI field.
-- "Equipment Name" and "Name of the Instrument" both resolve to the single
-  instrument_equipment column — there's no second source column for either.
-- Deviation-extended's "Equipment ID" AND "Equipment Number" (two separate
-  required fields in DS's ExtendedDeviationTrackwiseFields): equipment_number
-  was confirmed [DROPPED] from dim_event in the 2026-07-24 schema update, with
-  no replacement column added — both reuse dim_equipment.instrument_equipment_id
-  (same real column "Instrument ID Number" already uses; 95.3% filled for
-  Deviation as of 2026-07-28) rather than being hardcoded None, per the same
-  "no second source column" precedent as Equipment Name above. [2026-07-29:
-  "Equipment Number" was previously missing from this dict entirely (not
-  hardcoded None — just absent), which made every single Deviation RCI-plan
-  generation call fail DS's validation with "missing required fields:
-  Equipment Number" — confirmed by the backend engineer that
-  instrument_equipment_id is the right source for it too.] [2026-07-28:
-  previously hardcoded None here regardless of live data — changed after the
-  user flagged that nothing should be null-by-code when a real column value
-  might exist; None should only ever come from a genuinely blank DB value.]
-- Market Complaint's "Products Information": products_information_product_name
-  is confirmed [DROPPED] from the real schema (see star_schema.sql), but
-  dim_product.name_of_material (joined via fact_qms_event.product_key) is
-  populated for 100% of live Complaint rows (692/692 as of 2026-07-28) — same
-  column OOS/OOT's "Product Name / Material Name" already uses. Wired to that
-  instead of a hardcoded None. [2026-07-28: this was the field silently
-  guaranteeing every single Market Complaint evidence-collection call failed
-  DS's validation — see project memory: rci_plan_schema_gap / star_schema.]
+Known gaps (best-effort, flagged for the DB owner, not silently guessed):
+- OOS/OOT "Batches Details" has no clear source column; omitted.
+- "Equipment Name"/"Name of the Instrument" both resolve to instrument_equipment
+  (no second source column exists).
+- Deviation-extended "Equipment ID" and "Equipment Number" both reuse
+  instrument_equipment_id — equipment_number was dropped from dim_event with
+  no replacement column.
+- Market Complaint "Products Information" uses dim_product.name_of_material —
+  products_information_product_name was dropped from the schema.
 """
 from __future__ import annotations
 
@@ -60,13 +34,9 @@ def _val(row: asyncpg.Record, col: str) -> Any:
 
 
 def _date_only(row: asyncpg.Record, col: str) -> Any:
-    """Like _val, but drops any time component — for a TIMESTAMP column
-    (date_opened) whose trackwise field is declared kind="date" (see
-    frontend constants/trackwiseFields.ts) and is only ever consumed as a
-    date elsewhere in the app (action_center.py/analytics.py both call
-    .date() on this same column). _val() alone would leak the full
-    datetime into the RCI Report's "Date of Initiation" field (2026-09-02,
-    per the user)."""
+    """Like _val, but drops any time component — date_opened is a TIMESTAMP
+    column but its trackwise field is date-only; _val() alone would leak a
+    full datetime into the RCI Report's "Date of Initiation" field."""
     v = row.get(col)
     if isinstance(v, datetime.datetime):
         return v.date().isoformat()
@@ -77,17 +47,10 @@ def _date_only(row: asyncpg.Record, col: str) -> Any:
 
 def _val_joined(row: asyncpg.Record, col: str, sep: str = ", ") -> Any:
     """Like _val, but joins array-typed columns into a single string.
-
-    related_market/related_customer are text[] in dim_event (confirmed via
-    information_schema, 2026-07-29) for every row regardless of event type,
-    but ExtendedDeviationTrackwiseFields (DS, used for RCI plan generation)
-    declares both as plain required str fields — every Deviation RCI-plan
-    request failed DS's validation as a result (missing-type error, not a
-    null/empty one). Joining here rather than loosening DS's schema, since a
-    single flat string is what the RCI-plan UI field (a plain text input,
-    not a "list"-kind one — see frontend constants/trackwiseFields.ts) is
-    designed to display and round-trip.
-    """
+    related_market/related_customer are text[] in dim_event, but DS's
+    ExtendedDeviationTrackwiseFields declares both as plain str fields — the
+    RCI-plan UI field is a plain text input, so joined here rather than
+    loosening DS's schema."""
     v = _val(row, col)
     if isinstance(v, list):
         return sep.join(str(item) for item in v)
@@ -95,15 +58,11 @@ def _val_joined(row: asyncpg.Record, col: str, sep: str = ", ") -> Any:
 
 
 def _merge_root_cause_category(row: asyncpg.Record) -> Optional[str]:
-    """OOT's failure_type column is 0% filled live (2398/2398 null as of
-    2026-07-31) — root_cause_sub_category/root_cause_category/
-    root_cause_broad_category are ~96% filled instead (2308/2398) and are
-    what OOT's "Failure Type" trackwise field should actually reflect, per
-    the user. OOS is the opposite (failure_type is 98.8% filled,
-    root_cause_broad_category is 0% filled for OOS specifically) so this is
-    OOT-only — see build_trackwise_fields. Joined narrowest-to-broadest per
-    the user; blank parts are skipped rather than leaving stray separators.
-    """
+    """OOT's failure_type column is ~0% filled live; root_cause_sub/category/
+    broad_category are ~96% filled instead and are what OOT's "Failure Type"
+    field should reflect. OOS is the opposite (failure_type filled,
+    root_cause_broad_category isn't), so this merge is OOT-only. Joined
+    narrowest-to-broadest, blank parts skipped."""
     parts = [
         _val(row, "root_cause_sub_category"),
         _val(row, "root_cause_category"),
@@ -114,9 +73,8 @@ def _merge_root_cause_category(row: asyncpg.Record) -> Optional[str]:
 
 
 def _as_string_list(row: asyncpg.Record, col: str) -> List[str]:
-    """Like _val, but for a text[] column consumed as an actual list — the
-    inverse of _val_joined, which flattens the same kind of column to a
-    single string for schemas that declare it a plain str field instead."""
+    """Like _val, but for a text[] column consumed as a list — the inverse
+    of _val_joined."""
     v = _val(row, col)
     if isinstance(v, list):
         return [str(item) for item in v]
@@ -126,17 +84,11 @@ def _as_string_list(row: asyncpg.Record, col: str) -> List[str]:
 def _val_as_list(row: asyncpg.Record, col: str) -> List[str]:
     """Wraps a plain-text column into the single-element list
     ExtendedDeviationTrackwiseFields's list-typed fields expect.
-
-    NOTE on impact_on_other_batches/impact_justification: the backend
-    engineer suggested merging these into "Impact Details" instead of
-    impact_details (2026-07-29), but a per-event-type breakdown showed
-    both are 0/2304 filled for qe_type='Deviation' specifically — they're
-    only ever populated for OOS/OOT/Complaint rows, none of which have an
-    "Impact Details" field at all (Deviation-only, extended schema). The
-    impact_details column itself is 2177/2304 (94.5%) filled for Deviation,
-    so it's kept as the source here; only wrapped in a list to satisfy the
-    schema's type, not replaced. Flagged back rather than merged in blind.
-    """
+    NOTE: impact_on_other_batches/impact_justification were suggested as an
+    alternate source for "Impact Details" but are 0% filled for Deviation
+    (only populated for OOS/OOT/Complaint, which have no such field) —
+    impact_details (94.5% filled for Deviation) is kept as the real source,
+    just wrapped in a list."""
     v = _val(row, col)
     return [str(v)] if v else []
 
@@ -145,15 +97,9 @@ def build_trackwise_fields(
     row: asyncpg.Record, qe_type: str, extended: bool = False, for_rci_report: bool = False
 ) -> Dict[str, Any]:
     fields = _type_specific_trackwise_fields(row, qe_type, extended=extended, for_rci_report=for_rci_report)
-    # Universal, regardless of event type (2026-08-07, per the user) —
-    # dim_investigator.investigator via fact_qms_event.investigator_key, and
-    # dim_rci.rci_key via fact_qms_event.rci_key — the genuine Trackwise RCI
-    # ID (2026-08-14, per the user: confirmed distinct from dim_rci.
-    # reference_number, which is just deviation_id as a string and was
-    # wrongly used here until now). Neither was previously joined into
-    # fetch_investigation_row's query at all, so rci_plan_export.py had no
-    # real source for either and left them blank/fell back to the
-    # differently-scoped "Deviation Owner" (dim_event.owner_name).
+    # Universal across event types: rci_key is the genuine Trackwise RCI ID —
+    # distinct from dim_rci.reference_number, which is just deviation_id as
+    # a string and was wrongly used here previously.
     if fields:
         fields["Investigator"] = _val(row, "investigator")
         fields["RCI Number"] = _val(row, "rci_number")
@@ -187,20 +133,18 @@ def _type_specific_trackwise_fields(
                     "Observation Date": _val(row, "observation_date"),
                     "Observation Time": _val(row, "observation_time"),
                     "Failure Duration": _val(row, "failure_duration"),
-                    # RciReportDeviationTrackwiseFields overrides these four to the
-                    # opposite shape from ExtendedDeviationTrackwiseFields (List for
-                    # Related Market/Customer, plain str for Immediate Actions/Impact
-                    # Details) — see ds/src/agents/shared/schemas.py's own comments on
-                    # those overrides. Send the raw column shape for rci_report,
-                    # keep the joined/wrapped shape RCI Plan's schema expects otherwise.
+                    # RciReportDeviationTrackwiseFields wants the opposite shape from
+                    # ExtendedDeviationTrackwiseFields for these four fields (see ds
+                    # schemas.py) — raw column shape for rci_report, joined/wrapped
+                    # shape for RCI Plan otherwise.
                     "Related Market": (
                         _as_string_list(row, "related_market") if for_rci_report else _val_joined(row, "related_market")
                     ),
                     "Related Customer": (
                         _as_string_list(row, "related_customer") if for_rci_report else _val_joined(row, "related_customer")
                     ),
-                    "Equipment ID": _val(row, "instrument_equipment_id"),  # equipment_number [DROPPED] 2026-07-24; reuses the same column "Instrument ID Number" uses
-                    "Equipment Number": _val(row, "instrument_equipment_id"),  # per backend engineer (2026-07-29): same source column as Equipment ID/Instrument ID Number, no separate column exists
+                    "Equipment ID": _val(row, "instrument_equipment_id"),  # equipment_number was dropped; reuses instrument_equipment_id
+                    "Equipment Number": _val(row, "instrument_equipment_id"),  # no separate column exists; same source as Equipment ID
                     "Deviation Owner": _val(row, "owner_name"),
                     "Originator": _val(row, "originator"),
                     "Immediate Actions": _val(row, "immediate_actions") if for_rci_report else _val_as_list(row, "immediate_actions"),
@@ -209,13 +153,9 @@ def _type_specific_trackwise_fields(
                     "Immediate Cause Known": _val(row, "immediate_cause_known"),
                     "Cause Detail": _val(row, "cause_detail"),
                     "Proposal for Resolution": _val_as_list(row, "proposal_for_resolution"),
-                    # Only declared on RciReportDeviationTrackwiseFields (RCI Plan's
-                    # ExtendedDeviationTrackwiseFields has no such field at all) — the
-                    # LLM's Correction & Remedial Action section had no real source
-                    # data without this and kept generating an empty section, failing
-                    # ds's own internal-consistency check every time (found live,
-                    # 2026-08-21). Harmless to always include: extra dict keys are
-                    # ignored by schemas that don't declare them.
+                    # Only declared on RciReportDeviationTrackwiseFields; without it
+                    # the Correction & Remedial Action section stayed empty. Harmless
+                    # elsewhere since unknown dict keys are ignored.
                     "Correction or Remedial Action": _val(row, "correction_or_remedial_action"),
                 }
             )
@@ -253,7 +193,7 @@ def _type_specific_trackwise_fields(
             "Market Complaint Reported By": _val(row, "complaint_reported_by"),
             "Reference Complaint Number": _val(row, "reference_complaint_number"),
             "description": _val(row, "description"),
-            "Products Information": _val(row, "name_of_material"),  # products_information_product_name [DROPPED]; name_of_material is 100% filled for live Complaint rows
+            "Products Information": _val(row, "name_of_material"),  # products_information_product_name was dropped; name_of_material used instead
             "Dosage Form": _val(row, "dosage_form"),
             "Market": _val(row, "market"),
             "Product Manufacturing Info": _val(row, "product_manufacturing_info"),

@@ -1,25 +1,14 @@
-"""Queries against generated_content.sql's investigation_task_critique_reports
-table. Follows the same conventions as generated_content_queries.py:
-UndefinedTableError degrades reads to an empty/false default (this table
-shares that file's "not yet run against the live DB" status), any other DB
-error propagates.
+"""Queries against generated_content.sql's investigation_task_critique_reports.
+Follows generated_content_queries.py's conventions (UndefinedTableError
+degrades reads to empty/false, other errors propagate).
 
-Keyed by (deviation_id, task_index) — not investigation_rci_sections.id
-(2026-08-06, per the user) — see generated_content.sql's table comment for
-why: that table isn't populated by anything real right now, since RCI Plan
-Creation's own persistence into it also depends on this same file being run.
+Keyed by (deviation_id, task_index), not investigation_rci_sections.id.
 task_index is the 0-based position of a task within whatever document
-services/rci_plan_extraction.py most recently parsed for this investigation.
-
-Only one row per task is ever kept in investigation_task_critique_reports —
-each upload replaces it in place (2026-08-06, per the user: no need to retain
-previous/rejected attempts' files or critiques). Recommendations live inline
-as a JSONB array rather than a child table (see generated_content.sql's
-comment). Every attempt's generated recommendation set is still logged
-separately, append-only, in investigation_task_critique_recommendation_history
-(2026-08-07, per the user) — keyed by (deviation_id, task_index,
-attempt_number) — for audit/history purposes only; it is never read by
-compute_section_state or any other business rule.
+services/rci_plan_extraction.py most recently parsed. Only the latest
+attempt is kept per task (each upload replaces it in place); every attempt's
+recommendations are also logged append-only in
+investigation_task_critique_recommendation_history for audit only, never
+read by business logic.
 """
 from __future__ import annotations
 
@@ -176,16 +165,11 @@ def _build_recommendation_records(recommendations: List[str]) -> List[Dict[str, 
 async def insert_recommendation_history(
     deviation_id: int, task_index: int, attempt_number: int, summary: Optional[str], recommendations: List[str]
 ) -> None:
-    """Append-only audit log — separate from investigation_task_critique_reports,
-    which only ever holds the current attempt (2026-08-07, per the user).
-    Stores the same rich {id, description, decision, reason} shape as the live
-    report (2026-08-18, per the user: accept/reject/reason needs to survive
-    here too) — set_recommendation_decision keeps this row's copy in sync as
-    decisions are made on the current attempt, so by the time a new upload
-    supersedes it, this row already reflects its final decided state.
-    ON CONFLICT DO NOTHING makes this safe to call more than once for the
-    same attempt without erroring (or clobbering decisions already recorded
-    here by set_recommendation_decision)."""
+    """Append-only audit log, separate from investigation_task_critique_reports
+    (which only holds the current attempt). set_recommendation_decision keeps
+    this row's copy in sync as decisions are made, so by the time a new
+    upload supersedes it, this row already reflects the final decided state.
+    ON CONFLICT DO NOTHING makes repeat calls for the same attempt safe."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
@@ -204,15 +188,10 @@ async def insert_recommendation_history(
 
 
 async def fetch_recommendation_history(deviation_id: int, task_index: int) -> List[Dict[str, Any]]:
-    """The full audit trail across every attempt for this task — unlike
-    investigation_task_critique_reports (which only ever holds the current
-    attempt, replaced in place), this table is append-only, so it's the only
-    place a prior attempt's recommendations survive being superseded.
-    Deliberately independent of lock/complete state — the whole point is
-    that this stays visible even once the task is scored and done
-    (2026-08-18, per the user). Newest attempt first — the current/live
-    attempt is already the highest number and shown separately above this
-    list, so this history reads in reverse-chronological order underneath it."""
+    """Full audit trail across every attempt — the only place a prior
+    attempt's recommendations survive being superseded, since
+    investigation_task_critique_reports only holds the current one. Stays
+    visible even after the task is scored/done. Newest attempt first."""
     pool = get_pool()
     async with pool.acquire() as conn:
         try:
@@ -232,9 +211,7 @@ async def fetch_recommendation_history(deviation_id: int, task_index: int) -> Li
             {
                 "attempt_number": r["attempt_number"],
                 "summary": r["summary"],
-                # Same {id, description, decision, reason, decided_at} shape as
-                # the live report — set_recommendation_decision keeps this in
-                # sync as decisions are made (2026-08-18, per the user).
+                # Same shape as the live report; kept in sync by set_recommendation_decision.
                 "recommendations": _parse_recommendations(r["recommendations"]),
                 "created_at": r["created_at"],
             }
@@ -243,10 +220,8 @@ async def fetch_recommendation_history(deviation_id: int, task_index: int) -> Li
 
 
 async def fetch_report_file_bytes(report_id: int) -> Optional[bytes]:
-    """Used to re-score a report from routers/task_critique.py's decision
-    endpoint (2026-08-14) — a report can now become locked/complete purely
-    from rejecting every recommendation, with no new upload to score from, so
-    the original file's bytes need to be fetched back out for that trigger."""
+    """Used to re-score a report that locked purely from rejecting every
+    recommendation, with no new upload to score from."""
     pool = get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(
@@ -302,11 +277,7 @@ async def set_recommendation_decision(deviation_id: int, task_index: int, recomm
                 row["id"],
                 json.dumps(recs),
             )
-            # Keep the audit-log row for this same attempt in sync too
-            # (2026-08-18, per the user: accept/reject/reason needs to survive
-            # in the history even after this attempt is superseded by a new
-            # upload, since investigation_task_critique_reports only ever
-            # holds the current attempt).
+            # Keep the audit-log row for this attempt in sync too.
             await conn.execute(
                 """
                 UPDATE investigation_task_critique_recommendation_history

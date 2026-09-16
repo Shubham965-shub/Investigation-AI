@@ -10,6 +10,7 @@ import {
 import { generateProblemStatement, getProblemStatementRecord, updateProblemStatement } from "../api/dashboard";
 import { ApiError } from "../api/client";
 import { RecordDetailsModal } from "../components/RecordDetailsModal";
+import { TrackwiseDataModal } from "../components/TrackwiseDataModal";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
@@ -35,33 +36,23 @@ export function ProblemStatementPage() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [eventType, setEventType] = useState<EventType>(EVENT_TYPE_OPTIONS["problem-statement"][0]);
-  // True once a real DB record was found for this id — even if its
-  // problem_statement itself hasn't been generated yet, trackwise_fields
-  // already reflects real (Trackwise-sourced) data at that point, so the
-  // entry form below switches those fields to read-only instead of letting
-  // the user edit already-committed DB data through this form.
+  // True once a real DB record exists — trackwise_fields is already real data then, so the entry form switches to read-only.
   const [recordExists, setRecordExists] = useState(false);
-  // True once Evidence Collection has any real data — hides the "Edit
-  // Problem Statement" option in RecordDetailsModal at that point
-  // (2026-08-21, per the user).
+  // True once Evidence Collection has any real data — hides the "Edit Problem Statement" option in RecordDetailsModal.
   const [lockedForEditing, setLockedForEditing] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Shown while a saved edit's PUT is in flight (2026-09-10, per the user).
+  // Shown while a saved edit's PUT is in flight.
   const [savingEdit, setSavingEdit] = useState(false);
   const [copied, setCopied] = useState(false);
-  // Shown automatically any time the generated view appears — whether from
-  // a fresh generation this session or landing on an already-generated
-  // record (matches Figma's "Home<Problem_Statement_Generated" modal).
+  // Shown automatically whenever the generated view appears, whether freshly generated or loaded from an existing record.
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showTrackwiseModal, setShowTrackwiseModal] = useState(false);
 
-  // Real event_type/trackwise_fields/problem_statement come from the DB only
-  // — no localStorage fallback. A 404 (no record yet) is a valid, non-error
-  // state and falls through to the blank entry-form defaults already in
-  // state. Any other failure blocks the page entirely via DbErrorModal.
+  // A 404 (no record yet) is a valid, non-error state; any other failure blocks the page via DbErrorModal.
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
@@ -134,8 +125,7 @@ export function ProblemStatementPage() {
     setSubmitting(true);
     try {
       const response = await generateProblemStatement(rid, { event_type: eventType, trackwise_fields: trackwiseFields });
-      // Session-only display — the backend already persists this (best-effort)
-      // as part of the generate call; no client-side cache to update here.
+      // Session-only display — the backend already persists this (best-effort) as part of the generate call.
       setProblemStatement(response.problem_statement);
     } catch (err) {
       setError(err instanceof ApiError ? String(err.detail) : "Failed to generate problem statement");
@@ -195,11 +185,7 @@ export function ProblemStatementPage() {
           lockedForEditing={lockedForEditing}
           onClose={() => setShowSummaryModal(false)}
           onSaveEdit={(newText) => {
-            // Optimistic — reverted on failure (2026-09-10, per the user:
-            // this was previously session-only, silently lost on
-            // refresh/navigation with no backend call at all). The
-            // GeneratingDialog below still shows for the actual round-trip
-            // so a save in flight is visibly happening, not silent.
+            // Optimistic update, reverted on failure — GeneratingDialog below still shows so the save in flight is visible.
             const previous = problemStatement;
             setProblemStatement(newText);
             setError(null);
@@ -212,7 +198,19 @@ export function ProblemStatementPage() {
               .finally(() => setSavingEdit(false));
           }}
           onSaveAndNext={handleCloseAndNext}
-          onViewRecordDetails={() => setShowSummaryModal(false)}
+          onViewRecordDetails={() => {
+            setShowSummaryModal(false);
+            setShowTrackwiseModal(true);
+          }}
+        />
+      )}
+      {showTrackwiseModal && (
+        <TrackwiseDataModal
+          recordId={rid}
+          problemStatement={problemStatement}
+          sections={sections}
+          values={values}
+          onClose={() => setShowTrackwiseModal(false)}
         />
       )}
       {savingEdit && <GeneratingDialog heading="Saving Problem Statement" message="Persisting your edit — this only takes a moment." />}
