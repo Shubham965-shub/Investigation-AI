@@ -1,0 +1,4 @@
+/* Utilities only, no preflight — this app's other pages are plain inline-style React with
+   their own resets; Tailwind's base reset would otherwise apply globally and break them. */
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);

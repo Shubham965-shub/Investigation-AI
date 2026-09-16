@@ -10,6 +10,15 @@ export function login(username: string, password: string): Promise<LoginResponse
   return apiPost<LoginResponse>("/auth/login", { username, password });
 }
 
+export interface PublicStatsResponse {
+  open_investigations: number;
+}
+
+// Unauthenticated — for the login page's "N investigations · live" stat, shown before a token exists.
+export function getPublicStats(): Promise<PublicStatsResponse> {
+  return apiGet<PublicStatsResponse>("/public-stats");
+}
+
 export interface EventExplorerHandoffResponse {
   url: string;
 }

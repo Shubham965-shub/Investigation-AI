@@ -12,7 +12,7 @@ from archetype_models import Base, ArchetypeType, Archetype, InterviewQuestionna
 
 EXCEL_PATH = os.path.join(
     os.path.dirname(__file__),
-    "Interview_Questionnaire_21_Aug_corrected.xlsx",
+    "/Users/114862/Desktop/Interview_Questionnaire.xlsx",
 )
 
 engine = create_engine(settings.DATABASE_URL, connect_args={"sslmode": "require"})
@@ -28,7 +28,9 @@ def load_events_from_excel(path: str) -> list[tuple[str, str, str]]:
     current_name = None
     current_def = None
     for row in ws.iter_rows(min_row=2, values_only=True):
-        _, error_type, definition, question = row
+        # Sheet is 6 columns wide but the last 2 are always empty padding — only the
+        # first 4 (SI.NO / Error type / Definition / Questions) carry real data.
+        _, error_type, definition, question = row[:4]
         if error_type:
             current_name = str(error_type).strip()
             current_def = str(definition).strip() if definition else None

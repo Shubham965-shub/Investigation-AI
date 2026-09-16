@@ -1,135 +1,192 @@
-@keyframes login-rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ============ Athena login (mission control) ============ */
+.font-display {
+  font-family: "Zilla Slab", ui-serif, Georgia, serif;
 }
 
-@keyframes login-pulse {
-  0% {
+@keyframes atlas-pulse {
+  from {
     opacity: 0.6;
-    transform: scale(0.35);
   }
-  100% {
+  to {
     opacity: 0;
     transform: scale(1.2);
   }
 }
 
-@keyframes login-sweep {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes login-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes login-shimmer {
+@keyframes atlas-sweep {
   from {
-    transform: translateX(-100%);
+    transform: rotate(0deg);
   }
   to {
-    transform: translateX(100%);
+    transform: rotate(360deg);
   }
 }
 
-.login-page {
-  position: relative;
-  min-height: 100vh;
-  width: 100%;
-  overflow: hidden;
-  font-family: var(--font-body);
-}
-
-.login-split-page {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Solid Strides-green brand half — same deep green as the app header
-   (--color-header-bg), just filling an entire half of the screen instead of
-   a small pill. */
-.login-brand-half {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-header-bg);
-  overflow: hidden;
-}
-
-/* Faint grid texture on the green half, mirroring the one on the form half
-   so both sides feel like one system rather than two unrelated panels. */
-.login-brand-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.06;
-  pointer-events: none;
-  background-image: linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
-}
-
-.login-form-half {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  background: var(--color-bg);
-}
-
-.login-radar {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .login-split-page {
-    flex-direction: row;
+@keyframes atlas-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  .login-brand-half {
-    flex: 1;
-    min-height: 100vh;
-  }
-  .login-form-half {
-    flex: 1;
-    min-height: 100vh;
-  }
-  .login-radar {
-    display: block;
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
   }
 }
 
-.login-submit {
-  position: relative;
-  overflow: hidden;
+@keyframes atlas-sway-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-4px, 2px, 0);
+  }
 }
 
-.login-submit-shimmer {
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateX(-100%);
+@keyframes atlas-sway-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(5px, -3px, 0);
+  }
 }
 
-.login-submit:hover:not(:disabled) .login-submit-shimmer {
-  animation: login-shimmer 700ms ease;
+@keyframes atlas-sway-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-2px, -4px, 0);
+  }
 }
 
-.login-spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fafafa;
-  animation: login-spin 700ms linear infinite;
+.atlas-dot {
+  animation: atlas-dot 1.8s ease-in-out infinite;
+}
+.atlas-sway-a {
+  animation: atlas-sway-a 13s ease-in-out infinite;
+}
+.atlas-sway-b {
+  animation: atlas-sway-b 17s ease-in-out infinite;
+}
+.atlas-sway-c {
+  animation: atlas-sway-c 21s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-dot,
+  .atlas-sway-a,
+  .atlas-sway-b,
+  .atlas-sway-c {
+    animation: none;
+  }
+}
+
+/* ---- Athena login story: depth + cinematic scene transitions ---- */
+@keyframes atlas-scene-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(26px, 0, 0) scale(0.96);
+    filter: blur(6px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes atlas-scene-out {
+  0% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-30px, 0, 0) scale(1.03);
+    filter: blur(7px);
+  }
+}
+
+@keyframes atlas-scan {
+  0% {
+    transform: translateX(-30%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  88% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(130%);
+    opacity: 0;
+  }
+}
+
+@keyframes atlas-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-14px, -8px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes atlas-halo {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.06);
+  }
+}
+
+.atlas-scene-in {
+  animation: atlas-scene-in 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.atlas-scene-out {
+  animation: atlas-scene-out 0.85s cubic-bezier(0.55, 0, 0.55, 1) both;
+}
+.atlas-scan {
+  animation: atlas-scan 4.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.atlas-drift {
+  animation: atlas-drift 26s ease-in-out infinite;
+}
+.atlas-halo {
+  animation: atlas-halo 7s ease-in-out infinite;
+}
+.atlas-depth-far {
+  filter: blur(1.6px);
+  opacity: 0.5;
+}
+.atlas-depth-mid {
+  opacity: 0.82;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-scene-in,
+  .atlas-scene-out,
+  .atlas-scan,
+  .atlas-drift,
+  .atlas-halo {
+    animation: none;
+  }
 }
