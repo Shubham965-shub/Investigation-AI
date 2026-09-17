@@ -85,6 +85,7 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
                     "correlation": section.correlation,
                     "due_date": default_due_date,
                     "assignee": default_assignee,
+                    "is_checked": section.is_checked,
                     "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
                 }
                 for section in response.sections
@@ -137,6 +138,11 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
                 "correlation": section.correlation,
                 "due_date": section.due_date,
                 "assignee": section.assignee,
+                # BUGFIX: this dict previously omitted is_checked entirely, so
+                # replace_rci_sections' section.get("is_checked", True) default
+                # silently reset every section back to checked on every save,
+                # regardless of what the user had actually unchecked.
+                "is_checked": section.is_checked,
                 "tasks": [{"description": task.description, "is_checked": task.is_checked} for task in section.tasks],
             }
             for section in sections

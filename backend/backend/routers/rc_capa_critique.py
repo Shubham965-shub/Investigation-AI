@@ -287,8 +287,8 @@ async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
 
-    if state["status"] != "complete":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="RC, Impact & CAPA Critique isn't complete yet")
+    if state["latest"] is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No RC, Impact & CAPA Critique report has been uploaded yet")
 
     latest = state["latest"]
     docx = await fetch_report_file_bytes(latest["id"])
