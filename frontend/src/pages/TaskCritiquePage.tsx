@@ -157,8 +157,6 @@ export function TaskCritiquePage() {
     );
   }
 
-  const allComplete = sections.every((s) => s.status === "complete");
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {problemStatement && (
@@ -174,8 +172,7 @@ export function TaskCritiquePage() {
         <button
           type="button"
           className="btn-primary"
-          style={{ display: "flex", alignItems: "center", gap: 10, opacity: allComplete ? 1 : 0.4, cursor: allComplete ? "pointer" : "default" }}
-          disabled={!allComplete}
+          style={{ display: "flex", alignItems: "center", gap: 10 }}
           onClick={() => navigate(`/records/${recordId}/rc-capa-critique`)}
         >
           <img src={exportIcon} alt="" width={16} height={16} />

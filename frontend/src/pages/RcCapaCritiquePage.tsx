@@ -536,8 +536,8 @@ export function RcCapaCritiquePage() {
             <button
               type="button"
               className="btn-primary"
-              style={{ display: "flex", alignItems: "center", gap: 10, opacity: isComplete ? 1 : 0.4, cursor: isComplete ? "pointer" : "default" }}
-              disabled={!isComplete || pushBusy}
+              style={{ display: "flex", alignItems: "center", gap: 10 }}
+              disabled={pushBusy}
               onClick={() => setShowConfirm(true)}
             >
               <img src={exportIcon} alt="" width={16} height={16} />
