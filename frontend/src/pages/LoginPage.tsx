@@ -276,8 +276,8 @@ export function LoginPage() {
                         type="button"
                         onClick={() => setShowPass((s) => !s)}
                         aria-label={showPass ? "Hide password" : "Show password"}
-                        className={`absolute right-3 top-1/2 mt-1 -translate-y-1/2 transition ${
-                          dark ? "text-emerald-100/50 hover:text-emerald-100" : "text-[#383536]/45 hover:text-[#00402c]"
+                        className={`absolute right-3 top-1/2 mt-1 -translate-y-1/2 border-0 bg-transparent p-0 transition ${
+                          dark ? "text-emerald-400/70 hover:text-emerald-400" : "text-[#383536]/45 hover:text-[#00402c]"
                         }`}
                       >
                         {showPass ? <EyeOff className="size-[16px]" /> : <Eye className="size-[16px]" />}

@@ -149,32 +149,34 @@ export function AppHeader() {
                   )}
                 </div>
 
-                <div style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 8 }}>
-                  <label style={{ display: "block", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", marginBottom: 4 }}>
-                    View dashboard as (demo)
-                  </label>
-                  <select
-                    value={viewAsInvestigator ?? ""}
-                    onChange={(e) => {
-                      const value = e.target.value || null;
-                      setViewAsInvestigator(value);
-                      setMenuOpen(false);
-                      if (value) navigate("/");
-                    }}
-                    style={{
-                      width: "100%",
-                      border: "1px solid var(--color-card-border)",
-                      borderRadius: "var(--radius-btn)",
-                      padding: "6px 8px",
-                      fontSize: "var(--font-size-sm)",
-                      background: "var(--color-surface)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    <option value="">— My account —</option>
-                    <option value={DEMO_VIEW_AS_INVESTIGATOR}>{DEMO_VIEW_AS_INVESTIGATOR}</option>
-                  </select>
-                </div>
+                {(roles.includes("Admin") || roles.includes("SIT")) && (
+                  <div style={{ borderTop: "1px solid var(--color-card-border)", paddingTop: 8 }}>
+                    <label style={{ display: "block", fontSize: "var(--font-size-xs)", color: "var(--color-text-muted)", marginBottom: 4 }}>
+                      View dashboard as (demo)
+                    </label>
+                    <select
+                      value={viewAsInvestigator ?? ""}
+                      onChange={(e) => {
+                        const value = e.target.value || null;
+                        setViewAsInvestigator(value);
+                        setMenuOpen(false);
+                        if (value) navigate("/");
+                      }}
+                      style={{
+                        width: "100%",
+                        border: "1px solid var(--color-card-border)",
+                        borderRadius: "var(--radius-btn)",
+                        padding: "6px 8px",
+                        fontSize: "var(--font-size-sm)",
+                        background: "var(--color-surface)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      <option value="">— My account —</option>
+                      <option value={DEMO_VIEW_AS_INVESTIGATOR}>{DEMO_VIEW_AS_INVESTIGATOR}</option>
+                    </select>
+                  </div>
+                )}
 
                 <button
                   type="button"
