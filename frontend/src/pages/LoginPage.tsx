@@ -6,7 +6,8 @@ import { useTheme } from "../theme/ThemeContext";
 import { getPublicStats } from "../api/auth";
 import { Schematic } from "./Schematic";
 import stridesLogoDark from "../assets/icons/logo.png";
-import stridesLogoLight from "../assets/icons/strides-logo-light-bg.jpeg";
+import stridesIconLight from "../assets/icons/strides-icon.png";
+import stridesWordmarkLight from "../assets/icons/strides-wordmark-light.png";
 import athenaLogo from "../assets/icons/athena-logo.svg";
 import "./LoginPage.css";
 
@@ -78,10 +79,10 @@ export function LoginPage() {
     ? "border-white/10 bg-white/[0.03] text-emerald-50 placeholder:text-emerald-100/25"
     : "border-[#00402c]/15 bg-white text-[#383536] placeholder:text-[#383536]/35";
 
-  // logo.png is white-on-transparent (dark-bg only); the light-mode counterpart is a JPEG with
-  // a baked-in white background (no transparency), so it gets a rounded/padded chip instead of
-  // sitting flush against the gradient like the dark variant does.
-  const stridesLogo = dark ? stridesLogoDark : stridesLogoLight;
+  // Dark mode: single flat wordmark (icon+text sized proportionally). Light mode's source
+  // asset has a much bigger icon-to-text ratio, so rendered at one height the text comes out
+  // visibly smaller than dark mode's — split into separate icon/wordmark images so each can be
+  // sized independently to match dark mode's visual proportions.
 
   return (
     <div className="relative h-screen overflow-hidden" style={background}>
@@ -139,10 +140,11 @@ export function LoginPage() {
         <header className="flex shrink-0 items-center justify-between py-5">
           <div className="flex items-center gap-3">
             {dark ? (
-              <img src={stridesLogo} alt="Strides" className="h-6" />
+              <img src={stridesLogoDark} alt="Strides" className="h-8" />
             ) : (
-              <span className="flex items-center rounded-md bg-white px-1.5 py-1">
-                <img src={stridesLogo} alt="Strides" className="h-5" />
+              <span className="flex items-center gap-1.5">
+                <img src={stridesIconLight} alt="" className="h-8" />
+                <img src={stridesWordmarkLight} alt="Strides" className="h-[15px] w-[68px]" />
               </span>
             )}
             <span className={`h-7 w-px ${dark ? "bg-white/12" : "bg-[#00402c]/15"}`} />
@@ -183,7 +185,7 @@ export function LoginPage() {
                   : "linear-gradient(100deg, #00402c, #00724a 45%, #00955e)",
               }}
             >
-              Investigation AI that finds the best fit root cause for every QMS event
+              Intelligence that drives better Investigations
             </h1>
 
             <div className="mt-5 flex flex-wrap items-center gap-6 text-[11.5px] font-semibold">
