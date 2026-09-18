@@ -426,12 +426,16 @@ phase_swa() {
 }
 
 phase_cors() {
-    header "Backend: set CORS_ORIGINS to the SWA origin"
-    local swa_host
-    swa_host=$(az staticwebapp show -n "$SWA_NAME" -g "$RG" --query defaultHostname -o tsv)
+    # Wide open rather than pinned to the SWA's default hostname — auth here is a Bearer
+    # token in a custom header, never a cookie, so allow_credentials+"*" carries no CSRF-style
+    # risk (a third-party page can't make the browser attach a token it doesn't already have).
+    # A pinned single origin also breaks the moment a custom domain is attached to the SWA,
+    # since its Origin header no longer matches — this was hit for real (custom domain 401s
+    # blocked by CORS while the default *.azurestaticapps.net host still worked).
+    header "Backend: set CORS_ORIGINS to allow any origin"
     az containerapp update -n "$BE_APP" -g "$RG" \
-        --set-env-vars CORS_ORIGINS="https://$swa_host" >/dev/null
-    success "CORS_ORIGINS = https://$swa_host"
+        --set-env-vars CORS_ORIGINS="*" >/dev/null
+    success "CORS_ORIGINS = *"
 }
 
 phase_frontend() {
