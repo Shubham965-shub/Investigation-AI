@@ -210,6 +210,8 @@ textarea.field-value {
 .status-pill.in_progress { color: var(--color-info-text); border-color: var(--color-info-text); }
 .status-pill.complete { color: var(--color-success-text); border-color: var(--color-success-text); }
 .status-pill.accepted { color: var(--color-accepted-text); border-color: var(--color-accepted-border); background: var(--color-accepted-bg); }
+.status-pill.source { color: var(--color-text-muted); border-color: var(--color-card-border); background: var(--color-bg); }
+.status-pill.ai-generated { color: var(--color-success-text); border-color: var(--color-success-border); background: var(--color-success-bg); }
 
 .error-banner {
   background: var(--color-danger-bg);

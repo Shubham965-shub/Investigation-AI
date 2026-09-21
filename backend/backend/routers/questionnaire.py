@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.clients.ds_client import ds_post
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_questionnaire_items, replace_questionnaire_items
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row
+from backend.routers.auth import get_current_payload
 from backend.schemas.questionnaire import (
     InterviewQuestion,
     QuestionnaireGenerateRequest,
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/questionnaire", tags=["Interview Questionnaire"])
 async def generate_questionnaire(
     record_id: str,
     request: QuestionnaireGenerateRequest,
+    claims: dict = Depends(get_current_payload),
 ) -> QuestionnaireGenerateResponse:
     data = await ds_post("/interview/questionnaire", json=request.model_dump())
     response = QuestionnaireGenerateResponse(**data)
@@ -37,6 +39,7 @@ async def generate_questionnaire(
         await replace_questionnaire_items(
             deviation_id,
             [{"description": q.description, "is_checked": True} for q in response.questions],
+            generated_by=claims.get("uid"),
         )
     except Exception:
         logger.warning("Could not persist questionnaire items for record_id=%s", record_id, exc_info=True)
@@ -70,7 +73,9 @@ async def get_questionnaire(record_id: str) -> QuestionnaireRecord:
 
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def update_questionnaire(record_id: str, items: list[InterviewQuestion]) -> None:
+async def update_questionnaire(
+    record_id: str, items: list[InterviewQuestion], claims: dict = Depends(get_current_payload)
+) -> None:
     """Full replace of persisted questionnaire state, triggered by user edits instead of generation."""
     try:
         deviation_id = int(record_id)
@@ -80,4 +85,5 @@ async def update_questionnaire(record_id: str, items: list[InterviewQuestion]) -
     await replace_questionnaire_items(
         deviation_id,
         [{"description": item.description, "is_checked": item.is_checked} for item in items],
+        generated_by=claims.get("uid"),
     )

@@ -2,9 +2,10 @@
 Service to generate structured problem statements from trackwise fields using LLM.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 import logging
 from src.utils.deps import get_llm_client, get_prompt_registry
+from src.agents.problem_statement_evaluation.v2.schemas import ProblemStatementEnhancementsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -53,4 +54,31 @@ async def generate_problem_statement(
 
     except Exception:
         logger.exception("Error generating problem statement for %s", event_type)
+        raise
+
+
+async def generate_problem_statement_enhancements(
+    raw_description: str,
+    problem_statement: str,
+) -> List[Dict[str, Any]]:
+    """Categorized diff between the raw TrackWise description and the generated problem
+    statement, for the "What Was Enhanced" panel. Returns [] rather than fabricating
+    differences when the prompt finds nothing meaningful to report."""
+    try:
+        llm = await get_llm_client()
+        registry = get_prompt_registry()
+
+        prompt = registry.get("ps_generation/enhancements").format(
+            raw_description=raw_description.strip() if raw_description else "(none provided)",
+            problem_statement=problem_statement.strip(),
+        )
+
+        result: ProblemStatementEnhancementsResponse = await llm.get_structured_chat_response(
+            user_prompt=prompt,
+            structure=ProblemStatementEnhancementsResponse,
+        )
+        return [item.model_dump() for item in result.enhancements]
+
+    except Exception:
+        logger.exception("Error generating problem statement enhancements")
         raise

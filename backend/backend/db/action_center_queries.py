@@ -247,3 +247,84 @@ async def fetch_module_completion(deviation_ids: List[int]) -> Dict[int, int]:
             for r in rows:
                 counts[r["deviation_id"]] += 1
     return counts
+
+
+# One UNION branch per generated-content table, each tagged with the module_stage.py stage number
+# its table represents (RC & CAPA tags 5, same as Task Critique — reaching either implies stages
+# 1-4 are done, matching stage_for()'s own TW-status mapping). Rows are pre-filtered to only those
+# attributed to a user currently holding the Investigator role, so an Admin/SIT generating on an
+# investigator's behalf never counts here.
+_INVESTIGATOR_STAGE_QUERY = """
+WITH investigator_ids AS (
+    SELECT u.id FROM athena_users u
+    JOIN athena_roles r ON r.id = u.role_id
+    WHERE r.name = 'Investigator'
+),
+tagged AS (
+    SELECT deviation_id, 1 AS stage, generated_at AS ts
+    FROM investigation_problem_statements
+    WHERE generated_by IN (SELECT id FROM investigator_ids)
+
+    UNION ALL
+    SELECT deviation_id, 2 AS stage, MAX(created_at) AS ts
+    FROM investigation_evidence_items
+    WHERE generated_by IN (SELECT id FROM investigator_ids)
+    GROUP BY deviation_id
+
+    UNION ALL
+    SELECT deviation_id, 3 AS stage, MAX(created_at) AS ts
+    FROM investigation_questionnaire_items
+    WHERE generated_by IN (SELECT id FROM investigator_ids)
+    GROUP BY deviation_id
+
+    UNION ALL
+    SELECT deviation_id, 4 AS stage, MAX(created_at) AS ts
+    FROM investigation_rci_sections
+    WHERE generated_by IN (SELECT id FROM investigator_ids)
+    GROUP BY deviation_id
+
+    UNION ALL
+    SELECT deviation_id, 5 AS stage, MAX(uploaded_at) AS ts
+    FROM investigation_task_critique_reports
+    WHERE uploaded_by IN (SELECT id FROM investigator_ids)
+    GROUP BY deviation_id
+
+    UNION ALL
+    SELECT deviation_id, 5 AS stage, MAX(uploaded_at) AS ts
+    FROM investigation_rc_capa_reports
+    WHERE uploaded_by IN (SELECT id FROM investigator_ids)
+    GROUP BY deviation_id
+
+    UNION ALL
+    SELECT deviation_id, 6 AS stage, generated_at AS ts
+    FROM investigation_rci_reports
+    WHERE generated_by IN (SELECT id FROM investigator_ids) AND generated_at IS NOT NULL
+)
+SELECT DISTINCT ON (deviation_id) deviation_id, stage
+FROM tagged
+WHERE deviation_id = ANY($1::int[])
+ORDER BY deviation_id, ts DESC
+"""
+
+
+async def fetch_investigator_progress_stage(deviation_ids: List[int]) -> Dict[int, int]:
+    """Action Center's primary progress bar (2026-09-21, per the user): the module stage of the
+    LAST item generated/uploaded by a user holding the Investigator role, specifically — not
+    dim_event.module/stage_for() (that's the separate `stage` field, TW's own status, still used
+    for Pending Actions and available as the secondary toggled-on column). Literal "most recent
+    timestamp" semantics, per the user — if an Investigator regenerates an earlier module after
+    reaching a later one, this number goes back down; it does not ratchet forward. Degrades to 0
+    for any deviation_id with no Investigator-attributed row yet (including if the whole query
+    fails — e.g. a table not existing yet — so a DB hiccup here never breaks the dashboard)."""
+    if not deviation_ids:
+        return {}
+    result: Dict[int, int] = {d: 0 for d in deviation_ids}
+    pool = get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(_INVESTIGATOR_STAGE_QUERY, deviation_ids)
+        for r in rows:
+            result[r["deviation_id"]] = r["stage"]
+    except asyncpg.exceptions.UndefinedTableError:
+        pass
+    return result

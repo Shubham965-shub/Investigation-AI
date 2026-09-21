@@ -21,7 +21,7 @@ from backend.db.rci_report_queries import (
     update_rci_report_sections,
 )
 from backend.db.task_critique_queries import fetch_reports_by_task_index
-from backend.routers.auth import get_current_username
+from backend.routers.auth import get_current_payload, get_current_username
 from backend.schemas.rci_report import RciReportRecord, RciReportSections
 from backend.services.rci_report_export import build_rci_report_docx
 from backend.services.rci_report_request import build_rci_report_request
@@ -77,7 +77,7 @@ async def update_rci_report_inputs(record_id: str, request: RciReportInputsReque
 
 
 @router.post("/{record_id}/generate", response_model=RciReportRecord)
-async def generate_rci_report(record_id: str) -> RciReportRecord:
+async def generate_rci_report(record_id: str, claims: dict = Depends(get_current_payload)) -> RciReportRecord:
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -121,6 +121,7 @@ async def generate_rci_report(record_id: str) -> RciReportRecord:
         report.model_dump(),
         stored["mc_confirmed"] if stored else None,
         stored["manual_entries"] if stored else {},
+        generated_by=claims.get("uid"),
     )
 
     return await get_rci_report(record_id)

@@ -6,6 +6,7 @@ pre-approval state, not an anomaly. Other DB errors still propagate.
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -35,6 +36,51 @@ async def fetch_problem_statement(deviation_id: int) -> Optional[str]:
         except asyncpg.exceptions.UndefinedTableError:
             return None
         return row["problem_statement"] if row else None
+
+
+# None = no row yet (never generated); [] is a real "generated, nothing meaningful found" result.
+async def fetch_problem_statement_enhancements(deviation_id: int) -> Optional[List[Dict[str, Any]]]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            row = await conn.fetchrow(
+                "SELECT enhancements FROM investigation_problem_statement_enhancements WHERE deviation_id = $1",
+                deviation_id,
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            return None
+        if row is None:
+            return None
+        raw = row["enhancements"]
+        return raw if isinstance(raw, list) else json.loads(raw)
+
+
+async def save_problem_statement_enhancements(deviation_id: int, enhancements: List[Dict[str, Any]]) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO investigation_problem_statement_enhancements (deviation_id, enhancements, generated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (deviation_id) DO UPDATE
+                SET enhancements = EXCLUDED.enhancements, generated_at = now()
+            """,
+            deviation_id,
+            json.dumps(enhancements),
+        )
+
+
+# Called when the problem statement is manually edited — the persisted enhancements diff was
+# computed against the pre-edit text and would otherwise silently go stale.
+async def delete_problem_statement_enhancements(deviation_id: int) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute(
+                "DELETE FROM investigation_problem_statement_enhancements WHERE deviation_id = $1", deviation_id
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            pass
 
 
 async def fetch_evidence_items(deviation_id: int) -> List[Dict[str, Any]]:
@@ -152,22 +198,23 @@ async def save_remark(deviation_id: int, rci_id: str, remark: str) -> None:
         )
 
 
-async def save_problem_statement(deviation_id: int, problem_statement: str) -> None:
+async def save_problem_statement(deviation_id: int, problem_statement: str, generated_by: Optional[int] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO investigation_problem_statements (deviation_id, problem_statement, generated_at)
-            VALUES ($1, $2, now())
+            INSERT INTO investigation_problem_statements (deviation_id, problem_statement, generated_at, generated_by)
+            VALUES ($1, $2, now(), $3)
             ON CONFLICT (deviation_id) DO UPDATE
-                SET problem_statement = EXCLUDED.problem_statement, generated_at = now()
+                SET problem_statement = EXCLUDED.problem_statement, generated_at = now(), generated_by = EXCLUDED.generated_by
             """,
             deviation_id,
             problem_statement,
+            generated_by,
         )
 
 
-async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]]) -> None:
+async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]], generated_by: Optional[int] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -177,17 +224,17 @@ async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]])
             if items:
                 await conn.executemany(
                     """
-                    INSERT INTO investigation_evidence_items (deviation_id, description, is_checked, sort_order)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO investigation_evidence_items (deviation_id, description, is_checked, sort_order, generated_by)
+                    VALUES ($1, $2, $3, $4, $5)
                     """,
                     [
-                        (deviation_id, item["description"], item.get("is_checked", True), i)
+                        (deviation_id, item["description"], item.get("is_checked", True), i, generated_by)
                         for i, item in enumerate(items)
                     ],
                 )
 
 
-async def replace_questionnaire_items(deviation_id: int, items: List[Dict[str, Any]]) -> None:
+async def replace_questionnaire_items(deviation_id: int, items: List[Dict[str, Any]], generated_by: Optional[int] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -197,17 +244,17 @@ async def replace_questionnaire_items(deviation_id: int, items: List[Dict[str, A
             if items:
                 await conn.executemany(
                     """
-                    INSERT INTO investigation_questionnaire_items (deviation_id, description, is_checked, sort_order)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO investigation_questionnaire_items (deviation_id, description, is_checked, sort_order, generated_by)
+                    VALUES ($1, $2, $3, $4, $5)
                     """,
                     [
-                        (deviation_id, item["description"], item.get("is_checked", True), i)
+                        (deviation_id, item["description"], item.get("is_checked", True), i, generated_by)
                         for i, item in enumerate(items)
                     ],
                 )
 
 
-async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]) -> None:
+async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]], generated_by: Optional[int] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -224,8 +271,8 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                 section_id = await conn.fetchval(
                     """
                     INSERT INTO investigation_rci_sections
-                        (deviation_id, title, correlation, due_date, assignee, sort_order, is_checked)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        (deviation_id, title, correlation, due_date, assignee, sort_order, is_checked, generated_by)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     RETURNING id
                     """,
                     deviation_id,
@@ -235,6 +282,7 @@ async def replace_rci_sections(deviation_id: int, sections: List[Dict[str, Any]]
                     section.get("assignee"),
                     i,
                     section.get("is_checked", True),
+                    generated_by,
                 )
                 tasks = section.get("tasks") or []
                 if tasks:

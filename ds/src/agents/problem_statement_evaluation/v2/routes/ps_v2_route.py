@@ -6,11 +6,14 @@ from fastapi import APIRouter, HTTPException, status
 import logging
 
 from src.agents.problem_statement_evaluation.v2.schemas import (
+    ProblemStatementEnhancementsRequest,
+    ProblemStatementEnhancementsResponse,
     ProblemStatementGenerationRequest,
     ProblemStatementGenerationResponse,
 )
 from src.agents.problem_statement_evaluation.v2.services.problem_statement_generator import (
     generate_problem_statement,
+    generate_problem_statement_enhancements,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,4 +57,27 @@ async def generate_problem_statement_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate problem statement",
+        )
+
+
+@router.post(
+    "/enhancements",
+    response_model=ProblemStatementEnhancementsResponse,
+    summary="Categorized diff between the raw TrackWise description and a generated problem statement",
+)
+async def generate_problem_statement_enhancements_endpoint(
+    request: ProblemStatementEnhancementsRequest,
+) -> ProblemStatementEnhancementsResponse:
+    try:
+        enhancements = await generate_problem_statement_enhancements(
+            raw_description=request.raw_description,
+            problem_statement=request.problem_statement,
+        )
+        return ProblemStatementEnhancementsResponse(enhancements=enhancements)
+
+    except Exception:
+        logger.exception("Failed to generate problem statement enhancements")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate problem statement enhancements",
         )

@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.clients.ds_client import ds_post
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
-from backend.db.generated_content_queries import fetch_evidence_items, fetch_problem_statement, save_problem_statement
+from backend.db.generated_content_queries import (
+    delete_problem_statement_enhancements,
+    fetch_evidence_items,
+    fetch_problem_statement,
+    fetch_problem_statement_enhancements,
+    save_problem_statement,
+    save_problem_statement_enhancements,
+)
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row, fetch_investigation_statuses
+from backend.routers.auth import get_current_payload
 from backend.schemas.problem_statement import (
+    ProblemStatementEnhancementsResponse,
     ProblemStatementGenerateRequest,
     ProblemStatementGenerateResponse,
     ProblemStatementRecord,
@@ -28,6 +37,7 @@ router = APIRouter(prefix="/problem-statement", tags=["Problem Statement"])
 async def generate_problem_statement(
     record_id: str,
     request: ProblemStatementGenerateRequest,
+    claims: dict = Depends(get_current_payload),
 ) -> ProblemStatementGenerateResponse:
     data = await ds_post("/ps/v2/generate", json=request.model_dump())
     response = ProblemStatementGenerateResponse(**data)
@@ -35,7 +45,7 @@ async def generate_problem_statement(
     # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
-        await save_problem_statement(deviation_id, response.problem_statement)
+        await save_problem_statement(deviation_id, response.problem_statement, generated_by=claims.get("uid"))
     except Exception:
         logger.warning("Could not persist problem statement for record_id=%s", record_id, exc_info=True)
 
@@ -68,11 +78,47 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
         criticality=row["criticality"],
         event_classification=row["event_classification"],
+        enhancements=await fetch_problem_statement_enhancements(deviation_id),
     )
 
 
+@router.post("/{record_id}/enhancements/generate", response_model=ProblemStatementEnhancementsResponse)
+async def generate_problem_statement_enhancements(record_id: str) -> ProblemStatementEnhancementsResponse:
+    """Categorized diff between the raw TrackWise description and the already-generated problem
+    statement, for the "What Was Enhanced" panel. Reads both from what's already persisted —
+    no request body needed."""
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    problem_statement = await fetch_problem_statement(deviation_id)
+    if not problem_statement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+
+    row = await fetch_investigation_row(deviation_id)
+    raw_description = (row["description"] if row else None) or ""
+
+    data = await ds_post(
+        "/ps/v2/enhancements",
+        json={"raw_description": raw_description, "problem_statement": problem_statement},
+    )
+    response = ProblemStatementEnhancementsResponse(**data)
+
+    try:
+        await save_problem_statement_enhancements(
+            deviation_id, [item.model_dump() for item in response.enhancements]
+        )
+    except Exception:
+        logger.warning("Could not persist problem statement enhancements for record_id=%s", record_id, exc_info=True)
+
+    return response
+
+
 @router.put("/{record_id}", response_model=ProblemStatementRecord)
-async def update_problem_statement(record_id: str, request: ProblemStatementUpdateRequest) -> ProblemStatementRecord:
+async def update_problem_statement(
+    record_id: str, request: ProblemStatementUpdateRequest, claims: dict = Depends(get_current_payload)
+) -> ProblemStatementRecord:
     """Persists a manual edit to an already-generated problem statement; locked once Evidence Collection has data, same as GET's locked_for_editing rule."""
     try:
         deviation_id = int(record_id)
@@ -93,7 +139,11 @@ async def update_problem_statement(record_id: str, request: ProblemStatementUpda
             detail="Evidence Collection has already started — the problem statement can no longer be edited.",
         )
 
-    await save_problem_statement(deviation_id, request.problem_statement)
+    await save_problem_statement(deviation_id, request.problem_statement, generated_by=claims.get("uid"))
+    try:
+        await delete_problem_statement_enhancements(deviation_id)
+    except Exception:
+        logger.warning("Could not clear stale problem statement enhancements for record_id=%s", record_id, exc_info=True)
 
     extended = event_type == "Market Complaint"
     return ProblemStatementRecord(

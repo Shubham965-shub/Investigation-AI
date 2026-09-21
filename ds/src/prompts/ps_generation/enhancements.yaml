@@ -1,0 +1,22 @@
+active: v1
+versions:
+  v1:
+    description: Categorized diff between the raw TrackWise description and the generated problem statement, for the "What Was Enhanced" panel
+    created_at: '2026-09-21T00:00:00+00:00'
+    template: |
+      Compare the RAW TrackWise description below with the GENERATED problem statement produced from it, and list the concrete ways the generated version improved on the raw one.
+
+      RAW (TrackWise):
+      {raw_description}
+
+      GENERATED (problem statement):
+      {problem_statement}
+
+      Instructions:
+      - Only report REAL, concrete differences you can point to in both texts — never invent or exaggerate a change that didn't happen.
+      - Each item needs a short category label, for example: "Typo", "Date Format", "Length & Clarity", "Raw Data", "Root Cause & Outcome" — or another short label if none of those fit the actual change.
+      - For each item, give a short excerpt or description of the raw form and what it became in the generated version.
+      - Do not report changes to factual values (dates, batch numbers, product names, quantities) as improvements unless the raw text's FORMAT itself was the issue (e.g. shorthand numeric date reformatted to a full date) — never flag a corrected fact as if it were just a formatting change.
+      - If the two texts are effectively equivalent with nothing meaningful to point out, return an empty list — do not fabricate differences just to have something to show.
+      - Return at most 6 items, ordered by how meaningful the change is, most meaningful first.
+      - Do not return anything except the structured fields requested.

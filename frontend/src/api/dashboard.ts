@@ -38,6 +38,13 @@ export function generateProblemStatement(
   return apiPost<ProblemStatementResponse>(`/problem-statement/${recordId}/generate`, request);
 }
 
+// One concrete, real difference between the raw TrackWise text and the generated problem statement.
+export interface ProblemStatementEnhancement {
+  category: string;
+  tw_excerpt: string;
+  llm_excerpt: string;
+}
+
 export interface ProblemStatementRecordResponse {
   record_id: string;
   event_type: EventType;
@@ -49,6 +56,8 @@ export interface ProblemStatementRecordResponse {
   criticality?: string | null;
   // dim_event.event_classification — additive, not a replacement for criticality (which stays binary Critical/Non-Critical); "Critical"|"Major"|"Minor" or null. Shown as a tag on the Record Details header.
   event_classification?: string | null;
+  // null = never generated yet ("Generate" affordance); [] = generated, nothing meaningful found; cleared server-side whenever the problem statement is manually edited.
+  enhancements?: ProblemStatementEnhancement[] | null;
 }
 
 export function getProblemStatementRecord(
@@ -63,6 +72,18 @@ export function updateProblemStatement(
   problemStatement: string
 ): Promise<ProblemStatementRecordResponse> {
   return apiPut<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`, { problem_statement: problemStatement });
+}
+
+export interface ProblemStatementEnhancementsResponse {
+  enhancements: ProblemStatementEnhancement[];
+}
+
+// Reads both the raw TrackWise description and the already-generated problem statement
+// server-side — no body needed. Persisted, so this is a one-time LLM call per generation/edit.
+export function generateProblemStatementEnhancements(
+  recordId: string
+): Promise<ProblemStatementEnhancementsResponse> {
+  return apiPost<ProblemStatementEnhancementsResponse>(`/problem-statement/${recordId}/enhancements/generate`, {});
 }
 
 export interface SimilarInvestigation {
@@ -465,7 +486,13 @@ export interface InvestigationRowResponse {
   start_date: string | null;
   due_date: string | null;
   updated_at: string | null;
+  // TrackWise's own status-derived stage — the original progress signal, now the secondary
+  // toggled-on column (see investigator_stage below for the default one).
   stage: number;
+  // Default progress bar: the module stage of the last item generated/uploaded by a user holding
+  // the Investigator role specifically. Can move backward if an Investigator regenerates an
+  // earlier module after reaching a later one — literal "most recent", not a ratchet.
+  investigator_stage: number;
   total_stages: number;
   bucket: "unassigned" | "on_track" | "delay" | "overdue";
   site: string | null;
