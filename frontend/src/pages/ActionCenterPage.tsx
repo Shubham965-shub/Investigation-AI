@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { StatusChart } from "../components/StatusChart";
 import { InvestigationPreviewPanel, type PreviewInvestigation } from "../components/InvestigationPreviewPanel";
 import { DbErrorModal } from "../components/DbErrorModal";
@@ -90,7 +90,7 @@ function getSortValue(inv: InvestigationRowResponse, column: SortColumn): string
     case "investigator":
       return inv.investigator;
     case "progress":
-      return inv.total_stages ? inv.stage / inv.total_stages : 0;
+      return inv.total_stages ? inv.investigator_stage / inv.total_stages : 0;
     case "start_date":
       return parseDisplayDateMs(inv.start_date);
     case "due_date":
@@ -317,6 +317,10 @@ export function ActionCenterPage() {
     setAssignmentFilter("all");
   }, [activeFilter]);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  // Double-clicking the "Progress" column header toggles a second column showing the original
+  // TrackWise-status-based progress bar alongside the default Investigator-generated one.
+  const [showTwStatusColumn, setShowTwStatusColumn] = useState(false);
+  const progressClickTimer = useRef<number | null>(null);
   // Genuine group-by, not a filter — every matching investigation still shows, just organized into sections. "all" = flat grid.
   const [groupBy, setGroupBy] = useState<"all" | "product" | "investigator">("product");
   const [page, setPage] = useState(1);
@@ -488,6 +492,25 @@ export function ActionCenterPage() {
       setSortDirection("asc");
     }
     setPage(1);
+  }
+
+  // Native double-click fires click, click, then dblclick — without this, double-clicking the
+  // Progress header to toggle the TW Status column would also sort-by-progress twice as an
+  // unwanted side effect. Debounces the single click just for this column so a second click
+  // arriving in time cancels it and lets handleProgressDoubleClick take over instead.
+  function handleProgressHeaderClick() {
+    if (progressClickTimer.current !== null) return;
+    progressClickTimer.current = window.setTimeout(() => {
+      progressClickTimer.current = null;
+      handleSort("progress");
+    }, 250);
+  }
+  function handleProgressHeaderDoubleClick() {
+    if (progressClickTimer.current !== null) {
+      window.clearTimeout(progressClickTimer.current);
+      progressClickTimer.current = null;
+    }
+    setShowTwStatusColumn((prev) => !prev);
   }
 
   function setFilter(label: string) {
@@ -920,25 +943,31 @@ export function ActionCenterPage() {
               <tr>
                 <th>Investigation</th>
                 {SORTABLE_COLUMNS.map((col) => (
-                  <th
-                    key={col.key}
-                    onClick={() => handleSort(col.key)}
-                    style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-                  >
-                    {col.label}
-                    {col.key === "due_date" && (
-                      <span style={{ marginLeft: 4, display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-                        <InfoTooltip label="How the due date is calculated">
-                          <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
-                            Due date is 30 days from initiation of event in TW for Deviation, OOS, and OOT events, and 55 days from initiation of event in TW for Market Complaints.
-                          </p>
-                        </InfoTooltip>
-                      </span>
+                  <Fragment key={col.key}>
+                    <th
+                      onClick={col.key === "progress" ? handleProgressHeaderClick : () => handleSort(col.key)}
+                      onDoubleClick={col.key === "progress" ? handleProgressHeaderDoubleClick : undefined}
+                      title={col.key === "progress" ? "Double-click to toggle the TrackWise-status column" : undefined}
+                      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                    >
+                      {col.label}
+                      {col.key === "due_date" && (
+                        <span style={{ marginLeft: 4, display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+                          <InfoTooltip label="How the due date is calculated">
+                            <p style={{ margin: 0, fontSize: "var(--font-size-base)" }}>
+                              Due date is 30 days from initiation of event in TW for Deviation, OOS, and OOT events, and 55 days from initiation of event in TW for Market Complaints.
+                            </p>
+                          </InfoTooltip>
+                        </span>
+                      )}
+      {sortColumn === col.key && (
+                        <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
+                      )}
+                    </th>
+                    {col.key === "progress" && showTwStatusColumn && (
+                      <th style={{ whiteSpace: "nowrap" }}>TW Status</th>
                     )}
-    {sortColumn === col.key && (
-                      <span style={{ marginLeft: 4, fontSize: "var(--font-size-xs)" }}>{sortDirection === "asc" ? "▲" : "▼"}</span>
-                    )}
-                  </th>
+                  </Fragment>
                 ))}
                 {canViewRemarks && <th>Remark</th>}
                 <th />
@@ -946,7 +975,8 @@ export function ActionCenterPage() {
             </thead>
             <tbody>
               {pagedInvestigations.flatMap((inv) => {
-                const percent = Math.round((inv.stage / inv.total_stages) * 100);
+                const percent = Math.round((inv.investigator_stage / inv.total_stages) * 100);
+                const twPercent = Math.round((inv.stage / inv.total_stages) * 100);
                 const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
                 const hasMultipleRci = inv.rci_ids.length > 1;
                 const isExpanded = expandedIds.has(inv.id);
@@ -991,7 +1021,7 @@ export function ActionCenterPage() {
                       ) : (
                         <>
                           <div className="ac-progress-top">
-                            <span>{inv.stage}/{inv.total_stages} steps</span>
+                            <span>{inv.investigator_stage}/{inv.total_stages} steps</span>
                             <span>{percent}%</span>
                           </div>
                           <div className="ac-progress-track">
@@ -1000,6 +1030,25 @@ export function ActionCenterPage() {
                         </>
                       )}
                     </td>
+                    {showTwStatusColumn && (
+                      <td className="ac-progress-cell">
+                        {hasMultipleRci ? (
+                          "—"
+                        ) : inv.is_cancelled ? (
+                          <span className="status-pill cancelled">Cancelled</span>
+                        ) : (
+                          <>
+                            <div className="ac-progress-top">
+                              <span>{inv.stage}/{inv.total_stages} steps</span>
+                              <span>{twPercent}%</span>
+                            </div>
+                            <div className="ac-progress-track">
+                              <div className="ac-progress-fill" style={{ width: `${twPercent}%` }} />
+                            </div>
+                          </>
+                        )}
+                      </td>
+                    )}
                     <td>{inv.start_date ?? "—"}</td>
                     <td>{inv.due_date ?? "—"}</td>
                     <td className="ac-status-cell">
@@ -1088,7 +1137,7 @@ export function ActionCenterPage() {
                         ) : (
                           <>
                             <div className="ac-progress-top">
-                              <span>{inv.stage}/{inv.total_stages} steps</span>
+                              <span>{inv.investigator_stage}/{inv.total_stages} steps</span>
                               <span>{percent}%</span>
                             </div>
                             <div className="ac-progress-track">
@@ -1097,6 +1146,23 @@ export function ActionCenterPage() {
                           </>
                         )}
                       </td>
+                      {showTwStatusColumn && (
+                        <td className="ac-progress-cell">
+                          {inv.is_cancelled ? (
+                            <span className="status-pill cancelled">Cancelled</span>
+                          ) : (
+                            <>
+                              <div className="ac-progress-top">
+                                <span>{inv.stage}/{inv.total_stages} steps</span>
+                                <span>{twPercent}%</span>
+                              </div>
+                              <div className="ac-progress-track">
+                                <div className="ac-progress-fill" style={{ width: `${twPercent}%` }} />
+                              </div>
+                            </>
+                          )}
+                        </td>
+                      )}
                       <td>—</td>
                       <td>—</td>
                       <td>—</td>

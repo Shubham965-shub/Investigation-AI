@@ -38,25 +38,28 @@ async def save_rci_report(
     report: Dict[str, Any],
     mc_confirmed: Optional[bool],
     manual_entries: Dict[str, str],
+    generated_by: Optional[int] = None,
 ) -> None:
     """Called right after a fresh ds generate call — sets generated_at."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO investigation_rci_reports (deviation_id, report, mc_confirmed, manual_entries, generated_at, updated_at)
-            VALUES ($1, $2::jsonb, $3, $4::jsonb, now(), now())
+            INSERT INTO investigation_rci_reports (deviation_id, report, mc_confirmed, manual_entries, generated_at, updated_at, generated_by)
+            VALUES ($1, $2::jsonb, $3, $4::jsonb, now(), now(), $5)
             ON CONFLICT (deviation_id) DO UPDATE SET
                 report = EXCLUDED.report,
                 mc_confirmed = EXCLUDED.mc_confirmed,
                 manual_entries = EXCLUDED.manual_entries,
                 generated_at = now(),
-                updated_at = now()
+                updated_at = now(),
+                generated_by = EXCLUDED.generated_by
             """,
             deviation_id,
             json.dumps(report),
             mc_confirmed,
             json.dumps(manual_entries),
+            generated_by,
         )
 
 

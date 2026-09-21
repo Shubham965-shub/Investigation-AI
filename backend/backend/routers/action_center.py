@@ -12,6 +12,7 @@ from backend.db.action_center_queries import (
     QE_TYPE_TO_STAT_LABEL,
     fetch_all_departments,
     fetch_cancelled_investigations,
+    fetch_investigator_progress_stage,
     fetch_monthly_trend_rows,
     fetch_open_investigations,
 )
@@ -237,6 +238,10 @@ async def get_action_center_summary(
         all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
         remarks_by_deviation = await fetch_remarks(all_deviation_ids)
 
+    # Open investigations only — cancelled rows hardcode investigator_stage=0 below, same as they
+    # already do for `stage`.
+    investigator_stage_by_deviation = await fetch_investigator_progress_stage([r["deviation_id"] for r in rows])
+
     today = datetime.date.today()
 
     enriched: List[Dict[str, Any]] = []
@@ -252,9 +257,13 @@ async def get_action_center_summary(
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None
         days_until_due = (effective_due_date - today).days if effective_due_date else None
         days_since_opened = (today - date_opened).days if date_opened else 0
-        # Table progress bar uses module_stage.stage_for (Trackwise's own module/state), not the
-        # generated-content completion count; _MODULE_TEXT_TO_LABEL below is for the chart only.
+        # stage: TrackWise's own module/state (module_stage.stage_for) — still drives Pending
+        # Actions and is exposed as the secondary toggled-on column; _MODULE_TEXT_TO_LABEL below is
+        # for the chart only. investigator_stage: the table's PRIMARY progress bar (see
+        # fetch_investigator_progress_stage's docstring for its "last item, Investigator role only"
+        # semantics) — a deliberately separate signal, not derived from `stage`.
         stage = stage_for(r["module"])
+        investigator_stage = investigator_stage_by_deviation.get(r["deviation_id"], 0)
         enriched.append(
             {
                 "id": str(r["deviation_id"]),
@@ -276,6 +285,7 @@ async def get_action_center_summary(
                 "days_until_due": days_until_due,
                 "days_since_opened": days_since_opened,
                 "stage": stage,
+                "investigator_stage": investigator_stage,
                 "bucket": _bucket_for(r["open_investigation_status"]),
                 "module": r["module"],
                 "module_risk_status": r["module_risk_status"],
@@ -598,6 +608,7 @@ async def get_action_center_summary(
                 due_date=i["due_date_display"],
                 updated_at=_fmt_date(i["updated_at"]),
                 stage=i["stage"],
+                investigator_stage=i["investigator_stage"],
                 total_stages=len(MODULE_LABELS),
                 bucket=i["bucket"],
                 site=i["site"],

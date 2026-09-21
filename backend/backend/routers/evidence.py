@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.clients.ds_client import ds_post
 from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
 from backend.db.generated_content_queries import fetch_evidence_items, replace_evidence_items
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row
+from backend.routers.auth import get_current_payload
 from backend.schemas.evidence import (
     EvidenceCollectionRecord,
     EvidenceCollectionRequest,
@@ -24,7 +25,9 @@ router = APIRouter(prefix="/evidence", tags=["Evidence Collection"])
 
 
 @router.post("/{record_id}/collect", response_model=EvidenceCollectionResponse)
-async def collect_evidence(record_id: str, request: EvidenceCollectionRequest) -> EvidenceCollectionResponse:
+async def collect_evidence(
+    record_id: str, request: EvidenceCollectionRequest, claims: dict = Depends(get_current_payload)
+) -> EvidenceCollectionResponse:
     data = await ds_post("/evidence/collect", json=request.model_dump())
     response = EvidenceCollectionResponse(**data)
 
@@ -34,6 +37,7 @@ async def collect_evidence(record_id: str, request: EvidenceCollectionRequest) -
         await replace_evidence_items(
             deviation_id,
             [{"description": item.description, "is_checked": True} for item in response.evidence],
+            generated_by=claims.get("uid"),
         )
     except Exception:
         logger.warning("Could not persist evidence items for record_id=%s", record_id, exc_info=True)
@@ -67,7 +71,9 @@ async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
 
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def update_evidence(record_id: str, items: list[EvidenceItem]) -> None:
+async def update_evidence(
+    record_id: str, items: list[EvidenceItem], claims: dict = Depends(get_current_payload)
+) -> None:
     """Full replace of persisted evidence state, triggered by user edits instead of generation."""
     try:
         deviation_id = int(record_id)
@@ -77,4 +83,5 @@ async def update_evidence(record_id: str, items: list[EvidenceItem]) -> None:
     await replace_evidence_items(
         deviation_id,
         [{"description": item.description, "is_checked": item.is_checked} for item in items],
+        generated_by=claims.get("uid"),
     )

@@ -7,10 +7,14 @@ import {
   type EventType,
   type TrackwiseFields,
 } from "../constants/trackwiseFields";
-import { generateProblemStatement, getProblemStatementRecord, updateProblemStatement } from "../api/dashboard";
+import {
+  generateProblemStatement,
+  generateProblemStatementEnhancements,
+  getProblemStatementRecord,
+  updateProblemStatement,
+  type ProblemStatementEnhancement,
+} from "../api/dashboard";
 import { ApiError } from "../api/client";
-import { RecordDetailsModal } from "../components/RecordDetailsModal";
-import { TrackwiseDataModal } from "../components/TrackwiseDataModal";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
@@ -38,7 +42,7 @@ export function ProblemStatementPage() {
   const [eventType, setEventType] = useState<EventType>(EVENT_TYPE_OPTIONS["problem-statement"][0]);
   // True once a real DB record exists — trackwise_fields is already real data then, so the entry form switches to read-only.
   const [recordExists, setRecordExists] = useState(false);
-  // True once Evidence Collection has any real data — hides the "Edit Problem Statement" option in RecordDetailsModal.
+  // True once Evidence Collection has any real data — hides the "Edit Problem Statement" option.
   const [lockedForEditing, setLockedForEditing] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [problemStatement, setProblemStatement] = useState<string | null>(null);
@@ -48,9 +52,25 @@ export function ProblemStatementPage() {
   // Shown while a saved edit's PUT is in flight.
   const [savingEdit, setSavingEdit] = useState(false);
   const [copied, setCopied] = useState(false);
-  // Shown automatically whenever the generated view appears, whether freshly generated or loaded from an existing record.
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [showTrackwiseModal, setShowTrackwiseModal] = useState(false);
+  // The generated problem statement is editable inline at all times (while unlocked) — draftPs
+  // tracks the textarea's live value; nothing is persisted until "Save Problem Statement" is clicked.
+  const [draftPs, setDraftPs] = useState("");
+  // Defaults open to match the reference layout — all TrackWise sections visible on first view.
+  const [viewAllOpen, setViewAllOpen] = useState(true);
+  // null = never generated yet; [] = generated, nothing meaningful found; undefined briefly while the record itself is still loading.
+  const [enhancements, setEnhancements] = useState<ProblemStatementEnhancement[] | null>(null);
+  const [enhancementsLoading, setEnhancementsLoading] = useState(false);
+  const [enhancementsError, setEnhancementsError] = useState<string | null>(null);
+  const [enhancementsOpen, setEnhancementsOpen] = useState(true);
+
+  function loadEnhancements() {
+    setEnhancementsError(null);
+    setEnhancementsLoading(true);
+    generateProblemStatementEnhancements(rid)
+      .then((res) => setEnhancements(res.enhancements))
+      .catch((err) => setEnhancementsError(err instanceof ApiError ? String(err.detail) : "Failed to analyze changes"))
+      .finally(() => setEnhancementsLoading(false));
+  }
 
   // A 404 (no record yet) is a valid, non-error state; any other failure blocks the page via DbErrorModal.
   useEffect(() => {
@@ -71,7 +91,9 @@ export function ProblemStatementPage() {
           }
           setValues(initialValues);
           setProblemStatement(record.problem_statement);
+          setDraftPs(record.problem_statement ?? "");
           setLockedForEditing(record.locked_for_editing ?? false);
+          setEnhancements(record.enhancements ?? null);
         }
         setLoading(false);
       } catch (err) {
@@ -84,10 +106,6 @@ export function ProblemStatementPage() {
       cancelled = true;
     };
   }, [recordId, retryKey]);
-
-  useEffect(() => {
-    if (problemStatement) setShowSummaryModal(true);
-  }, [problemStatement]);
 
   const fields = useMemo(() => getFieldSet("problem-statement", eventType), [eventType]);
   const sections = useMemo(() => groupBySection(fields), [fields]);
@@ -127,6 +145,10 @@ export function ProblemStatementPage() {
       const response = await generateProblemStatement(rid, { event_type: eventType, trackwise_fields: trackwiseFields });
       // Session-only display — the backend already persists this (best-effort) as part of the generate call.
       setProblemStatement(response.problem_statement);
+      setDraftPs(response.problem_statement);
+      // Fire-and-forget: the "What Was Enhanced" panel populates itself once this resolves — a
+      // slow/failed enhancements call must not block the primary problem-statement flow.
+      loadEnhancements();
     } catch (err) {
       setError(err instanceof ApiError ? String(err.detail) : "Failed to generate problem statement");
     } finally {
@@ -135,84 +157,218 @@ export function ProblemStatementPage() {
   }
 
   function handleCopy() {
-    if (!problemStatement) return;
-    navigator.clipboard.writeText(problemStatement).then(() => {
+    navigator.clipboard.writeText(draftPs).then(() => {
       setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-        navigate(`/records/${rid}/evidence-collection`);
-      }, 1500);
+      setTimeout(() => setCopied(false), 1500);
     });
   }
 
-  function handleCloseAndNext() {
-    navigate(`/records/${rid}/evidence-collection`);
+  // The single confirm action: persists any edit made to the generated text (skipped if nothing
+  // changed, or if the record is locked once Evidence Collection has started), then advances.
+  function handleSaveAndNext() {
+    if (lockedForEditing || draftPs === problemStatement) {
+      navigate(`/records/${rid}/evidence-collection`);
+      return;
+    }
+    setError(null);
+    setSavingEdit(true);
+    updateProblemStatement(rid, draftPs)
+      .then(() => {
+        setProblemStatement(draftPs);
+        // The backend clears the persisted diff on edit too — it was computed against the pre-edit text.
+        setEnhancements(null);
+        navigate(`/records/${rid}/evidence-collection`);
+      })
+      .catch((err) => {
+        setError(err instanceof ApiError ? String(err.detail) : "Failed to save the problem statement");
+      })
+      .finally(() => setSavingEdit(false));
   }
 
   if (problemStatement) {
     return (
       <>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="field-grid" style={{ alignItems: "stretch" }}>
+          <div className="card">
+            <div className="card-header">
+              <p className="card-title">TW Details</p>
+              <span className="status-pill source">Source</span>
+            </div>
+            <div style={{ background: "var(--color-bg)", borderRadius: 4, padding: 12 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.8 }}>
+                {values.description || "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="card" style={{ borderColor: "var(--color-success-border)" }}>
+            <div className="card-header">
+              <p className="card-title">LLM Enhanced Details <ProblemStatementGuidelines /></p>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="status-pill ai-generated">AI Generated</span>
+                <button type="button" className="btn-outline" onClick={handleCopy}>
+                  <img src={copyIcon} alt="" width={18} height={18} />
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+            {lockedForEditing ? (
+              <div style={{ background: "var(--color-success-bg)", borderRadius: 4, padding: 12, border: "1px solid var(--color-success-border)" }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.8 }}>{problemStatement}</p>
+              </div>
+            ) : (
+              <textarea
+                className="field-value"
+                value={draftPs}
+                onChange={(e) => setDraftPs(e.target.value)}
+                rows={5}
+                style={{
+                  background: "var(--color-success-bg)",
+                  borderColor: "var(--color-success-border)",
+                  fontWeight: 600,
+                  fontSize: "var(--font-size-lg)",
+                  lineHeight: 1.6,
+                }}
+              />
+            )}
+          </div>
+        </div>
+
         <div className="card">
           <div className="card-header">
-            <p className="card-title">Problem Statement <ProblemStatementGuidelines /></p>
-            <button type="button" className="btn-outline" onClick={handleCopy}>
-              <img src={copyIcon} alt="" width={18} height={18} />
-              {copied ? "Copied" : "Copy"}
+            <p className="card-title">View All Details</p>
+            <button
+              type="button"
+              className="collapse-chevron"
+              onClick={() => setViewAllOpen((prev) => !prev)}
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+              aria-label="Toggle View All Details"
+            >
+              <img
+                src={chevronEntry}
+                alt=""
+                width={20}
+                height={20}
+                style={{ transform: viewAllOpen ? "rotate(90deg)" : "rotate(-90deg)" }}
+              />
             </button>
           </div>
-          <p style={{ margin: "-8px 0 8px", fontSize: "var(--font-size-xs)", fontStyle: "italic", color: "var(--color-text-muted)" }}>
-            (Assisted by LLM)
-          </p>
-          <div style={{ background: "var(--color-bg)", borderRadius: 4, padding: 12 }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.8 }}>{problemStatement}</p>
+          {viewAllOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {sections.map(([section, sectionFields]) => (
+                <div key={section} style={{ border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 16 }}>
+                  <div className="card-header">
+                    <p className="card-title" style={{ fontSize: "var(--font-size-md)" }}>{section}</p>
+                    <button
+                      type="button"
+                      className="collapse-chevron"
+                      onClick={() => toggleSection(section)}
+                      style={{ background: "none", border: "none", cursor: "pointer" }}
+                      aria-label={`Toggle ${section}`}
+                    >
+                      <img
+                        src={chevronEntry}
+                        alt=""
+                        width={20}
+                        height={20}
+                        style={{ transform: collapsed[section] ? "rotate(90deg)" : "rotate(-90deg)" }}
+                      />
+                    </button>
+                  </div>
+                  {!collapsed[section] && (
+                    <div className="field-grid" style={{ flexWrap: "wrap" }}>
+                      {sectionFields.map((field) => (
+                        <div key={field.key} style={{ minWidth: 240 }}>
+                          <p className="field-label">{field.label}</p>
+                          <div className="field-value">{values[field.key] || "—"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <p className="card-title">What Was Enhanced</p>
+            <button
+              type="button"
+              className="collapse-chevron"
+              onClick={() => setEnhancementsOpen((prev) => !prev)}
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+              aria-label="Toggle What Was Enhanced"
+            >
+              <img
+                src={chevronEntry}
+                alt=""
+                width={20}
+                height={20}
+                style={{ transform: enhancementsOpen ? "rotate(90deg)" : "rotate(-90deg)" }}
+              />
+            </button>
           </div>
+          {enhancementsOpen && (
+            <>
+              {enhancementsLoading && (
+                <p style={{ margin: 0, color: "var(--color-text-muted)" }}>Analyzing what changed…</p>
+              )}
+              {!enhancementsLoading && enhancementsError && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{enhancementsError}</p>
+                  <button type="button" className="btn-outline" onClick={loadEnhancements}>
+                    Retry
+                  </button>
+                </div>
+              )}
+              {!enhancementsLoading && !enhancementsError && enhancements === null && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <p style={{ margin: 0, color: "var(--color-text-muted)" }}>
+                    Not yet analyzed — compares the raw TrackWise text against the generated problem statement.
+                  </p>
+                  <button type="button" className="btn-outline" onClick={loadEnhancements}>
+                    Generate
+                  </button>
+                </div>
+              )}
+              {!enhancementsLoading && !enhancementsError && enhancements !== null && enhancements.length === 0 && (
+                <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No significant changes detected.</p>
+              )}
+              {!enhancementsLoading && !enhancementsError && enhancements !== null && enhancements.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {enhancements.map((item, i) => (
+                    <div key={i} style={{ border: "1px solid var(--color-card-border)", borderRadius: 8, padding: 16 }}>
+                      <p className="card-title" style={{ fontSize: "var(--font-size-md)", marginBottom: 12 }}>{item.category}</p>
+                      <div className="field-grid">
+                        <div>
+                          <p className="field-label">TW</p>
+                          <div className="field-value">{item.tw_excerpt}</div>
+                        </div>
+                        <div>
+                          <p className="field-label">LLM Generated</p>
+                          <div className="field-value">{item.llm_excerpt}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {error && <p className="error-banner">{error}</p>}
 
         <div className="footer-actions">
-          <button type="button" className="btn-primary" onClick={handleCloseAndNext}>
-            Close &amp; Next
+          <button type="button" className="btn-primary" onClick={handleSaveAndNext} disabled={savingEdit}>
+            Save Problem Statement
           </button>
         </div>
       </div>
 
-      {showSummaryModal && (
-        <RecordDetailsModal
-          recordId={rid}
-          problemStatement={problemStatement}
-          lockedForEditing={lockedForEditing}
-          onClose={() => setShowSummaryModal(false)}
-          onSaveEdit={(newText) => {
-            // Optimistic update, reverted on failure — GeneratingDialog below still shows so the save in flight is visible.
-            const previous = problemStatement;
-            setProblemStatement(newText);
-            setError(null);
-            setSavingEdit(true);
-            updateProblemStatement(rid, newText)
-              .catch((err) => {
-                setProblemStatement(previous);
-                setError(err instanceof ApiError ? String(err.detail) : "Failed to save the edited problem statement");
-              })
-              .finally(() => setSavingEdit(false));
-          }}
-          onSaveAndNext={handleCloseAndNext}
-          onViewRecordDetails={() => {
-            setShowSummaryModal(false);
-            setShowTrackwiseModal(true);
-          }}
-        />
-      )}
-      {showTrackwiseModal && (
-        <TrackwiseDataModal
-          recordId={rid}
-          problemStatement={problemStatement}
-          sections={sections}
-          values={values}
-          onClose={() => setShowTrackwiseModal(false)}
-        />
-      )}
       {savingEdit && <GeneratingDialog heading="Saving Problem Statement" message="Persisting your edit — this only takes a moment." />}
       </>
     );

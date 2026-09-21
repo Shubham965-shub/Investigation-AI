@@ -74,7 +74,7 @@ export function RciPlanPage() {
   // Surfaces a persistSections failure — without this the optimistic setSections() update still looked saved even when the backend call failed.
   const [persistError, setPersistError] = useState<string | null>(null);
   const [investigators, setInvestigators] = useState<string[]>([]);
-  // "Explore Events" lives only on this page's Problem Statement card, not the RecordDetailsModal popup.
+  // "Explore Events" lives only on this page's Problem Statement card.
   const [exploreEventsError, setExploreEventsError] = useState<string | null>(null);
 
   // Depends on the Problem Statement record existing — a 404 on either fetch is a valid "not generated yet" state; any other failure blocks the page via DbErrorModal.

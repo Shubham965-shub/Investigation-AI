@@ -24,7 +24,7 @@ from backend.db.rc_capa_critique_queries import (
     set_rc_capa_scores,
 )
 from backend.db.rc_capa_sit_review_queries import fetch_latest_sit_review_status, insert_sit_review
-from backend.routers.auth import get_current_username
+from backend.routers.auth import get_current_payload, get_current_username
 from backend.schemas.rc_capa_critique import RcCapaReport, RcCapaState, RecommendationDecisionRequest
 
 logger = logging.getLogger(__name__)
@@ -164,7 +164,9 @@ async def get_rc_capa_history(record_id: str) -> List[RcCapaReport]:
 
 
 @router.post("/{record_id}/upload", response_model=RcCapaState)
-async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState:
+async def upload_rc_capa_report(
+    record_id: str, file: UploadFile, claims: dict = Depends(get_current_payload)
+) -> RcCapaState:
     deviation_id, row, event_type = await _deviation_id_and_row(record_id)
     reports = await fetch_rc_capa_reports(deviation_id)
     state = compute_rc_capa_state(reports)
@@ -180,7 +182,10 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
     file_bytes = await file.read()
 
     if is_gospel:
-        report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
+        report_id = await insert_report(
+            deviation_id, attempt_number, file.filename or "report", file_bytes,
+            is_gospel=True, uploaded_by=claims.get("uid"),
+        )
         # A gospel report is final the moment it's uploaded — score it now.
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
@@ -214,7 +219,10 @@ async def upload_rc_capa_report(record_id: str, file: UploadFile) -> RcCapaState
         ),
     )
 
-    report_id = await insert_report(deviation_id, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
+    report_id = await insert_report(
+        deviation_id, attempt_number, file.filename or "report", file_bytes,
+        is_gospel=False, uploaded_by=claims.get("uid"),
+    )
     # rc_recommendations and impact_recommendations are kept as separate lists so the frontend
     # can render them as separate subsections.
     await save_critiques(

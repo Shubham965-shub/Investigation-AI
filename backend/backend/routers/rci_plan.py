@@ -15,7 +15,7 @@ from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row, fetch_open_investigators
 from backend.db.rci_plan_export_queries import insert_rci_plan_export
 from backend.db.task_critique_queries import any_task_critique_started
-from backend.routers.auth import get_current_username
+from backend.routers.auth import get_current_payload, get_current_username
 from backend.schemas.rci_plan import (
     RciPlanGenerateRequest,
     RciPlanGenerateResponse,
@@ -44,7 +44,9 @@ def _add_working_days(start: datetime.date, days: int) -> datetime.date:
 
 
 @router.post("/{record_id}/generate", response_model=RciPlanGenerateResponse)
-async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> RciPlanGenerateResponse:
+async def generate_rci_plan(
+    record_id: str, request: RciPlanGenerateRequest, claims: dict = Depends(get_current_payload)
+) -> RciPlanGenerateResponse:
     # Use the generated Problem Statement as "description", falling back to the raw TrackWise
     # column if none has been generated yet.
     try:
@@ -90,6 +92,7 @@ async def generate_rci_plan(record_id: str, request: RciPlanGenerateRequest) -> 
                 }
                 for section in response.sections
             ],
+            generated_by=claims.get("uid"),
         )
     except Exception:
         logger.warning("Could not persist RCI plan sections for record_id=%s", record_id, exc_info=True)
@@ -115,7 +118,9 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> RciTemplateUploa
 
 
 @router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> None:
+async def update_rci_plan(
+    record_id: str, sections: list[RciSectionItem], claims: dict = Depends(get_current_payload)
+) -> None:
     """Full replace of the persisted sections."""
     try:
         deviation_id = int(record_id)
@@ -147,6 +152,7 @@ async def update_rci_plan(record_id: str, sections: list[RciSectionItem]) -> Non
             }
             for section in sections
         ],
+        generated_by=claims.get("uid"),
     )
 
 

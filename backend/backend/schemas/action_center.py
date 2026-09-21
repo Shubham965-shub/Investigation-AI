@@ -54,7 +54,13 @@ class InvestigationRow(BaseModel):
     due_date: Optional[str] = None
     # pg_updated_at_timestamp is a flat bulk-load stamp, same value on every row — NOT a real per-investigation "last updated" time.
     updated_at: Optional[str] = None
+    # TrackWise's own status (module_stage.stage_for(dim_event.module)) — the ORIGINAL progress
+    # signal, now shown only as the secondary column when the header's double-click toggle is on.
     stage: int
+    # Action Center's PRIMARY progress bar (2026-09-21, per the user): the module stage of the last
+    # item generated/uploaded by a user holding the Investigator role specifically. See
+    # db/action_center_queries.py's fetch_investigator_progress_stage for the exact semantics.
+    investigator_stage: int = 0
     total_stages: int = 7
     bucket: str  # unassigned | on_track | delay | overdue
     site: Optional[str] = None

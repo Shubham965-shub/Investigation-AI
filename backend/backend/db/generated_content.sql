@@ -21,6 +21,36 @@ CREATE TABLE IF NOT EXISTS investigation_problem_statements (
     generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- "Investigator-generated progress" (2026-09-21, per the user) — Action Center's progress bar
+-- now tracks the LAST item generated/uploaded by a user holding the Investigator role
+-- specifically, not just whoever happens to be logged in (Admin/SIT can generate on an
+-- investigator's behalf, and that must not count toward this bar). Nullable: existing rows
+-- predate this and carry no attribution. Read side: db/action_center_queries.py's
+-- fetch_investigator_progress_stage(); write side: every generate/edit/upload endpoint across
+-- these 7 tables now passes the calling user's id.
+ALTER TABLE investigation_problem_statements ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_evidence_items ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_questionnaire_items ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_rci_sections ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES athena_users(id);
+ALTER TABLE investigation_rci_reports ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
+
+-- "What Was Enhanced" panel (2026-09-21, per the user) — a categorized diff
+-- between the raw TrackWise description and the generated problem statement
+-- (ds's POST /ps/v2/enhancements), so revisiting the page doesn't re-trigger
+-- that LLM call. One row per deviation_id, upserted in place on regenerate —
+-- same shape as investigation_problem_statements itself, just with the
+-- output as a JSONB array instead of a single string (each element:
+-- {category, tw_excerpt, llm_excerpt}). An empty array is a real,
+-- successfully-generated "nothing meaningful found" result, distinct from
+-- no row at all (never generated yet — frontend shows a "Generate" prompt).
+CREATE TABLE IF NOT EXISTS investigation_problem_statement_enhancements (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    enhancements JSONB NOT NULL DEFAULT '[]'::jsonb,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- SIT Dashboard's "Remark" column (2026-09-11, per the user) — a free-text
 -- note SITs use to track investigation activity, editable and visible to
 -- the SIT role only (see routers/action_center.py's require_sit and the

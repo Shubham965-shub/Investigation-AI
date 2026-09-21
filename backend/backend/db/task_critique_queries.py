@@ -94,7 +94,13 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
 
 
 async def upsert_report(
-    deviation_id: int, task_index: int, attempt_number: int, file_name: str, file_bytes: bytes, is_gospel: bool
+    deviation_id: int,
+    task_index: int,
+    attempt_number: int,
+    file_name: str,
+    file_bytes: bytes,
+    is_gospel: bool,
+    uploaded_by: Optional[int] = None,
 ) -> int:
     """Replaces this task's report row in place (or creates it on the first
     upload) — critique fields are reset to blank until save_critique fills
@@ -105,8 +111,8 @@ async def upsert_report(
             """
             INSERT INTO investigation_task_critique_reports
                 (deviation_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
-                 summary, task_score, score_breakdown, recommendations, task_findings, critique_failed)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE)
+                 summary, task_score, score_breakdown, recommendations, task_findings, critique_failed, uploaded_by)
+            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE, $7)
             ON CONFLICT (deviation_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
@@ -118,7 +124,8 @@ async def upsert_report(
                 recommendations = '[]'::jsonb,
                 task_findings = '[]'::jsonb,
                 critique_failed = FALSE,
-                uploaded_at = now()
+                uploaded_at = now(),
+                uploaded_by = EXCLUDED.uploaded_by
             RETURNING id
             """,
             deviation_id,
@@ -127,6 +134,7 @@ async def upsert_report(
             file_name,
             file_bytes,
             is_gospel,
+            uploaded_by,
         )
 
 

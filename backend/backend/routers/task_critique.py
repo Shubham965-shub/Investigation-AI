@@ -5,7 +5,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
 from backend.clients.ds_client import HEAVY_DS_TIMEOUT, _raise_for_upstream_error, get_client, raise_for_ds_request_error
 from backend.db.critique_state import MAX_UPLOADS
@@ -25,6 +25,7 @@ from backend.db.task_critique_queries import (
     upsert_report,
 )
 from backend.db.task_critique_source_document_queries import fetch_source_document, upsert_source_document
+from backend.routers.auth import get_current_payload
 from backend.schemas.task_critique import (
     RecommendationDecisionRequest,
     RecommendationHistoryAttempt,
@@ -187,7 +188,9 @@ async def upload_source_document(record_id: str, file: UploadFile) -> TaskCritiq
 
 
 @router.post("/{record_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
-async def upload_task_report(record_id: str, task_index: int, file: UploadFile) -> TaskCritiqueSection:
+async def upload_task_report(
+    record_id: str, task_index: int, file: UploadFile, claims: dict = Depends(get_current_payload)
+) -> TaskCritiqueSection:
     deviation_id, row, event_type = await _deviation_id_and_row(record_id)
     docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
     if docx_bytes is None:
@@ -216,7 +219,10 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
         )
 
     if is_gospel:
-        report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=True)
+        report_id = await upsert_report(
+            deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
+            is_gospel=True, uploaded_by=claims.get("uid"),
+        )
         # A gospel report is final the moment it's uploaded — no critique, no further review.
         task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
         await set_task_score(report_id, task_score, score_breakdown, critique_failed)
@@ -285,7 +291,10 @@ async def upload_task_report(record_id: str, task_index: int, file: UploadFile) 
     # the strengths-only `summary` above (shared identically across every subtask).
     task_findings: List[Dict[str, Any]] = data.get("task_evidence", [])
 
-    report_id = await upsert_report(deviation_id, task_index, attempt_number, file.filename or "report", file_bytes, is_gospel=False)
+    report_id = await upsert_report(
+        deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
+        is_gospel=False, uploaded_by=claims.get("uid"),
+    )
     await save_critique(report_id, summary, task_score=None, recommendations=recommendations, task_findings=task_findings)
     await insert_recommendation_history(deviation_id, task_index, attempt_number, summary, recommendations)
 
