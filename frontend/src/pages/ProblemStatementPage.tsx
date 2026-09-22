@@ -58,10 +58,16 @@ export function ProblemStatementPage() {
   // Defaults open to match the reference layout — all TrackWise sections visible on first view.
   const [viewAllOpen, setViewAllOpen] = useState(true);
   // null = never generated yet; [] = generated, nothing meaningful found; undefined briefly while the record itself is still loading.
+  // Still fetched/persisted below (loadEnhancements, the load effect, handleSaveAndNext) even
+  // though the "What Was Enhanced" display is commented out — kept ready for when it's restored.
   const [enhancements, setEnhancements] = useState<ProblemStatementEnhancement[] | null>(null);
   const [enhancementsLoading, setEnhancementsLoading] = useState(false);
   const [enhancementsError, setEnhancementsError] = useState<string | null>(null);
-  const [enhancementsOpen, setEnhancementsOpen] = useState(true);
+  void enhancements;
+  void enhancementsLoading;
+  void enhancementsError;
+  // Only used by the commented-out "What Was Enhanced" UI's collapse toggle below.
+  // const [enhancementsOpen, setEnhancementsOpen] = useState(true);
 
   function loadEnhancements() {
     setEnhancementsError(null);
@@ -189,6 +195,7 @@ export function ProblemStatementPage() {
     return (
       <>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* TW Details / LLM Enhanced Details side-by-side comparison — commented out, UI only.
         <div className="field-grid" style={{ alignItems: "stretch" }}>
           <div className="card">
             <div className="card-header">
@@ -233,6 +240,40 @@ export function ProblemStatementPage() {
               />
             )}
           </div>
+        </div>
+        */}
+
+        {/* Generated Problem Statement — single card, no TW comparison. */}
+        <div className="card" style={{ borderColor: "var(--color-success-border)" }}>
+          <div className="card-header">
+            <p className="card-title">Problem Statement <ProblemStatementGuidelines /></p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="status-pill ai-generated">AI Generated</span>
+              <button type="button" className="btn-outline" onClick={handleCopy}>
+                <img src={copyIcon} alt="" width={18} height={18} />
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+          {lockedForEditing ? (
+            <div style={{ background: "var(--color-success-bg)", borderRadius: 4, padding: 12, border: "1px solid var(--color-success-border)" }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-lg)", lineHeight: 1.8 }}>{problemStatement}</p>
+            </div>
+          ) : (
+            <textarea
+              className="field-value"
+              value={draftPs}
+              onChange={(e) => setDraftPs(e.target.value)}
+              rows={5}
+              style={{
+                background: "var(--color-success-bg)",
+                borderColor: "var(--color-success-border)",
+                fontWeight: 600,
+                fontSize: "var(--font-size-lg)",
+                lineHeight: 1.6,
+              }}
+            />
+          )}
         </div>
 
         <div className="card">
@@ -292,6 +333,7 @@ export function ProblemStatementPage() {
           )}
         </div>
 
+        {/* "What Was Enhanced" panel — commented out, UI only.
         <div className="card">
           <div className="card-header">
             <p className="card-title">What Was Enhanced</p>
@@ -359,6 +401,7 @@ export function ProblemStatementPage() {
             </>
           )}
         </div>
+        */}
 
         {error && <p className="error-banner">{error}</p>}
 
