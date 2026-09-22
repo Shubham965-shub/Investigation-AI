@@ -36,6 +36,14 @@ ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS uploade
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES athena_users(id);
 ALTER TABLE investigation_rci_reports ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
 
+-- Evidence Collection uncheck-cap fix (2026-09-22, per the user) — the "can't
+-- deselect more than half" cap in EvidenceCollectionPage.tsx must stay pinned
+-- to the ORIGINAL AI-generated item count regardless of items added later.
+-- That distinction lived only in frontend session state (isUserAdded) and was
+-- never persisted, so it silently reset to "everything is generated" on any
+-- reload. Persisting it here is what makes the cap survive a reload/revisit.
+ALTER TABLE investigation_evidence_items ADD COLUMN IF NOT EXISTS is_new BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- "What Was Enhanced" panel (2026-09-21, per the user) — a categorized diff
 -- between the raw TrackWise description and the generated problem statement
 -- (ds's POST /ps/v2/enhancements), so revisiting the page doesn't re-trigger

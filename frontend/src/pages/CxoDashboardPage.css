@@ -45,7 +45,7 @@
 
 .cxo-domain-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
 }
 
@@ -139,8 +139,16 @@
 .cxo-chart-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.cxo-chart-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .cxo-chart-title-row h3 {
@@ -148,6 +156,53 @@
   font-family: var(--font-heading);
   font-size: var(--font-size-base);
   font-weight: 700;
+}
+
+/* Visual-only "% split / Absolute" segmented control — see SplitToggle in CxoDashboardPage.tsx. */
+.cxo-split-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.cxo-split-toggle button {
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cxo-split-toggle button.active {
+  background: var(--color-surface);
+  color: var(--color-success-text);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.1), 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Visual-only expand affordance — no modal wired up yet. */
+.cxo-expand-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .cxo-legend-row {
@@ -190,39 +245,6 @@
 
 .cxo-observation-box strong {
   color: var(--color-success-text);
-}
-
-.cxo-anchor-row {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-card-border);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.cxo-anchor-row .label {
-  font-weight: 700;
-  color: var(--color-text);
-  margin-right: 4px;
-}
-
-.cxo-anchor-link {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--color-primary-text);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.cxo-anchor-sep {
-  color: var(--color-text-muted);
 }
 
 .cxo-heatmap-table, .cxo-register-table {
@@ -301,4 +323,149 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+/* "Investigator quality scorecard" (D1) — CSS-only donut gauge (conic-gradient ring + a
+   surface-colored circle punched in the middle), avoiding an external SVG image asset. */
+.cxo-gauge-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.cxo-gauge-ring {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cxo-gauge-hole {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.cxo-gauge-score {
+  font-family: var(--font-heading);
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.cxo-gauge-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.cxo-scorecard-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.cxo-scorecard-tile {
+  border: 1px solid var(--color-card-border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cxo-scorecard-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.cxo-scorecard-tile-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.cxo-scorecard-tile-value strong {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cxo-scorecard-tile-value span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.cxo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cxo-dot.green { background: var(--color-success-text); }
+.cxo-dot.orange { background: var(--color-warning-text); }
+.cxo-dot.red { background: var(--color-danger-text); }
+
+/* "View SIT Dashboard" footer card, shown at the bottom of some domains. */
+.cxo-footer-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px 20px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cxo-footer-link-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cxo-footer-link strong {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.cxo-footer-link-caption {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.cxo-footer-link-arrow {
+  margin-left: auto;
+  color: var(--color-text-muted);
 }

@@ -59,7 +59,7 @@ export function EvidenceCollectionPage() {
           setEventType(evRecord.event_type);
           setTrackwiseFields(evRecord.trackwise_fields);
           if (evRecord.evidence) {
-            setItems(evRecord.evidence.map((e) => ({ description: e.description, checked: e.is_checked ?? true, isUserAdded: false })));
+            setItems(evRecord.evidence.map((e) => ({ description: e.description, checked: e.is_checked ?? true, isUserAdded: e.is_new ?? false })));
           }
         }
       } catch (err) {
@@ -119,7 +119,7 @@ export function EvidenceCollectionPage() {
     if (!recordId) return;
     updateEvidenceItems(
       recordId,
-      list.map((i) => ({ description: i.description, is_new: false, is_checked: i.checked }))
+      list.map((i) => ({ description: i.description, is_new: i.isUserAdded, is_checked: i.checked }))
     ).catch((err) => {
       console.error("Failed to persist evidence items", err);
     });

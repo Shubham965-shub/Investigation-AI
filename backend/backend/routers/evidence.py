@@ -82,6 +82,6 @@ async def update_evidence(
 
     await replace_evidence_items(
         deviation_id,
-        [{"description": item.description, "is_checked": item.is_checked} for item in items],
+        [{"description": item.description, "is_checked": item.is_checked, "is_new": item.is_new} for item in items],
         generated_by=claims.get("uid"),
     )

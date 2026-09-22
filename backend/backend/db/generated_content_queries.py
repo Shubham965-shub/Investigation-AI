@@ -89,14 +89,14 @@ async def fetch_evidence_items(deviation_id: int) -> List[Dict[str, Any]]:
         try:
             rows = await conn.fetch(
                 """
-                SELECT description, is_checked FROM investigation_evidence_items
+                SELECT description, is_checked, is_new FROM investigation_evidence_items
                 WHERE deviation_id = $1 ORDER BY sort_order, id
                 """,
                 deviation_id,
             )
         except asyncpg.exceptions.UndefinedTableError:
             return []
-        return [{"description": r["description"], "is_checked": r["is_checked"]} for r in rows]
+        return [{"description": r["description"], "is_checked": r["is_checked"], "is_new": r["is_new"]} for r in rows]
 
 
 async def fetch_questionnaire_items(deviation_id: int) -> List[Dict[str, Any]]:
@@ -224,11 +224,11 @@ async def replace_evidence_items(deviation_id: int, items: List[Dict[str, Any]],
             if items:
                 await conn.executemany(
                     """
-                    INSERT INTO investigation_evidence_items (deviation_id, description, is_checked, sort_order, generated_by)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO investigation_evidence_items (deviation_id, description, is_checked, is_new, sort_order, generated_by)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     """,
                     [
-                        (deviation_id, item["description"], item.get("is_checked", True), i, generated_by)
+                        (deviation_id, item["description"], item.get("is_checked", True), item.get("is_new", False), i, generated_by)
                         for i, item in enumerate(items)
                     ],
                 )
