@@ -230,13 +230,10 @@ async def get_action_center_summary(
         rows = [r for r in rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
         cancelled_rows = [r for r in cancelled_rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
 
-    # Remark column: editable by SIT only (require_sit below), viewable by SIT or Admin. Fetched
-    # in bulk and only for those two roles, so no other response ever carries remark text.
-    can_view_remarks = bool({"SIT", "Admin"} & set(claims.get("roles") or []))
-    remarks_by_deviation: Dict[int, Dict[str, str]] = {}
-    if can_view_remarks:
-        all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
-        remarks_by_deviation = await fetch_remarks(all_deviation_ids)
+    # Remark column: visible (read-only) to every role, editable by SIT only (enforced by
+    # require_sit on the PUT endpoint below, and by the frontend's readOnly textarea).
+    all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
+    remarks_by_deviation: Dict[int, Dict[str, str]] = await fetch_remarks(all_deviation_ids)
 
     # Open investigations only — cancelled rows hardcode investigator_stage=0 below, same as they
     # already do for `stage`.

@@ -59,6 +59,21 @@ CREATE TABLE IF NOT EXISTS investigation_problem_statement_enhancements (
     generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- _llm duplicates (2026-09-23, per the user) of both problem-statement AI-generated-content
+-- tables above — same columns, no data/read/write path pointed at them yet.
+CREATE TABLE IF NOT EXISTS investigation_problem_statements_llm (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    problem_statement TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    generated_by INTEGER REFERENCES athena_users(id)
+);
+
+CREATE TABLE IF NOT EXISTS investigation_problem_statement_enhancements_llm (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    enhancements JSONB NOT NULL DEFAULT '[]'::jsonb,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- SIT Dashboard's "Remark" column (2026-09-11, per the user) — a free-text
 -- note SITs use to track investigation activity, editable and visible to
 -- the SIT role only (see routers/action_center.py's require_sit and the

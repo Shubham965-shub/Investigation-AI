@@ -292,7 +292,8 @@ export function ActionCenterPage() {
   // Backend already scopes `summary` to this investigator's own rows; Open Investigations KPI and "All Investigators" filter are hidden here since they'd be redundant.
   const isInvestigatorRole = roles.includes("Investigator");
   // Remark column: viewable by SIT or Admin, editable by SIT only — the backend enforces both independently too.
-  const canViewRemarks = roles.includes("SIT") || roles.includes("Admin");
+  // Visible (read-only) to every role; only SIT can edit — see the textarea's readOnly below.
+  const canViewRemarks = true;
   const canEditRemarks = roles.includes("SIT");
   const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
   const [remarkSaving, setRemarkSaving] = useState<Record<string, boolean>>({});
