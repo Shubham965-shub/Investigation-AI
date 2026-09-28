@@ -28,11 +28,17 @@ def _route_after_archetype_mapping(state: EvidenceCollectionState) -> str:
     return "fetch_evidence" if state.confidence_score >= 0.8 else "build_search_query"
 
 
+async def _map_to_archetype_node(state: EvidenceCollectionState) -> EvidenceCollectionState:
+    # Threads state.rci_id through explicitly — groundwork only, map_to_archetype
+    # doesn't act on it yet.
+    return await map_to_archetype(state, rci_id=state.rci_id)
+
+
 workflow = StateGraph(EvidenceCollectionState)
 
 workflow.add_node("parse_input", parse_input)
 workflow.add_node("fetch_archetypes", fetch_archetypes)
-workflow.add_node("map_to_archetype", map_to_archetype)
+workflow.add_node("map_to_archetype", _map_to_archetype_node)
 workflow.add_node("fetch_evidence", fetch_evidence)
 workflow.add_node("rephrase_evidence", rephrase_evidence)
 workflow.add_node("build_search_query", build_search_query)

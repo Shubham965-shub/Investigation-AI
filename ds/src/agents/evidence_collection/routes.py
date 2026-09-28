@@ -36,6 +36,7 @@ async def collect_evidence(request: EvidenceCollectionRequest) -> EvidenceCollec
         state = EvidenceCollectionState(
             trackwise_fields=request.trackwise_fields,
             event_type=request.event_type,
+            rci_id=request.rci_id,
         )
         logger.info(f"Processing evidence collection for event_type: {request.event_type}")
 

@@ -34,6 +34,7 @@ import type { TrackwiseFields } from "../constants/trackwiseFields";
 import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
+import { fromRciSegment } from "../lib/rci";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkSingleIcon from "../assets/icons/rci-report-check-single.svg";
@@ -796,7 +797,8 @@ function DocSection({
 // ── Page ────────────────────────────────────────────────────────────────
 
 export function RciReportPage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
 
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -825,7 +827,10 @@ export function RciReportPage() {
     setDbError(null);
     (async () => {
       try {
-        const [psRecord, reportRecord] = await Promise.all([getProblemStatementRecord(recordId), getRciReportRecord(recordId)]);
+        const [psRecord, reportRecord] = await Promise.all([
+          getProblemStatementRecord(recordId, normalizedRciId),
+          getRciReportRecord(recordId, normalizedRciId),
+        ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
         if (reportRecord) {
@@ -844,7 +849,7 @@ export function RciReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   if (!recordId) return null;
 
@@ -864,7 +869,7 @@ export function RciReportPage() {
     if (!recordId) return;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
-      updateRciReportSections(recordId, newReport).catch((err) => console.error("Failed to persist RCI report", err));
+      updateRciReportSections(recordId, normalizedRciId, newReport).catch((err) => console.error("Failed to persist RCI report", err));
     }, 600);
   }
 
@@ -925,7 +930,7 @@ export function RciReportPage() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      const record = await generateRciReport(recordId);
+      const record = await generateRciReport(recordId, normalizedRciId);
       setReport(record.report);
       setGeneratedAt(record.generated_at);
     } catch (err) {
@@ -941,7 +946,7 @@ export function RciReportPage() {
     setDownloading(true);
     setDownloadError(null);
     try {
-      const blob = await exportRciReportDocx(recordId);
+      const blob = await exportRciReportDocx(recordId, normalizedRciId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

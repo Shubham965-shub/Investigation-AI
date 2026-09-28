@@ -40,7 +40,7 @@ def _parse_task_findings(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
-async def any_task_critique_started(deviation_id: int) -> bool:
+async def any_task_critique_started(deviation_id: int, rci_id: Optional[str] = None) -> bool:
     """Used by rci_plan.py to lock RCI Plan editing once Task Critique has
     begun on any of its tasks."""
     pool = get_pool()
@@ -48,15 +48,16 @@ async def any_task_critique_started(deviation_id: int) -> bool:
         try:
             return bool(
                 await conn.fetchval(
-                    "SELECT EXISTS (SELECT 1 FROM investigation_task_critique_reports WHERE deviation_id = $1)",
+                    "SELECT EXISTS (SELECT 1 FROM investigation_task_critique_reports WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2)",
                     deviation_id,
+                    rci_id,
                 )
             )
         except asyncpg.exceptions.UndefinedTableError:
             return False
 
 
-async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, Any]]:
+async def fetch_reports_by_task_index(deviation_id: int, rci_id: Optional[str] = None) -> Dict[int, Dict[str, Any]]:
     """Returns this investigation's current report per task (only the latest
     attempt is ever stored), keyed by task_index."""
     pool = get_pool()
@@ -68,9 +69,10 @@ async def fetch_reports_by_task_index(deviation_id: int) -> Dict[int, Dict[str, 
                        summary, task_score, score_breakdown, recommendations, task_findings,
                        critique_failed, uploaded_at
                 FROM investigation_task_critique_reports
-                WHERE deviation_id = $1
+                WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2
                 """,
                 deviation_id,
+                rci_id,
             )
         except asyncpg.exceptions.UndefinedTableError:
             return {}
@@ -100,6 +102,7 @@ async def upsert_report(
     file_name: str,
     file_bytes: bytes,
     is_gospel: bool,
+    rci_id: Optional[str] = None,
     uploaded_by: Optional[int] = None,
 ) -> int:
     """Replaces this task's report row in place (or creates it on the first
@@ -110,10 +113,10 @@ async def upsert_report(
         return await conn.fetchval(
             """
             INSERT INTO investigation_task_critique_reports
-                (deviation_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
+                (deviation_id, rci_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
                  summary, task_score, score_breakdown, recommendations, task_findings, critique_failed, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE, $7)
-            ON CONFLICT (deviation_id, task_index) DO UPDATE SET
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE, $8)
+            ON CONFLICT (deviation_id, rci_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
                 file_bytes = EXCLUDED.file_bytes,
@@ -129,6 +132,7 @@ async def upsert_report(
             RETURNING id
             """,
             deviation_id,
+            rci_id,
             task_index,
             attempt_number,
             file_name,
@@ -171,7 +175,8 @@ def _build_recommendation_records(recommendations: List[str]) -> List[Dict[str, 
 
 
 async def insert_recommendation_history(
-    deviation_id: int, task_index: int, attempt_number: int, summary: Optional[str], recommendations: List[str]
+    deviation_id: int, task_index: int, attempt_number: int, summary: Optional[str], recommendations: List[str],
+    rci_id: Optional[str] = None,
 ) -> None:
     """Append-only audit log, separate from investigation_task_critique_reports
     (which only holds the current attempt). set_recommendation_decision keeps
@@ -183,11 +188,12 @@ async def insert_recommendation_history(
         await conn.execute(
             """
             INSERT INTO investigation_task_critique_recommendation_history
-                (deviation_id, task_index, attempt_number, summary, recommendations)
-            VALUES ($1, $2, $3, $4, $5::jsonb)
-            ON CONFLICT (deviation_id, task_index, attempt_number) DO NOTHING
+                (deviation_id, rci_id, task_index, attempt_number, summary, recommendations)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            ON CONFLICT (deviation_id, rci_id, task_index, attempt_number) DO NOTHING
             """,
             deviation_id,
+            rci_id,
             task_index,
             attempt_number,
             summary,
@@ -195,7 +201,7 @@ async def insert_recommendation_history(
         )
 
 
-async def fetch_recommendation_history(deviation_id: int, task_index: int) -> List[Dict[str, Any]]:
+async def fetch_recommendation_history(deviation_id: int, task_index: int, rci_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Full audit trail across every attempt — the only place a prior
     attempt's recommendations survive being superseded, since
     investigation_task_critique_reports only holds the current one. Stays
@@ -207,11 +213,12 @@ async def fetch_recommendation_history(deviation_id: int, task_index: int) -> Li
                 """
                 SELECT attempt_number, summary, recommendations, created_at
                 FROM investigation_task_critique_recommendation_history
-                WHERE deviation_id = $1 AND task_index = $2
+                WHERE deviation_id = $1 AND task_index = $2 AND rci_id IS NOT DISTINCT FROM $3
                 ORDER BY attempt_number DESC
                 """,
                 deviation_id,
                 task_index,
+                rci_id,
             )
         except asyncpg.exceptions.UndefinedTableError:
             return []
@@ -259,17 +266,21 @@ async def set_task_score(
         )
 
 
-async def set_recommendation_decision(deviation_id: int, task_index: int, recommendation_id: int, decision: str, reason: Optional[str]) -> None:
+async def set_recommendation_decision(
+    deviation_id: int, task_index: int, recommendation_id: int, decision: str, reason: Optional[str],
+    rci_id: Optional[str] = None,
+) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
                 """
                 SELECT id, attempt_number, recommendations FROM investigation_task_critique_reports
-                WHERE deviation_id = $1 AND task_index = $2 FOR UPDATE
+                WHERE deviation_id = $1 AND task_index = $2 AND rci_id IS NOT DISTINCT FROM $3 FOR UPDATE
                 """,
                 deviation_id,
                 task_index,
+                rci_id,
             )
             if row is None:
                 return
@@ -290,12 +301,13 @@ async def set_recommendation_decision(deviation_id: int, task_index: int, recomm
                 """
                 UPDATE investigation_task_critique_recommendation_history
                 SET recommendations = $4::jsonb
-                WHERE deviation_id = $1 AND task_index = $2 AND attempt_number = $3
+                WHERE deviation_id = $1 AND task_index = $2 AND attempt_number = $3 AND rci_id IS NOT DISTINCT FROM $5
                 """,
                 deviation_id,
                 task_index,
                 row["attempt_number"],
                 json.dumps(recs),
+                rci_id,
             )
 
 

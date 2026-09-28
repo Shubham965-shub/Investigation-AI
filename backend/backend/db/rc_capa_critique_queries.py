@@ -35,7 +35,7 @@ def _parse_capa_items(raw: Any) -> List[Dict[str, Any]]:
     return raw if isinstance(raw, list) else json.loads(raw)
 
 
-async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
+async def fetch_rc_capa_reports(deviation_id: int, rci_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """All reports for this investigation, ordered by attempt_number
     (compute_rc_capa_state only looks at the last one)."""
     pool = get_pool()
@@ -50,9 +50,10 @@ async def fetch_rc_capa_reports(deviation_id: int) -> List[Dict[str, Any]]:
                        rc_conclusion_text_raw, is_repeat_occurrence, impact_assessment_text,
                        impact_conclusion_text, correction_remedial_text, capa_text_raw, capa_items
                 FROM investigation_rc_capa_reports
-                WHERE deviation_id = $1 ORDER BY attempt_number
+                WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2 ORDER BY attempt_number
                 """,
                 deviation_id,
+                rci_id,
             )
         except asyncpg.exceptions.UndefinedTableError:
             return []
@@ -102,6 +103,7 @@ async def insert_report(
     file_name: str,
     file_bytes: bytes,
     is_gospel: bool,
+    rci_id: Optional[str] = None,
     uploaded_by: Optional[int] = None,
 ) -> int:
     pool = get_pool()
@@ -109,11 +111,12 @@ async def insert_report(
         return await conn.fetchval(
             """
             INSERT INTO investigation_rc_capa_reports
-                (deviation_id, attempt_number, file_name, file_bytes, is_gospel, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (deviation_id, rci_id, attempt_number, file_name, file_bytes, is_gospel, uploaded_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
             deviation_id,
+            rci_id,
             attempt_number,
             file_name,
             file_bytes,

@@ -36,6 +36,14 @@ ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS uploade
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES athena_users(id);
 ALTER TABLE investigation_rci_reports ADD COLUMN IF NOT EXISTS generated_by INTEGER REFERENCES athena_users(id);
 
+-- Evidence Collection uncheck-cap fix (2026-09-22, per the user) — the "can't
+-- deselect more than half" cap in EvidenceCollectionPage.tsx must stay pinned
+-- to the ORIGINAL AI-generated item count regardless of items added later.
+-- That distinction lived only in frontend session state (isUserAdded) and was
+-- never persisted, so it silently reset to "everything is generated" on any
+-- reload. Persisting it here is what makes the cap survive a reload/revisit.
+ALTER TABLE investigation_evidence_items ADD COLUMN IF NOT EXISTS is_new BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- "What Was Enhanced" panel (2026-09-21, per the user) — a categorized diff
 -- between the raw TrackWise description and the generated problem statement
 -- (ds's POST /ps/v2/enhancements), so revisiting the page doesn't re-trigger
@@ -46,6 +54,21 @@ ALTER TABLE investigation_rci_reports ADD COLUMN IF NOT EXISTS generated_by INTE
 -- successfully-generated "nothing meaningful found" result, distinct from
 -- no row at all (never generated yet — frontend shows a "Generate" prompt).
 CREATE TABLE IF NOT EXISTS investigation_problem_statement_enhancements (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    enhancements JSONB NOT NULL DEFAULT '[]'::jsonb,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- _llm duplicates (2026-09-23, per the user) of both problem-statement AI-generated-content
+-- tables above — same columns, no data/read/write path pointed at them yet.
+CREATE TABLE IF NOT EXISTS investigation_problem_statements_llm (
+    deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
+    problem_statement TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    generated_by INTEGER REFERENCES athena_users(id)
+);
+
+CREATE TABLE IF NOT EXISTS investigation_problem_statement_enhancements_llm (
     deviation_id INTEGER PRIMARY KEY REFERENCES dim_event(deviation_id),
     enhancements JSONB NOT NULL DEFAULT '[]'::jsonb,
     generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -325,3 +348,65 @@ CREATE TABLE IF NOT EXISTS investigation_rci_reports (
     generated_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Composite (deviation_id, rci_id) key groundwork (2026-09-25, per the user) — some OOS/OOT
+-- deviations ("Phase 2", per the functional team) have TWO RCIs opened simultaneously against
+-- the same deviation, each needing its own fully independent workflow through every module
+-- below. rci_id is TEXT (matches fact_qms_event.rci_key cast to string, same convention
+-- investigation_remarks already established) and nullable — the vast majority of deviations
+-- have 0 or 1 RCI and keep working identically, since NULLS NOT DISTINCT treats every existing
+-- NULL-rci_id row as continuing to upsert onto itself exactly as before.
+--
+-- Three different existing key shapes needed three different treatments (constraint names
+-- below confirmed live via pg_constraint, not guessed defaults):
+--
+-- Shape A — single deviation_id PK (dropped in favor of a composite unique, deviation_id stays
+-- NOT NULL and FK'd, just no longer the sole key):
+ALTER TABLE investigation_problem_statements DROP CONSTRAINT investigation_problem_statements_pkey;
+ALTER TABLE investigation_problem_statements ADD COLUMN IF NOT EXISTS rci_id TEXT;
+ALTER TABLE investigation_problem_statements ADD CONSTRAINT investigation_problem_statements_devrci_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id);
+
+ALTER TABLE investigation_problem_statement_enhancements DROP CONSTRAINT investigation_problem_statement_enhancements_pkey;
+ALTER TABLE investigation_problem_statement_enhancements ADD COLUMN IF NOT EXISTS rci_id TEXT;
+ALTER TABLE investigation_problem_statement_enhancements ADD CONSTRAINT investigation_problem_statement_enhancements_devrci_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id);
+
+ALTER TABLE investigation_rci_reports DROP CONSTRAINT investigation_rci_reports_pkey;
+ALTER TABLE investigation_rci_reports ADD COLUMN IF NOT EXISTS rci_id TEXT;
+ALTER TABLE investigation_rci_reports ADD CONSTRAINT investigation_rci_reports_devrci_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id);
+
+-- Shape B — surrogate id PK, no per-set uniqueness (these are lists, scoped by the
+-- DELETE-then-INSERT replace_* pattern, not ON CONFLICT — no UNIQUE needed, just the column
+-- and an index that includes it). investigation_rci_tasks needs NO change: it has no
+-- deviation_id column at all, purely FK'd via section_id ON DELETE CASCADE — once sections
+-- carry rci_id, tasks inherit scoping transitively through their parent section row.
+ALTER TABLE investigation_evidence_items ADD COLUMN IF NOT EXISTS rci_id TEXT;
+DROP INDEX IF EXISTS idx_investigation_evidence_items_deviation_id;
+CREATE INDEX IF NOT EXISTS idx_investigation_evidence_items_dev_rci ON investigation_evidence_items(deviation_id, rci_id);
+
+ALTER TABLE investigation_questionnaire_items ADD COLUMN IF NOT EXISTS rci_id TEXT;
+DROP INDEX IF EXISTS idx_investigation_questionnaire_items_deviation_id;
+CREATE INDEX IF NOT EXISTS idx_investigation_questionnaire_items_dev_rci ON investigation_questionnaire_items(deviation_id, rci_id);
+
+ALTER TABLE investigation_rci_sections ADD COLUMN IF NOT EXISTS rci_id TEXT;
+DROP INDEX IF EXISTS idx_investigation_rci_sections_deviation_id;
+CREATE INDEX IF NOT EXISTS idx_investigation_rci_sections_dev_rci ON investigation_rci_sections(deviation_id, rci_id);
+
+-- Shape C — existing 2-column UNIQUE, extended to 3/4 columns:
+ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS rci_id TEXT;
+ALTER TABLE investigation_task_critique_reports DROP CONSTRAINT investigation_task_critique_reports_deviation_task_uniq;
+ALTER TABLE investigation_task_critique_reports ADD CONSTRAINT investigation_task_critique_reports_devrci_task_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id, task_index);
+
+ALTER TABLE investigation_task_critique_recommendation_history ADD COLUMN IF NOT EXISTS rci_id TEXT;
+ALTER TABLE investigation_task_critique_recommendation_history DROP CONSTRAINT investigation_task_critique_r_deviation_id_task_index_attem_key;
+ALTER TABLE investigation_task_critique_recommendation_history ADD CONSTRAINT investigation_task_critique_recommendation_history_devrci_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id, task_index, attempt_number);
+
+-- investigation_rc_capa_reports — confirmed live: no unique constraint exists at all today
+-- (attempt_number is a plain append-only counter, "latest" picked in Python), just add the
+-- column and extend the lookup index.
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS rci_id TEXT;
+DROP INDEX IF EXISTS idx_investigation_rc_capa_reports_deviation_id;
+CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_dev_rci ON investigation_rc_capa_reports(deviation_id, rci_id, attempt_number);
+
+-- Deliberately NOT migrated: investigation_problem_statements_llm /
+-- investigation_problem_statement_enhancements_llm — confirmed zero read/write path anywhere
+-- in the codebase; migrating dead tables adds untested-DDL risk for no behavioral benefit.

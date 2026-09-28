@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from backend.clients.ds_client import HEAVY_DS_TIMEOUT, _raise_for_upstream_error, get_client, raise_for_ds_request_error
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.critique_state import MAX_UPLOADS
-from backend.db.field_mapping import resolved_event_type
+from backend.db.field_mapping import normalize_rci_id, resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rc_capa_critique_queries import (
@@ -112,12 +112,12 @@ def _find_recommendation(reports: List[Dict[str, Any]], recommendation_id: int) 
     return False
 
 
-async def _build_state(record_id: str, deviation_id: int, row: Any = None) -> RcCapaState:
-    reports = await fetch_rc_capa_reports(deviation_id)
+async def _build_state(record_id: str, deviation_id: int, rci_id: Optional[str], row: Any = None) -> RcCapaState:
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=rci_id)
     state = compute_rc_capa_state(reports)
-    sit_review_status = await fetch_latest_sit_review_status(deviation_id)
+    sit_review_status = await fetch_latest_sit_review_status(deviation_id, rci_id=rci_id)
     if row is None:
-        row = await fetch_investigation_row(deviation_id)
+        row = await fetch_investigation_row(deviation_id, rci_id=rci_id)
     return RcCapaState(
         record_id=record_id,
         status=state["status"],
@@ -132,13 +132,13 @@ async def _build_state(record_id: str, deviation_id: int, row: Any = None) -> Rc
     )
 
 
-async def _deviation_id_and_row(record_id: str):
+async def _deviation_id_and_row(record_id: str, rci_id: Optional[str]):
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -149,26 +149,29 @@ async def _deviation_id_and_row(record_id: str):
     return deviation_id, row, event_type
 
 
-@router.get("/{record_id}", response_model=RcCapaState)
-async def get_rc_capa_critique(record_id: str) -> RcCapaState:
-    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
-    return await _build_state(record_id, deviation_id, row)
+@router.get("/{record_id}/{rci_id}", response_model=RcCapaState)
+async def get_rc_capa_critique(record_id: str, rci_id: str) -> RcCapaState:
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    return await _build_state(record_id, deviation_id, resolved_rci_id, row)
 
 
-@router.get("/{record_id}/history", response_model=List[RcCapaReport])
-async def get_rc_capa_history(record_id: str) -> List[RcCapaReport]:
+@router.get("/{record_id}/{rci_id}/history", response_model=List[RcCapaReport])
+async def get_rc_capa_history(record_id: str, rci_id: str) -> List[RcCapaReport]:
     """Full audit trail across every attempt, newest first; fetch_rc_capa_reports itself stays ascending since compute_rc_capa_state relies on reports[-1] being the latest."""
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
-    reports = await fetch_rc_capa_reports(deviation_id)
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=resolved_rci_id)
     return [RcCapaReport(**report) for report in reversed(reports)]
 
 
-@router.post("/{record_id}/upload", response_model=RcCapaState)
+@router.post("/{record_id}/{rci_id}/upload", response_model=RcCapaState)
 async def upload_rc_capa_report(
-    record_id: str, file: UploadFile, claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, file: UploadFile, claims: dict = Depends(get_current_payload)
 ) -> RcCapaState:
-    deviation_id, row, event_type = await _deviation_id_and_row(record_id)
-    reports = await fetch_rc_capa_reports(deviation_id)
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, row, event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=resolved_rci_id)
     state = compute_rc_capa_state(reports)
 
     if state["locked"] or not state["can_upload"]:
@@ -184,16 +187,16 @@ async def upload_rc_capa_report(
     if is_gospel:
         report_id = await insert_report(
             deviation_id, attempt_number, file.filename or "report", file_bytes,
-            is_gospel=True, uploaded_by=claims.get("uid"),
+            is_gospel=True, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
         )
         # A gospel report is final the moment it's uploaded — score it now.
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
-        return await _build_state(record_id, deviation_id, row)
+        return await _build_state(record_id, deviation_id, resolved_rci_id, row)
 
     # Called BEFORE persisting anything, so a transient DS failure doesn't burn one of the 3 real
     # upload attempts. problem_statement lets DS reject a mismatched upload with a 422 up front.
-    problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+    problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id) or row["description"] or row["title"]
 
     # Carry forward the previous attempt's accepted-but-still-pending recommendations so DS can
     # check whether this upload actually addresses them.
@@ -221,7 +224,7 @@ async def upload_rc_capa_report(
 
     report_id = await insert_report(
         deviation_id, attempt_number, file.filename or "report", file_bytes,
-        is_gospel=False, uploaded_by=claims.get("uid"),
+        is_gospel=False, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
     )
     # rc_recommendations and impact_recommendations are kept as separate lists so the frontend
     # can render them as separate subsections.
@@ -251,18 +254,19 @@ async def upload_rc_capa_report(
         rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(event_type, file.filename, file_bytes, file.content_type)
         await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
-    return await _build_state(record_id, deviation_id, row)
+    return await _build_state(record_id, deviation_id, resolved_rci_id, row)
 
 
-@router.post("/{record_id}/recommendations/{recommendation_id}/decision", response_model=RcCapaState)
+@router.post("/{record_id}/{rci_id}/recommendations/{recommendation_id}/decision", response_model=RcCapaState)
 async def decide_rc_capa_recommendation(
-    record_id: str, recommendation_id: int, request: RecommendationDecisionRequest
+    record_id: str, rci_id: str, recommendation_id: int, request: RecommendationDecisionRequest
 ) -> RcCapaState:
+    resolved_rci_id = normalize_rci_id(rci_id)
     if request.decision == "rejected" and not request.reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required to reject a recommendation")
 
-    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
-    reports = await fetch_rc_capa_reports(deviation_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=resolved_rci_id)
     state = compute_rc_capa_state(reports)
 
     if state["locked"] or state["latest"] is None:
@@ -273,26 +277,27 @@ async def decide_rc_capa_recommendation(
 
     await set_recommendation_decision(state["latest"]["id"], recommendation_id, request.decision, request.reason)
 
-    reports = await fetch_rc_capa_reports(deviation_id)
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=resolved_rci_id)
     new_state = compute_rc_capa_state(reports)
     if new_state["status"] == "complete" and new_state["latest"]["total_score"] is None:
         # Rejecting every recommendation just locked this report immediately — score it now.
         report_id = new_state["latest"]["id"]
         file_bytes = await fetch_report_file_bytes(report_id)
         if file_bytes is not None:
-            _, _, event_type = await _deviation_id_and_row(record_id)
+            _, _, event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
             rc_score, impact_score, capa_score, total_score, score_breakdown = await _score_rc_capa_report(
                 event_type, new_state["latest"]["file_name"], file_bytes, None
             )
             await set_rc_capa_scores(report_id, rc_score, impact_score, capa_score, total_score, score_breakdown)
 
-    return await _build_state(record_id, deviation_id, row)
+    return await _build_state(record_id, deviation_id, resolved_rci_id, row)
 
 
-@router.post("/{record_id}/push-to-sit-review", response_model=RcCapaState)
-async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get_current_username)) -> RcCapaState:
-    deviation_id, row, _event_type = await _deviation_id_and_row(record_id)
-    reports = await fetch_rc_capa_reports(deviation_id)
+@router.post("/{record_id}/{rci_id}/push-to-sit-review", response_model=RcCapaState)
+async def push_rc_capa_to_sit_review(record_id: str, rci_id: str, username: str = Depends(get_current_username)) -> RcCapaState:
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    reports = await fetch_rc_capa_reports(deviation_id, rci_id=resolved_rci_id)
     state = compute_rc_capa_state(reports)
 
     if state["latest"] is None:
@@ -305,8 +310,8 @@ async def push_rc_capa_to_sit_review(record_id: str, username: str = Depends(get
 
     try:
         approver = await fetch_user_by_username(username)
-        await insert_sit_review(deviation_id, docx=docx, approved_by=approver["id"] if approver else None)
+        await insert_sit_review(deviation_id, docx=docx, approved_by=approver["id"] if approver else None, rci_id=resolved_rci_id)
     except Exception:
         logger.warning("Could not persist RC & CAPA SIT review snapshot for record_id=%s", record_id, exc_info=True)
 
-    return await _build_state(record_id, deviation_id, row)
+    return await _build_state(record_id, deviation_id, resolved_rci_id, row)

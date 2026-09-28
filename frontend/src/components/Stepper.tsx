@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { recordPath, fromRciSegment } from "../lib/rci";
 
 export type StepStatus = "completed" | "in-progress" | "open";
 
@@ -171,12 +172,14 @@ function ConnectorPersonIcon({ color, notes }: { color: string; notes: string[] 
 
 export function Stepper({
   recordId,
+  rciId,
   currentStep,
   stepStatuses,
   eventType,
   slaTier,
 }: {
   recordId: string;
+  rciId: string;
   currentStep: string;
   stepStatuses: Record<string, StepStatus>;
   // Market Complaint can skip Interview Questionnaire — purely a visual "optional" marker, not a real lock (nothing here blocks navigation).
@@ -213,7 +216,7 @@ export function Stepper({
         return (
           <div key={step.key} style={{ display: "flex", alignItems: "flex-start", flex: isLast ? "0 0 auto" : "1 1 auto" }}>
             <div
-              onClick={() => clickable && navigate(`/records/${recordId}/${step.path}`)}
+              onClick={() => clickable && navigate(recordPath(recordId, fromRciSegment(rciId), step.path as string))}
               style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", cursor: clickable ? "pointer" : "default" }}
             >
               <div

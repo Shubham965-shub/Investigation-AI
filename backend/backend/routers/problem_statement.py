@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.clients.ds_client import ds_post
-from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
+from backend.db.field_mapping import build_trackwise_fields, normalize_rci_id, resolved_event_type
 from backend.db.generated_content_queries import (
     delete_problem_statement_enhancements,
     fetch_evidence_items,
@@ -33,33 +33,38 @@ _NOT_FOUND_DETAIL = "No problem statement found for this investigation yet"
 router = APIRouter(prefix="/problem-statement", tags=["Problem Statement"])
 
 
-@router.post("/{record_id}/generate", response_model=ProblemStatementGenerateResponse)
+@router.post("/{record_id}/{rci_id}/generate", response_model=ProblemStatementGenerateResponse)
 async def generate_problem_statement(
     record_id: str,
+    rci_id: str,
     request: ProblemStatementGenerateRequest,
     claims: dict = Depends(get_current_payload),
 ) -> ProblemStatementGenerateResponse:
+    resolved_rci_id = normalize_rci_id(rci_id)
     data = await ds_post("/ps/v2/generate", json=request.model_dump())
     response = ProblemStatementGenerateResponse(**data)
 
     # Persisting is best-effort; a DB issue must not break generation itself.
     try:
         deviation_id = int(record_id)
-        await save_problem_statement(deviation_id, response.problem_statement, generated_by=claims.get("uid"))
+        await save_problem_statement(
+            deviation_id, response.problem_statement, rci_id=resolved_rci_id, generated_by=claims.get("uid")
+        )
     except Exception:
         logger.warning("Could not persist problem statement for record_id=%s", record_id, exc_info=True)
 
     return response
 
 
-@router.get("/{record_id}", response_model=ProblemStatementRecord)
-async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
+@router.get("/{record_id}/{rci_id}", response_model=ProblemStatementRecord)
+async def get_problem_statement(record_id: str, rci_id: str) -> ProblemStatementRecord:
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -73,30 +78,31 @@ async def get_problem_statement(record_id: str) -> ProblemStatementRecord:
         record_id=record_id,
         event_type=event_type,
         trackwise_fields=build_trackwise_fields(row, row["qe_type"], extended=extended),
-        problem_statement=await fetch_problem_statement(deviation_id),
+        problem_statement=await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id),
         stage=stage_for(row["status"]),
-        locked_for_editing=bool(await fetch_evidence_items(deviation_id)),
+        locked_for_editing=bool(await fetch_evidence_items(deviation_id, rci_id=resolved_rci_id)),
         criticality=row["criticality"],
         event_classification=row["event_classification"],
-        enhancements=await fetch_problem_statement_enhancements(deviation_id),
+        enhancements=await fetch_problem_statement_enhancements(deviation_id, rci_id=resolved_rci_id),
     )
 
 
-@router.post("/{record_id}/enhancements/generate", response_model=ProblemStatementEnhancementsResponse)
-async def generate_problem_statement_enhancements(record_id: str) -> ProblemStatementEnhancementsResponse:
+@router.post("/{record_id}/{rci_id}/enhancements/generate", response_model=ProblemStatementEnhancementsResponse)
+async def generate_problem_statement_enhancements(record_id: str, rci_id: str) -> ProblemStatementEnhancementsResponse:
     """Categorized diff between the raw TrackWise description and the already-generated problem
     statement, for the "What Was Enhanced" panel. Reads both from what's already persisted —
     no request body needed."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    problem_statement = await fetch_problem_statement(deviation_id)
+    problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id)
     if not problem_statement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     raw_description = (row["description"] if row else None) or ""
 
     data = await ds_post(
@@ -107,7 +113,7 @@ async def generate_problem_statement_enhancements(record_id: str) -> ProblemStat
 
     try:
         await save_problem_statement_enhancements(
-            deviation_id, [item.model_dump() for item in response.enhancements]
+            deviation_id, [item.model_dump() for item in response.enhancements], rci_id=resolved_rci_id
         )
     except Exception:
         logger.warning("Could not persist problem statement enhancements for record_id=%s", record_id, exc_info=True)
@@ -115,17 +121,18 @@ async def generate_problem_statement_enhancements(record_id: str) -> ProblemStat
     return response
 
 
-@router.put("/{record_id}", response_model=ProblemStatementRecord)
+@router.put("/{record_id}/{rci_id}", response_model=ProblemStatementRecord)
 async def update_problem_statement(
-    record_id: str, request: ProblemStatementUpdateRequest, claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, request: ProblemStatementUpdateRequest, claims: dict = Depends(get_current_payload)
 ) -> ProblemStatementRecord:
     """Persists a manual edit to an already-generated problem statement; locked once Evidence Collection has data, same as GET's locked_for_editing rule."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -133,15 +140,17 @@ async def update_problem_statement(
     if event_type is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    if await fetch_evidence_items(deviation_id):
+    if await fetch_evidence_items(deviation_id, rci_id=resolved_rci_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Evidence Collection has already started — the problem statement can no longer be edited.",
         )
 
-    await save_problem_statement(deviation_id, request.problem_statement, generated_by=claims.get("uid"))
+    await save_problem_statement(
+        deviation_id, request.problem_statement, rci_id=resolved_rci_id, generated_by=claims.get("uid")
+    )
     try:
-        await delete_problem_statement_enhancements(deviation_id)
+        await delete_problem_statement_enhancements(deviation_id, rci_id=resolved_rci_id)
     except Exception:
         logger.warning("Could not clear stale problem statement enhancements for record_id=%s", record_id, exc_info=True)
 
@@ -161,20 +170,21 @@ async def update_problem_statement(
 _HISTORIC_RESULTS_LIMIT = 5
 
 
-@router.get("/{record_id}/historic", response_model=list[SimilarInvestigation])
-async def get_similar_historic_investigations(record_id: str) -> list[SimilarInvestigation]:
+@router.get("/{record_id}/{rci_id}/historic", response_model=list[SimilarInvestigation])
+async def get_similar_historic_investigations(record_id: str, rci_id: str) -> list[SimilarInvestigation]:
     """Similar historic investigations for the "View Historic Data" panel; returns [] on any failure since this is a supplementary panel, not a hard requirement."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         return []
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         return []
 
     # Fall back to raw Trackwise description/title if no problem statement has been generated yet.
-    query_text = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+    query_text = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id) or row["description"] or row["title"]
     if not query_text:
         return []
 

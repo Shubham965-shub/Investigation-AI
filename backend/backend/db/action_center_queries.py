@@ -7,9 +7,7 @@ genuinely open, so it must not be used for this filter).
 - Progress chart: bucketed by dim_event.module, excluding module='Cancelled';
   on_track/at_risk/delayed stacking comes from dim_event.module_risk_status.
 - Status cards: bucketed from dim_event.open_investigation_status directly.
-- Per-row stage (X/6 steps): module_stage.stage_for(dim_event.module) —
-  fetch_module_completion() below is no longer called, kept in case it's
-  needed again.
+- Per-row stage (X/6 steps): module_stage.stage_for(dim_event.module).
 - Pending actions: unassigned/overdue cases, described by the next module
   label after the investigation's current stage.
 """
@@ -21,15 +19,6 @@ from typing import Dict, List, Optional
 import asyncpg
 
 from backend.clients.db_client import get_pool
-
-# Order matches the first 4 entries of module_stage.MODULE_LABELS. Task
-# Critique/RCI Report have no backing tables yet and are excluded.
-_MODULE_COMPLETION_TABLES: List[str] = [
-    "investigation_problem_statements",
-    "investigation_evidence_items",
-    "investigation_questionnaire_items",
-    "investigation_rci_sections",
-]
 
 QE_TYPE_TO_STAT_LABEL: Dict[str, str] = {
     "Deviation": "Deviation",
@@ -227,28 +216,6 @@ async def fetch_monthly_trend_rows(since: datetime.date, investigator: Optional[
         return await conn.fetch(_MONTHLY_TREND_ROWS_QUERY, since, investigator)
 
 
-async def fetch_module_completion(deviation_ids: List[int]) -> Dict[int, int]:
-    """How many of the 4 real generated-content modules exist per deviation_id
-    (degrades to all-zero if the backing table doesn't exist yet)."""
-    if not deviation_ids:
-        return {}
-
-    counts: Dict[int, int] = {d: 0 for d in deviation_ids}
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        for table in _MODULE_COMPLETION_TABLES:
-            try:
-                rows = await conn.fetch(
-                    f"SELECT DISTINCT deviation_id FROM {table} WHERE deviation_id = ANY($1::int[])",
-                    deviation_ids,
-                )
-            except asyncpg.exceptions.UndefinedTableError:
-                continue
-            for r in rows:
-                counts[r["deviation_id"]] += 1
-    return counts
-
-
 # One UNION branch per generated-content table, each tagged with the module_stage.py stage number
 # its table represents (RC & CAPA tags 5, same as Task Critique — reaching either implies stages
 # 1-4 are done, matching stage_for()'s own TW-status mapping). Rows are pre-filtered to only those
@@ -261,70 +228,72 @@ WITH investigator_ids AS (
     WHERE r.name = 'Investigator'
 ),
 tagged AS (
-    SELECT deviation_id, 1 AS stage, generated_at AS ts
+    SELECT deviation_id, rci_id, 1 AS stage, generated_at AS ts
     FROM investigation_problem_statements
     WHERE generated_by IN (SELECT id FROM investigator_ids)
 
     UNION ALL
-    SELECT deviation_id, 2 AS stage, MAX(created_at) AS ts
+    SELECT deviation_id, rci_id, 2 AS stage, MAX(created_at) AS ts
     FROM investigation_evidence_items
     WHERE generated_by IN (SELECT id FROM investigator_ids)
-    GROUP BY deviation_id
+    GROUP BY deviation_id, rci_id
 
     UNION ALL
-    SELECT deviation_id, 3 AS stage, MAX(created_at) AS ts
+    SELECT deviation_id, rci_id, 3 AS stage, MAX(created_at) AS ts
     FROM investigation_questionnaire_items
     WHERE generated_by IN (SELECT id FROM investigator_ids)
-    GROUP BY deviation_id
+    GROUP BY deviation_id, rci_id
 
     UNION ALL
-    SELECT deviation_id, 4 AS stage, MAX(created_at) AS ts
+    SELECT deviation_id, rci_id, 4 AS stage, MAX(created_at) AS ts
     FROM investigation_rci_sections
     WHERE generated_by IN (SELECT id FROM investigator_ids)
-    GROUP BY deviation_id
+    GROUP BY deviation_id, rci_id
 
     UNION ALL
-    SELECT deviation_id, 5 AS stage, MAX(uploaded_at) AS ts
+    SELECT deviation_id, rci_id, 5 AS stage, MAX(uploaded_at) AS ts
     FROM investigation_task_critique_reports
     WHERE uploaded_by IN (SELECT id FROM investigator_ids)
-    GROUP BY deviation_id
+    GROUP BY deviation_id, rci_id
 
     UNION ALL
-    SELECT deviation_id, 5 AS stage, MAX(uploaded_at) AS ts
+    SELECT deviation_id, rci_id, 5 AS stage, MAX(uploaded_at) AS ts
     FROM investigation_rc_capa_reports
     WHERE uploaded_by IN (SELECT id FROM investigator_ids)
-    GROUP BY deviation_id
+    GROUP BY deviation_id, rci_id
 
     UNION ALL
-    SELECT deviation_id, 6 AS stage, generated_at AS ts
+    SELECT deviation_id, rci_id, 6 AS stage, generated_at AS ts
     FROM investigation_rci_reports
     WHERE generated_by IN (SELECT id FROM investigator_ids) AND generated_at IS NOT NULL
 )
-SELECT DISTINCT ON (deviation_id) deviation_id, stage
+SELECT DISTINCT ON (deviation_id, rci_id) deviation_id, rci_id, stage
 FROM tagged
 WHERE deviation_id = ANY($1::int[])
-ORDER BY deviation_id, ts DESC
+ORDER BY deviation_id, rci_id, ts DESC
 """
 
 
-async def fetch_investigator_progress_stage(deviation_ids: List[int]) -> Dict[int, int]:
+async def fetch_investigator_progress_stage(deviation_ids: List[int]) -> Dict[int, Dict[str, int]]:
     """Action Center's primary progress bar (2026-09-21, per the user): the module stage of the
     LAST item generated/uploaded by a user holding the Investigator role, specifically — not
     dim_event.module/stage_for() (that's the separate `stage` field, TW's own status, still used
     for Pending Actions and available as the secondary toggled-on column). Literal "most recent
     timestamp" semantics, per the user — if an Investigator regenerates an earlier module after
-    reaching a later one, this number goes back down; it does not ratchet forward. Degrades to 0
-    for any deviation_id with no Investigator-attributed row yet (including if the whole query
-    fails — e.g. a table not existing yet — so a DB hiccup here never breaks the dashboard)."""
+    reaching a later one, this number goes back down; it does not ratchet forward. Returns
+    deviation_id -> {rci_id or "": stage} (matching the investigator_by_rci convention), so a
+    deviation split into multiple RCIs gets its own progress per RCI. Degrades to {} for any
+    deviation_id with no Investigator-attributed row yet (including if the whole query fails —
+    e.g. a table not existing yet — so a DB hiccup here never breaks the dashboard)."""
     if not deviation_ids:
         return {}
-    result: Dict[int, int] = {d: 0 for d in deviation_ids}
+    result: Dict[int, Dict[str, int]] = {d: {} for d in deviation_ids}
     pool = get_pool()
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(_INVESTIGATOR_STAGE_QUERY, deviation_ids)
         for r in rows:
-            result[r["deviation_id"]] = r["stage"]
+            result.setdefault(r["deviation_id"], {})[r["rci_id"] or ""] = r["stage"]
     except asyncpg.exceptions.UndefinedTableError:
         pass
     return result

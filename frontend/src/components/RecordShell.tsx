@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { Stepper, RECORD_STEPS, type StepStatus } from "./Stepper";
 import { getProblemStatementRecord } from "../api/dashboard";
+import { fromRciSegment } from "../lib/rci";
 import backArrow from "../assets/icons/back-arrow.svg";
 
 // Placeholder step-status derivation until a real "fetch record by id" endpoint exists.
@@ -17,7 +18,8 @@ function deriveStepStatuses(currentStep: string): Record<string, StepStatus> {
 }
 
 export function RecordShell({ currentStep }: { currentStep: string }) {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId);
   const navigate = useNavigate();
   const [eventType, setEventType] = useState<string | undefined>(undefined);
   const [criticality, setCriticality] = useState<string | null | undefined>(undefined);
@@ -27,7 +29,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
   useEffect(() => {
     if (!recordId) return;
     let cancelled = false;
-    getProblemStatementRecord(recordId)
+    getProblemStatementRecord(recordId, normalizedRciId || null)
       .then((record) => {
         if (!cancelled) {
           setEventType(record?.event_type);
@@ -74,6 +76,11 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
             <p style={{ margin: 0, fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "var(--font-size-lg)" }}>
               Record Details - Record ID - {recordId}
             </p>
+            {normalizedRciId && (
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
+                RCI: {normalizedRciId}
+              </span>
+            )}
             {classificationTagStyle && (
               <span
                 style={{
@@ -93,7 +100,7 @@ export function RecordShell({ currentStep }: { currentStep: string }) {
         </div>
       </div>
 
-      <Stepper recordId={recordId} currentStep={currentStep} stepStatuses={deriveStepStatuses(currentStep)} eventType={eventType} slaTier={slaTier} />
+      <Stepper recordId={recordId} rciId={rciId ?? ""} currentStep={currentStep} stepStatuses={deriveStepStatuses(currentStep)} eventType={eventType} slaTier={slaTier} />
 
       <Outlet />
     </div>

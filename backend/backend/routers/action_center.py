@@ -223,20 +223,50 @@ async def get_action_center_summary(
 
     # Investigator-role scoping — filtered before any aggregation, so every derived number (KPI
     # counts, status cards, pills, pending actions, table) is scoped, not just the table.
+    #
+    # A deviation with two RCIs opened simultaneously (2026-09-25, per the user — the OOS/OOT
+    # "Phase 2" scenario) can have a DIFFERENT investigator on each RCI. The row-level `investigator`
+    # field is only ever the single winning row from _OPEN_INVESTIGATIONS_QUERY's dedup (highest
+    # rci_key) — so filtering on that field alone silently hid the whole deviation from whichever
+    # investigator's RCI didn't win the dedup, even though investigator_by_rci already has the
+    # correct per-RCI breakdown. scoped_rci_ids records, per surviving deviation_id, exactly which
+    # of its rci_ids belong to this investigator, so the enrichment loop below can trim rci_ids/
+    # investigator_by_rci/remarks/investigator_stage_by_rci down to just their own RCI(s) too —
+    # an investigator must not see a colleague's RCI on the same deviation.
     own_investigator: Optional[str] = None
+    scoped_rci_ids: Dict[int, List[str]] = {}
     if "Investigator" in (claims.get("roles") or []):
         own_investigator = (claims.get("investigator_name") or claims.get("name") or "").strip()
         own_investigator_ci = own_investigator.lower()
-        rows = [r for r in rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
-        cancelled_rows = [r for r in cancelled_rows if (r["investigator"] or "").strip().lower() == own_investigator_ci]
 
-    # Remark column: editable by SIT only (require_sit below), viewable by SIT or Admin. Fetched
-    # in bulk and only for those two roles, so no other response ever carries remark text.
-    can_view_remarks = bool({"SIT", "Admin"} & set(claims.get("roles") or []))
-    remarks_by_deviation: Dict[int, Dict[str, str]] = {}
-    if can_view_remarks:
-        all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
-        remarks_by_deviation = await fetch_remarks(all_deviation_ids)
+        def _own_rci_ids(r: Any) -> List[str]:
+            by_rci = _parse_investigator_by_rci(r["investigator_by_rci"])
+            matches = [rid for rid, name in by_rci.items() if (name or "").strip().lower() == own_investigator_ci]
+            if matches:
+                return matches
+            # No per-rci_id investigator breakdown at all (deviation has no rci_key yet) — fall
+            # back to the row's own single deduped investigator field, matching this case's only
+            # historical behavior (a deviation with 0 RCIs still needs a match to show at all).
+            if not by_rci and (r["investigator"] or "").strip().lower() == own_investigator_ci:
+                return list(r["rci_ids"]) if r["rci_ids"] else []
+            return []
+
+        def _filter_and_scope(candidates: List[Any]) -> List[Any]:
+            kept = []
+            for r in candidates:
+                matches = _own_rci_ids(r)
+                if matches:
+                    scoped_rci_ids[r["deviation_id"]] = matches
+                    kept.append(r)
+            return kept
+
+        rows = _filter_and_scope(rows)
+        cancelled_rows = _filter_and_scope(cancelled_rows)
+
+    # Remark column: visible (read-only) to every role, editable by SIT only (enforced by
+    # require_sit on the PUT endpoint below, and by the frontend's readOnly textarea).
+    all_deviation_ids = [r["deviation_id"] for r in (*rows, *cancelled_rows)]
+    remarks_by_deviation: Dict[int, Dict[str, str]] = await fetch_remarks(all_deviation_ids)
 
     # Open investigations only — cancelled rows hardcode investigator_stage=0 below, same as they
     # already do for `stage`.
@@ -263,13 +293,33 @@ async def get_action_center_summary(
         # fetch_investigator_progress_stage's docstring for its "last item, Investigator role only"
         # semantics) — a deliberately separate signal, not derived from `stage`.
         stage = stage_for(r["module"])
-        investigator_stage = investigator_stage_by_deviation.get(r["deviation_id"], 0)
+        investigator_stage_by_rci = investigator_stage_by_deviation.get(r["deviation_id"], {})
+        # Backward-compat scalar: the "" (no-rci) entry if present, else whichever single rci's
+        # stage is available (today's non-multi-RCI rows), else 0.
+        investigator_stage = investigator_stage_by_rci.get(
+            "", next(iter(investigator_stage_by_rci.values()), 0)
+        )
+        row_investigator_by_rci = _parse_investigator_by_rci(r["investigator_by_rci"])
+        row_rci_ids = list(r["rci_ids"]) if r["rci_ids"] else []
+        # Investigator role: trim every per-RCI view down to just the RCI(s) actually assigned to
+        # this investigator — they must not see a colleague's RCI on the same deviation (see the
+        # scoped_rci_ids comment above). Other roles (SIT/Admin) see the full unscoped breakdown.
+        row_investigator = r["investigator"]
+        if r["deviation_id"] in scoped_rci_ids:
+            own_ids = scoped_rci_ids[r["deviation_id"]]
+            row_rci_ids = [rid for rid in row_rci_ids if rid in own_ids] or own_ids
+            row_investigator_by_rci = {rid: name for rid, name in row_investigator_by_rci.items() if rid in own_ids}
+            investigator_stage_by_rci = {rid: v for rid, v in investigator_stage_by_rci.items() if rid in own_ids}
+            # Reflects the investigator actually looking at this row, not whichever RCI happened
+            # to win the dedup — matches row_investigator_by_rci[own_ids[0]] when available.
+            row_investigator = row_investigator_by_rci.get(own_ids[0], own_investigator) if own_ids else row_investigator
+            investigator_stage = investigator_stage_by_rci.get("", next(iter(investigator_stage_by_rci.values()), 0))
         enriched.append(
             {
                 "id": str(r["deviation_id"]),
                 "title": r["title"] or "Untitled Investigation",
                 "qe_type": r["qe_type"],
-                "investigator": r["investigator"],
+                "investigator": row_investigator,
                 "site": r["location"],
                 "department": r["department"],
                 "product": _resolve_product(
@@ -286,13 +336,18 @@ async def get_action_center_summary(
                 "days_since_opened": days_since_opened,
                 "stage": stage,
                 "investigator_stage": investigator_stage,
+                "investigator_stage_by_rci": investigator_stage_by_rci,
                 "bucket": _bucket_for(r["open_investigation_status"]),
                 "module": r["module"],
                 "module_risk_status": r["module_risk_status"],
                 "is_cancelled": r["module"] == _CANCELLED_MODULE_VALUE,
-                "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
-                "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
-                "investigator_by_rci": _parse_investigator_by_rci(r["investigator_by_rci"]),
+                "rci_ids": row_rci_ids,
+                "remarks": {
+                    rci_id: remark
+                    for rci_id, remark in remarks_by_deviation.get(r["deviation_id"], {}).items()
+                    if r["deviation_id"] not in scoped_rci_ids or rci_id in scoped_rci_ids[r["deviation_id"]]
+                },
+                "investigator_by_rci": row_investigator_by_rci,
             }
         )
 
@@ -303,13 +358,21 @@ async def get_action_center_summary(
         due_date_display = _fmt_due_date_display(r["due_date_display"])
         date_opened = r["date_opened"].date() if r["date_opened"] else None
         updated_at = r["pg_updated_at_timestamp"].date() if r["pg_updated_at_timestamp"] else None  # see caveat above
+        row_investigator_by_rci = _parse_investigator_by_rci(r["investigator_by_rci"])
+        row_rci_ids = list(r["rci_ids"]) if r["rci_ids"] else []
+        row_investigator = r["investigator"]
+        if r["deviation_id"] in scoped_rci_ids:
+            own_ids = scoped_rci_ids[r["deviation_id"]]
+            row_rci_ids = [rid for rid in row_rci_ids if rid in own_ids] or own_ids
+            row_investigator_by_rci = {rid: name for rid, name in row_investigator_by_rci.items() if rid in own_ids}
+            row_investigator = row_investigator_by_rci.get(own_ids[0], own_investigator) if own_ids else row_investigator
         cancelled_enriched.append(
             {
                 "deviation_id": r["deviation_id"],
                 "id": str(r["deviation_id"]),
                 "title": r["title"] or "Untitled Investigation",
                 "qe_type": r["qe_type"],
-                "investigator": r["investigator"],
+                "investigator": row_investigator,
                 "site": r["location"],
                 "department": r["department"],
                 "product": _resolve_product(
@@ -323,9 +386,13 @@ async def get_action_center_summary(
                 "date_opened": date_opened,
                 "updated_at": updated_at,
                 "bucket": _bucket_for(r["open_investigation_status"]),
-                "rci_ids": list(r["rci_ids"]) if r["rci_ids"] else [],
-                "remarks": remarks_by_deviation.get(r["deviation_id"], {}),
-                "investigator_by_rci": _parse_investigator_by_rci(r["investigator_by_rci"]),
+                "rci_ids": row_rci_ids,
+                "remarks": {
+                    rci_id: remark
+                    for rci_id, remark in remarks_by_deviation.get(r["deviation_id"], {}).items()
+                    if r["deviation_id"] not in scoped_rci_ids or rci_id in scoped_rci_ids[r["deviation_id"]]
+                },
+                "investigator_by_rci": row_investigator_by_rci,
             }
         )
 
@@ -609,6 +676,7 @@ async def get_action_center_summary(
                 updated_at=_fmt_date(i["updated_at"]),
                 stage=i["stage"],
                 investigator_stage=i["investigator_stage"],
+                investigator_stage_by_rci=i["investigator_stage_by_rci"],
                 total_stages=len(MODULE_LABELS),
                 bucket=i["bucket"],
                 site=i["site"],

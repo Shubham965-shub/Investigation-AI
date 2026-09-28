@@ -1,5 +1,6 @@
 import { ApiError, apiGet, apiGetBlob, apiPost, apiPostForm, apiPut } from "./client";
 import type { EventType, TrackwiseFields } from "../constants/trackwiseFields";
+import { toRciSegment } from "../lib/rci";
 
 export interface ArchetypeInfo {
   id: number | null;
@@ -33,9 +34,10 @@ export interface ProblemStatementResponse {
 
 export function generateProblemStatement(
   recordId: string,
+  rciId: string | null,
   request: TrackwiseRequest
 ): Promise<ProblemStatementResponse> {
-  return apiPost<ProblemStatementResponse>(`/problem-statement/${recordId}/generate`, request);
+  return apiPost<ProblemStatementResponse>(`/problem-statement/${recordId}/${toRciSegment(rciId)}/generate`, request);
 }
 
 // One concrete, real difference between the raw TrackWise text and the generated problem statement.
@@ -61,17 +63,19 @@ export interface ProblemStatementRecordResponse {
 }
 
 export function getProblemStatementRecord(
-  recordId: string
+  recordId: string,
+  rciId: string | null
 ): Promise<ProblemStatementRecordResponse | null> {
-  return getRecordOrNull<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`);
+  return getRecordOrNull<ProblemStatementRecordResponse>(`/problem-statement/${recordId}/${toRciSegment(rciId)}`);
 }
 
 // Persists a manual edit to the generated problem statement — previously session-only, lost on refresh/navigation.
 export function updateProblemStatement(
   recordId: string,
+  rciId: string | null,
   problemStatement: string
 ): Promise<ProblemStatementRecordResponse> {
-  return apiPut<ProblemStatementRecordResponse>(`/problem-statement/${recordId}`, { problem_statement: problemStatement });
+  return apiPut<ProblemStatementRecordResponse>(`/problem-statement/${recordId}/${toRciSegment(rciId)}`, { problem_statement: problemStatement });
 }
 
 export interface ProblemStatementEnhancementsResponse {
@@ -81,9 +85,10 @@ export interface ProblemStatementEnhancementsResponse {
 // Reads both the raw TrackWise description and the already-generated problem statement
 // server-side — no body needed. Persisted, so this is a one-time LLM call per generation/edit.
 export function generateProblemStatementEnhancements(
-  recordId: string
+  recordId: string,
+  rciId: string | null
 ): Promise<ProblemStatementEnhancementsResponse> {
-  return apiPost<ProblemStatementEnhancementsResponse>(`/problem-statement/${recordId}/enhancements/generate`, {});
+  return apiPost<ProblemStatementEnhancementsResponse>(`/problem-statement/${recordId}/${toRciSegment(rciId)}/enhancements/generate`, {});
 }
 
 export interface SimilarInvestigation {
@@ -93,8 +98,8 @@ export interface SimilarInvestigation {
   relevance_score: number;
 }
 
-export function getSimilarInvestigations(recordId: string): Promise<SimilarInvestigation[]> {
-  return apiGet<SimilarInvestigation[]>(`/problem-statement/${recordId}/historic`);
+export function getSimilarInvestigations(recordId: string, rciId: string | null): Promise<SimilarInvestigation[]> {
+  return apiGet<SimilarInvestigation[]>(`/problem-statement/${recordId}/${toRciSegment(rciId)}/historic`);
 }
 
 // ── Evidence collection ──────────────────────────────────────────────────
@@ -115,9 +120,10 @@ export interface EvidenceCollectionResponse {
 
 export function collectEvidence(
   recordId: string,
+  rciId: string | null,
   request: TrackwiseRequest
 ): Promise<EvidenceCollectionResponse> {
-  return apiPost<EvidenceCollectionResponse>(`/evidence/${recordId}/collect`, request);
+  return apiPost<EvidenceCollectionResponse>(`/evidence/${recordId}/${toRciSegment(rciId)}/collect`, request);
 }
 
 export interface EvidenceCollectionRecordResponse {
@@ -128,14 +134,15 @@ export interface EvidenceCollectionRecordResponse {
 }
 
 export function getEvidenceRecord(
-  recordId: string
+  recordId: string,
+  rciId: string | null
 ): Promise<EvidenceCollectionRecordResponse | null> {
-  return getRecordOrNull<EvidenceCollectionRecordResponse>(`/evidence/${recordId}`);
+  return getRecordOrNull<EvidenceCollectionRecordResponse>(`/evidence/${recordId}/${toRciSegment(rciId)}`);
 }
 
 // Full replace of check/uncheck state + user-added items, same persistence pattern as generation.
-export function updateEvidenceItems(recordId: string, items: EvidenceItem[]): Promise<void> {
-  return apiPut<void>(`/evidence/${recordId}`, items);
+export function updateEvidenceItems(recordId: string, rciId: string | null, items: EvidenceItem[]): Promise<void> {
+  return apiPut<void>(`/evidence/${recordId}/${toRciSegment(rciId)}`, items);
 }
 
 // ── Interview questionnaire ───────────────────────────────────────────────
@@ -156,9 +163,10 @@ export interface QuestionnaireResponse {
 
 export function generateQuestionnaire(
   recordId: string,
+  rciId: string | null,
   request: TrackwiseRequest
 ): Promise<QuestionnaireResponse> {
-  return apiPost<QuestionnaireResponse>(`/questionnaire/${recordId}/generate`, request);
+  return apiPost<QuestionnaireResponse>(`/questionnaire/${recordId}/${toRciSegment(rciId)}/generate`, request);
 }
 
 export interface QuestionnaireRecordResponse {
@@ -169,14 +177,15 @@ export interface QuestionnaireRecordResponse {
 }
 
 export function getQuestionnaireRecord(
-  recordId: string
+  recordId: string,
+  rciId: string | null
 ): Promise<QuestionnaireRecordResponse | null> {
-  return getRecordOrNull<QuestionnaireRecordResponse>(`/questionnaire/${recordId}`);
+  return getRecordOrNull<QuestionnaireRecordResponse>(`/questionnaire/${recordId}/${toRciSegment(rciId)}`);
 }
 
 // Full replace of check/uncheck state + user-added questions, same persistence pattern as generation.
-export function updateQuestionnaireItems(recordId: string, items: InterviewQuestion[]): Promise<void> {
-  return apiPut<void>(`/questionnaire/${recordId}`, items);
+export function updateQuestionnaireItems(recordId: string, rciId: string | null, items: InterviewQuestion[]): Promise<void> {
+  return apiPut<void>(`/questionnaire/${recordId}/${toRciSegment(rciId)}`, items);
 }
 
 // ── RCI plan ──────────────────────────────────────────────────────────────
@@ -209,9 +218,10 @@ export interface RciPlanResponse {
 
 export function generateRciPlan(
   recordId: string,
+  rciId: string | null,
   request: TrackwiseRequest
 ): Promise<RciPlanResponse> {
-  return apiPost<RciPlanResponse>(`/rci-plan/${recordId}/generate`, request);
+  return apiPost<RciPlanResponse>(`/rci-plan/${recordId}/${toRciSegment(rciId)}/generate`, request);
 }
 
 export interface RciPlanRecordResponse {
@@ -223,8 +233,8 @@ export interface RciPlanRecordResponse {
   locked_for_editing?: boolean;
 }
 
-export function getRciPlanRecord(recordId: string): Promise<RciPlanRecordResponse | null> {
-  return getRecordOrNull<RciPlanRecordResponse>(`/rci-plan/${recordId}`);
+export function getRciPlanRecord(recordId: string, rciId: string | null): Promise<RciPlanRecordResponse | null> {
+  return getRecordOrNull<RciPlanRecordResponse>(`/rci-plan/${recordId}/${toRciSegment(rciId)}`);
 }
 
 // Investigators on OPEN investigations only, for the per-section dropdown. Registered ahead of GET /rci-plan/{record_id} on the backend so this literal path isn't shadowed by that catch-all.
@@ -242,13 +252,13 @@ export interface RciTemplateUploadResponse {
 }
 
 // Full replace of section fields (investigator edits etc.), same pattern as evidence/questionnaire persistence.
-export function updateRciPlanSections(recordId: string, sections: RciSectionItem[]): Promise<void> {
-  return apiPut<void>(`/rci-plan/${recordId}`, sections);
+export function updateRciPlanSections(recordId: string, rciId: string | null, sections: RciSectionItem[]): Promise<void> {
+  return apiPut<void>(`/rci-plan/${recordId}/${toRciSegment(rciId)}`, sections);
 }
 
 // Filled from the company's RCI Plan Word template (backend/assets/rci_plan_template.docx).
-export function exportRciPlanDocx(recordId: string): Promise<Blob> {
-  return apiGetBlob(`/rci-plan/${recordId}/export`);
+export function exportRciPlanDocx(recordId: string, rciId: string | null): Promise<Blob> {
+  return apiGetBlob(`/rci-plan/${recordId}/${toRciSegment(rciId)}/export`);
 }
 
 export function uploadRciTemplates(file: File): Promise<RciTemplateUploadResponse> {
@@ -326,31 +336,32 @@ export interface TaskCritiqueListResponse {
   source_document_name: string | null;
 }
 
-export function getTaskCritique(recordId: string): Promise<TaskCritiqueListResponse | null> {
-  return getRecordOrNull<TaskCritiqueListResponse>(`/task-critique/${recordId}`);
+export function getTaskCritique(recordId: string, rciId: string | null): Promise<TaskCritiqueListResponse | null> {
+  return getRecordOrNull<TaskCritiqueListResponse>(`/task-critique/${recordId}/${toRciSegment(rciId)}`);
 }
 
-export function uploadTaskCritiqueSourceDocument(recordId: string, file: File): Promise<TaskCritiqueListResponse> {
+export function uploadTaskCritiqueSourceDocument(recordId: string, rciId: string | null, file: File): Promise<TaskCritiqueListResponse> {
   const formData = new FormData();
   formData.append("file", file);
-  return apiPostForm<TaskCritiqueListResponse>(`/task-critique/${recordId}/source-document`, formData);
+  return apiPostForm<TaskCritiqueListResponse>(`/task-critique/${recordId}/${toRciSegment(rciId)}/source-document`, formData);
 }
 
-export function uploadTaskCritiqueReport(recordId: string, taskIndex: number, file: File): Promise<TaskCritiqueSection> {
+export function uploadTaskCritiqueReport(recordId: string, rciId: string | null, taskIndex: number, file: File): Promise<TaskCritiqueSection> {
   const formData = new FormData();
   formData.append("file", file);
-  return apiPostForm<TaskCritiqueSection>(`/task-critique/${recordId}/sections/${taskIndex}/upload`, formData);
+  return apiPostForm<TaskCritiqueSection>(`/task-critique/${recordId}/${toRciSegment(rciId)}/sections/${taskIndex}/upload`, formData);
 }
 
 export function decideTaskCritiqueRecommendation(
   recordId: string,
+  rciId: string | null,
   taskIndex: number,
   recommendationId: number,
   decision: "accepted" | "rejected",
   reason?: string
 ): Promise<TaskCritiqueSection> {
   return apiPost<TaskCritiqueSection>(
-    `/task-critique/${recordId}/sections/${taskIndex}/recommendations/${recommendationId}/decision`,
+    `/task-critique/${recordId}/${toRciSegment(rciId)}/sections/${taskIndex}/recommendations/${recommendationId}/decision`,
     { decision, reason }
   );
 }
@@ -363,8 +374,8 @@ export interface RecommendationHistoryAttempt {
   created_at: string;
 }
 
-export function getTaskCritiqueHistory(recordId: string, taskIndex: number): Promise<RecommendationHistoryAttempt[]> {
-  return apiGet<RecommendationHistoryAttempt[]>(`/task-critique/${recordId}/sections/${taskIndex}/history`);
+export function getTaskCritiqueHistory(recordId: string, rciId: string | null, taskIndex: number): Promise<RecommendationHistoryAttempt[]> {
+  return apiGet<RecommendationHistoryAttempt[]>(`/task-critique/${recordId}/${toRciSegment(rciId)}/sections/${taskIndex}/history`);
 }
 
 // ── RC & CAPA Critique ────────────────────────────────────────────────────
@@ -412,32 +423,33 @@ export interface RcCapaState {
   due_date: string | null;
 }
 
-export function getRcCapaCritique(recordId: string): Promise<RcCapaState | null> {
-  return getRecordOrNull<RcCapaState>(`/rc-capa-critique/${recordId}`);
+export function getRcCapaCritique(recordId: string, rciId: string | null): Promise<RcCapaState | null> {
+  return getRecordOrNull<RcCapaState>(`/rc-capa-critique/${recordId}/${toRciSegment(rciId)}`);
 }
 
-export function uploadRcCapaCritiqueReport(recordId: string, file: File): Promise<RcCapaState> {
+export function uploadRcCapaCritiqueReport(recordId: string, rciId: string | null, file: File): Promise<RcCapaState> {
   const formData = new FormData();
   formData.append("file", file);
-  return apiPostForm<RcCapaState>(`/rc-capa-critique/${recordId}/upload`, formData);
+  return apiPostForm<RcCapaState>(`/rc-capa-critique/${recordId}/${toRciSegment(rciId)}/upload`, formData);
 }
 
 export function decideRcCapaRecommendation(
   recordId: string,
+  rciId: string | null,
   recommendationId: number,
   decision: "accepted" | "rejected",
   reason?: string
 ): Promise<RcCapaState> {
-  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/recommendations/${recommendationId}/decision`, { decision, reason });
+  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/${toRciSegment(rciId)}/recommendations/${recommendationId}/decision`, { decision, reason });
 }
 
 // Every report, oldest first — investigation_rc_capa_reports keeps a real row per attempt (never upserted), unlike Task Critique.
-export function getRcCapaHistory(recordId: string): Promise<RcCapaReport[]> {
-  return apiGet<RcCapaReport[]>(`/rc-capa-critique/${recordId}/history`);
+export function getRcCapaHistory(recordId: string, rciId: string | null): Promise<RcCapaReport[]> {
+  return apiGet<RcCapaReport[]>(`/rc-capa-critique/${recordId}/${toRciSegment(rciId)}/history`);
 }
 
-export function pushRcCapaToSitReview(recordId: string): Promise<RcCapaState> {
-  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/push-to-sit-review`, {});
+export function pushRcCapaToSitReview(recordId: string, rciId: string | null): Promise<RcCapaState> {
+  return apiPost<RcCapaState>(`/rc-capa-critique/${recordId}/${toRciSegment(rciId)}/push-to-sit-review`, {});
 }
 
 // ── Action Center ─────────────────────────────────────────────────────────
@@ -509,6 +521,8 @@ export interface InvestigationRowResponse {
   remarks: Record<string, string>;
   // `investigator` above is just whichever fact_qms_event row the backend's dedup picked — wrong for multi-RCI investigations, where each rci_key can have a different investigator. Keyed by rci_id; fall back to `investigator` if absent.
   investigator_by_rci: Record<string, string | null>;
+  // Per-rci_id module stage, mirroring investigator_by_rci's convention — lets each multi-RCI sub-row show its own progress instead of reusing the parent's single scalar investigator_stage.
+  investigator_stage_by_rci: Record<string, number>;
 }
 
 export interface FilterOptions {
@@ -984,27 +998,28 @@ export interface RciReportRecordResponse {
   manual_entries: Record<string, string>;
 }
 
-export function getRciReportRecord(recordId: string): Promise<RciReportRecordResponse | null> {
-  return getRecordOrNull<RciReportRecordResponse>(`/rci-report/${recordId}`);
+export function getRciReportRecord(recordId: string, rciId: string | null): Promise<RciReportRecordResponse | null> {
+  return getRecordOrNull<RciReportRecordResponse>(`/rci-report/${recordId}/${toRciSegment(rciId)}`);
 }
 
 export function updateRciReportInputs(
   recordId: string,
+  rciId: string | null,
   mcConfirmed: boolean | null,
   manualEntries: Record<string, string>
 ): Promise<RciReportRecordResponse> {
-  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}/inputs`, { mc_confirmed: mcConfirmed, manual_entries: manualEntries });
+  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}/${toRciSegment(rciId)}/inputs`, { mc_confirmed: mcConfirmed, manual_entries: manualEntries });
 }
 
-export function generateRciReport(recordId: string): Promise<RciReportRecordResponse> {
-  return apiPost<RciReportRecordResponse>(`/rci-report/${recordId}/generate`, {});
+export function generateRciReport(recordId: string, rciId: string | null): Promise<RciReportRecordResponse> {
+  return apiPost<RciReportRecordResponse>(`/rci-report/${recordId}/${toRciSegment(rciId)}/generate`, {});
 }
 
-export function updateRciReportSections(recordId: string, report: RciReportSections): Promise<RciReportRecordResponse> {
-  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}`, report);
+export function updateRciReportSections(recordId: string, rciId: string | null, report: RciReportSections): Promise<RciReportRecordResponse> {
+  return apiPut<RciReportRecordResponse>(`/rci-report/${recordId}/${toRciSegment(rciId)}`, report);
 }
 
 // The real .docx for "Download and View" — filled from the company's RCI Report Word template with the persisted report.
-export function exportRciReportDocx(recordId: string): Promise<Blob> {
-  return apiGetBlob(`/rci-report/${recordId}/export`);
+export function exportRciReportDocx(recordId: string, rciId: string | null): Promise<Blob> {
+  return apiGetBlob(`/rci-report/${recordId}/${toRciSegment(rciId)}/export`);
 }

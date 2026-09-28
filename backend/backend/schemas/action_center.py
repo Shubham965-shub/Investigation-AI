@@ -81,6 +81,9 @@ class InvestigationRow(BaseModel):
     remarks: Dict[str, str] = Field(default_factory=dict)
     # Per-rci_id investigator — a deviation's RCIs can have different investigators, unlike the single `investigator` field above.
     investigator_by_rci: Dict[str, Optional[str]] = Field(default_factory=dict)
+    # Per-rci_id investigator_stage — mirrors investigator_by_rci's convention. See
+    # db/action_center_queries.py's fetch_investigator_progress_stage for the exact semantics.
+    investigator_stage_by_rci: Dict[str, int] = Field(default_factory=dict)
 
 
 class RemarkUpdateRequest(BaseModel):

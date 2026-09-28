@@ -7,6 +7,7 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AddItemDialog } from "../components/AddItemDialog";
+import { recordPath, fromRciSegment } from "../lib/rci";
 
 interface ChecklistItem {
   description: string;
@@ -22,7 +23,8 @@ import copyIcon from "../assets/icons/copy-icon.svg";
 import "./RecordModulePage.css";
 
 export function EvidenceCollectionPage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
 
   const [recordLoading, setRecordLoading] = useState(true);
@@ -50,8 +52,8 @@ export function EvidenceCollectionPage() {
     (async () => {
       try {
         const [psRecord, evRecord] = await Promise.all([
-          getProblemStatementRecord(recordId),
-          getEvidenceRecord(recordId),
+          getProblemStatementRecord(recordId, normalizedRciId),
+          getEvidenceRecord(recordId, normalizedRciId),
         ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
@@ -59,7 +61,7 @@ export function EvidenceCollectionPage() {
           setEventType(evRecord.event_type);
           setTrackwiseFields(evRecord.trackwise_fields);
           if (evRecord.evidence) {
-            setItems(evRecord.evidence.map((e) => ({ description: e.description, checked: e.is_checked ?? true, isUserAdded: false })));
+            setItems(evRecord.evidence.map((e) => ({ description: e.description, checked: e.is_checked ?? true, isUserAdded: e.is_new ?? false })));
           }
         }
       } catch (err) {
@@ -71,13 +73,13 @@ export function EvidenceCollectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   useEffect(() => {
     if (!recordId || recordLoading || dbError || items !== null || !problemStatement || !eventType || !trackwiseFields) return;
     setLoading(true);
     setError(null);
-    collectEvidence(recordId, { event_type: eventType, trackwise_fields: trackwiseFields })
+    collectEvidence(recordId, normalizedRciId, { event_type: eventType, trackwise_fields: trackwiseFields })
       .then((response) => {
         // Session-only display — the backend persists this (best-effort) as part of the collect call.
         setItems(response.evidence.map((e) => ({ description: e.description, checked: true, isUserAdded: false })));
@@ -87,7 +89,7 @@ export function EvidenceCollectionPage() {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, recordLoading, dbError, problemStatement, eventType, trackwiseFields]);
+  }, [recordId, rciId, recordLoading, dbError, problemStatement, eventType, trackwiseFields]);
 
   if (!recordId) return null;
 
@@ -107,7 +109,7 @@ export function EvidenceCollectionPage() {
     return (
       <div className="empty-state">
         <p>Complete the Problem Statement step first — Evidence Collection needs it to generate recommendations.</p>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/problem-statement`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "problem-statement"))}>
           Go to Problem Statement
         </button>
       </div>
@@ -119,7 +121,8 @@ export function EvidenceCollectionPage() {
     if (!recordId) return;
     updateEvidenceItems(
       recordId,
-      list.map((i) => ({ description: i.description, is_new: false, is_checked: i.checked }))
+      normalizedRciId,
+      list.map((i) => ({ description: i.description, is_new: i.isUserAdded, is_checked: i.checked }))
     ).catch((err) => {
       console.error("Failed to persist evidence items", err);
     });
@@ -152,11 +155,12 @@ export function EvidenceCollectionPage() {
   }
 
   function handleAgreeAndNext() {
+    if (!recordId) return;
     setShowConfirm(false);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
-      navigate(`/records/${recordId}/interview-questionnaire`);
+      navigate(recordPath(recordId, normalizedRciId, "interview-questionnaire"));
     }, 1500);
   }
 

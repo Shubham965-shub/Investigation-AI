@@ -9,7 +9,8 @@ from backend.schemas.common import ArchetypeInfo, EventType, TrackwiseRequest
 
 
 class QuestionnaireGenerateRequest(TrackwiseRequest):
-    pass
+    # Groundwork only — carried through to DS via model_dump(), no matching logic attached yet.
+    rci_id: Optional[str] = None
 
 
 class InterviewQuestion(BaseModel):

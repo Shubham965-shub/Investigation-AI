@@ -18,6 +18,7 @@ import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import copyIcon from "../assets/icons/copy-icon.svg";
 import chevronEntry from "../assets/icons/chevron-entry.svg";
 import "./RecordModulePage.css";
@@ -33,7 +34,7 @@ function groupBySection(fields: ReturnType<typeof getFieldSet>) {
 }
 
 export function ProblemStatementPage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -72,7 +73,7 @@ export function ProblemStatementPage() {
   function loadEnhancements() {
     setEnhancementsError(null);
     setEnhancementsLoading(true);
-    generateProblemStatementEnhancements(rid)
+    generateProblemStatementEnhancements(rid, normalizedRciId)
       .then((res) => setEnhancements(res.enhancements))
       .catch((err) => setEnhancementsError(err instanceof ApiError ? String(err.detail) : "Failed to analyze changes"))
       .finally(() => setEnhancementsLoading(false));
@@ -86,7 +87,7 @@ export function ProblemStatementPage() {
     setDbError(null);
     (async () => {
       try {
-        const record = await getProblemStatementRecord(recordId);
+        const record = await getProblemStatementRecord(recordId, fromRciSegment(rciId) || null);
         if (cancelled) return;
         if (record) {
           setRecordExists(true);
@@ -111,13 +112,14 @@ export function ProblemStatementPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   const fields = useMemo(() => getFieldSet("problem-statement", eventType), [eventType]);
   const sections = useMemo(() => groupBySection(fields), [fields]);
 
   if (!recordId) return null;
   const rid: string = recordId;
+  const normalizedRciId = fromRciSegment(rciId) || null;
 
   if (loading) {
     return (
@@ -148,7 +150,7 @@ export function ProblemStatementPage() {
 
     setSubmitting(true);
     try {
-      const response = await generateProblemStatement(rid, { event_type: eventType, trackwise_fields: trackwiseFields });
+      const response = await generateProblemStatement(rid, normalizedRciId, { event_type: eventType, trackwise_fields: trackwiseFields });
       // Session-only display — the backend already persists this (best-effort) as part of the generate call.
       setProblemStatement(response.problem_statement);
       setDraftPs(response.problem_statement);
@@ -173,17 +175,17 @@ export function ProblemStatementPage() {
   // changed, or if the record is locked once Evidence Collection has started), then advances.
   function handleSaveAndNext() {
     if (lockedForEditing || draftPs === problemStatement) {
-      navigate(`/records/${rid}/evidence-collection`);
+      navigate(recordPath(rid, normalizedRciId, "evidence-collection"));
       return;
     }
     setError(null);
     setSavingEdit(true);
-    updateProblemStatement(rid, draftPs)
+    updateProblemStatement(rid, normalizedRciId, draftPs)
       .then(() => {
         setProblemStatement(draftPs);
         // The backend clears the persisted diff on edit too — it was computed against the pre-edit text.
         setEnhancements(null);
-        navigate(`/records/${rid}/evidence-collection`);
+        navigate(recordPath(rid, normalizedRciId, "evidence-collection"));
       })
       .catch((err) => {
         setError(err instanceof ApiError ? String(err.detail) : "Failed to save the problem statement");

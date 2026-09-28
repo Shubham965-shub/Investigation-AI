@@ -6,7 +6,7 @@ import asyncpg
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 from src.config.settings import settings
 from src.utils.deps import get_llm_client, get_db_pool, get_prompt_registry
@@ -80,12 +80,17 @@ async def fetch_archetypes(state: Any) -> Any:
     return state
 
 
-async def map_to_archetype(state: Any) -> Any:
+async def map_to_archetype(state: Any, rci_id: Optional[str] = None) -> Any:
     """Map the full event context to the closest existing archetype.
 
     Passes all non-empty trackwise fields to the LLM so it can derive the
     failure mechanism itself rather than relying on a single pre-extracted
     field that may be a document code or otherwise incomplete.
+
+    `rci_id` is accepted but currently unused — groundwork for per-RCI
+    archetype matching, to be built out once archetype data differentiates
+    by RCI. It is threaded through from `state.rci_id` at each call site so
+    it's available without further plumbing when that logic is added.
     """
     try:
         llm = await get_llm_client()
