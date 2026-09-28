@@ -39,6 +39,13 @@ ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS full_name TEXT;
 -- NULL for an account that has never logged in yet.
 ALTER TABLE athena_users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
 
+-- Case-insensitive username matching (2026-09-28, per the user) — the plain UNIQUE(username)
+-- above is still case-SENSITIVE, so without this a second account differing only by case
+-- (e.g. "Foo@x.com" vs "foo@x.com") could be created, which would make the case-insensitive
+-- lookup in db/auth_queries.py's fetch_user_by_username ambiguous. Confirmed live (2026-09-28):
+-- no existing case-variant duplicates, so this was safe to add directly.
+CREATE UNIQUE INDEX IF NOT EXISTS athena_users_username_ci_key ON athena_users (LOWER(username));
+
 -- New "Investigator" role (2026-09-09, per the user) — scoped so a signed-in
 -- Investigator only ever sees their OWN investigations in Action Center
 -- (routers/action_center.py's get_action_center_summary filters by this

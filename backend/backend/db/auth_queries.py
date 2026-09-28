@@ -10,6 +10,9 @@ from backend.clients.db_client import get_pool
 
 
 async def fetch_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Case-insensitive on purpose (2026-09-28, per the user) — matches the
+    LOWER(username) unique index in schema.sql, so "Foo@x.com" and "foo@x.com"
+    resolve to the same, single account rather than requiring an exact-case match."""
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -17,7 +20,7 @@ async def fetch_user_by_username(username: str) -> Optional[Dict[str, Any]]:
             SELECT u.id, u.username, u.password_hash, u.is_active, u.full_name, u.investigator_name, r.name AS role
             FROM athena_users u
             LEFT JOIN athena_roles r ON r.id = u.role_id
-            WHERE u.username = $1
+            WHERE LOWER(u.username) = LOWER($1)
             """,
             username,
         )
