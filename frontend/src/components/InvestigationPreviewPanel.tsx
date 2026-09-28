@@ -42,20 +42,14 @@ function initialsFor(name: string): string {
     .toUpperCase();
 }
 
-// backendIndex is the numeric stage backend/db/module_stage.py's stage_for() actually returns
-// for this step (0/3/4/5/6 — see that file's STATUS_TO_STAGE) — kept explicit and separate from
-// this array's own position so inserting Data Interpretation (2026-09-22, no backend stage of
-// its own yet, since it has no persisted/TW-status-driven completion signal) doesn't shift every
-// later step's completed/in-progress comparison out of alignment with real investigation data.
-const STEP_DEFS: { label: string; description: string; path: string | null; backendIndex: number | null }[] = [
-  { label: "Problem Statement Generation", description: "Generate the problem statement for the investigation.", path: "problem-statement", backendIndex: 0 },
-  { label: "Evidence Collection", description: "List of Evidences to be collected for the investigation.", path: "evidence-collection", backendIndex: 1 },
-  { label: "Interview Questionnaire", description: "Creation of interview Questionnaire.", path: "interview-questionnaire", backendIndex: 2 },
-  { label: "RCI Plan Creation", description: "RCI plan creation based on the Collected evidence and Interview questionnaire's response.", path: "rci-plan", backendIndex: 3 },
-  { label: "Data Interpretation", description: "Review batch trend data (Assay, Dissolution, Related Substances and more) against the RCI plan's findings.", path: "data-interpretation", backendIndex: null },
-  { label: "Task Critique", description: "Critique the tasks that is completed by the RCI plan creation step.", path: "task-critique", backendIndex: 4 },
-  { label: "RC, Impact & CAPA Critique", description: "Final report generation of the investigation.", path: "rc-capa-critique", backendIndex: 5 },
-  { label: "RCI Report", description: "Final quality review and investigation closure with the reviews.", path: "rci-report", backendIndex: 6 },
+const STEP_DEFS: { label: string; description: string; path: string | null }[] = [
+  { label: "Problem Statement Generation", description: "Generate the problem statement for the investigation.", path: "problem-statement" },
+  { label: "Evidence Collection", description: "List of Evidences to be collected for the investigation.", path: "evidence-collection" },
+  { label: "Interview Questionnaire", description: "Creation of interview Questionnaire.", path: "interview-questionnaire" },
+  { label: "RCI Plan Creation", description: "RCI plan creation based on the Collected evidence and Interview questionnaire's response.", path: "rci-plan" },
+  { label: "Task Critique", description: "Critique the tasks that is completed by the RCI plan creation step.", path: "task-critique" },
+  { label: "RC, Impact & CAPA Critique", description: "Final report generation of the investigation.", path: "rc-capa-critique" },
+  { label: "RCI Report", description: "Final quality review and investigation closure with the reviews.", path: "rci-report" },
 ];
 
 export function InvestigationPreviewPanel({
@@ -84,7 +78,7 @@ export function InvestigationPreviewPanel({
   }, [isOpen, onClose]);
 
   const percent = investigation ? Math.round((investigation.step / investigation.totalSteps) * 100) : 0;
-  const currentStepDef = investigation ? STEP_DEFS.find((s) => s.backendIndex === investigation.step) : undefined;
+  const currentStepDef = investigation ? STEP_DEFS[investigation.step] : undefined;
 
   function goToStep(path: string | null) {
     if (!investigation || !path) return;
@@ -231,20 +225,7 @@ export function InvestigationPreviewPanel({
                   Investigation Steps
                 </p>
                 {STEP_DEFS.map((stepDef, index) => {
-                  // Data Interpretation has no backend stage of its own (backendIndex === null) — heuristically
-                  // "completed" once RCI Plan Creation is (stage ≥ 4), since reaching Task Critique's in-progress
-                  // state in the real flow now implies passing through it first; never shown as its own
-                  // "in-progress" since nothing persists that distinction.
-                  const status =
-                    stepDef.backendIndex === null
-                      ? investigation.step >= 4
-                        ? "completed"
-                        : "not-started"
-                      : stepDef.backendIndex < investigation.step
-                      ? "completed"
-                      : stepDef.backendIndex === investigation.step
-                      ? "in-progress"
-                      : "not-started";
+                  const status = index < investigation.step ? "completed" : index === investigation.step ? "in-progress" : "not-started";
                   const isLast = index === STEP_DEFS.length - 1;
                   const circleIcon = status === "completed" ? stepCompletedIcon : status === "in-progress" ? stepInProgressIcon : stepNotStartedIcon;
                   const circleStyle =

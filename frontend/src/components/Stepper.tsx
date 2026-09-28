@@ -16,7 +16,6 @@ export const RECORD_STEPS: StepDef[] = [
   { key: "evidence-collection", label: "Evidence Collection", path: "evidence-collection" },
   { key: "interview-questionnaire", label: "Interview Questionnaire", path: "interview-questionnaire" },
   { key: "rci-plan", label: "RCI Plan Creation", path: "rci-plan" },
-  { key: "data-interpretation", label: "Data Interpretation", path: "data-interpretation" },
   { key: "task-critique", label: "Task Critique", path: "task-critique" },
   { key: "rc-capa-critique", label: "RC, Impact & CAPA Critique", path: "rc-capa-critique" },
   { key: "rci-report", label: "RCI Report", path: "rci-report" },
@@ -70,18 +69,15 @@ function slaTitle(entry: StepSla, tier: "critical" | "other" | null | undefined)
 }
 
 // What happens off-screen between these step pairs — no in-app workflow for it, so the connector's person icon explains it on hover.
-// Indices shifted by 1 (2026-09-22) to account for the new Data Interpretation step inserted at index 4 — the
-// offline SIT Lead review still happens after RCI Plan Creation's in-app work is done, which now finishes at
-// Data Interpretation (index 4) rather than RCI Plan Creation (index 3) itself.
 const CONNECTOR_NOTES: Record<number, string[]> = {
-  4: [
+  3: [
     "RCI Plan is taken to SIT Lead for review and signoff",
     "Approved RCI Plan is uploaded to TW",
     "Tasks are given to appropriate Task Owners",
     "Task Owners create Reports for their tasks",
     "Task Reports are uploaded to Athena for Critique",
   ],
-  5: [
+  4: [
     "Critiqued Task Reports are uploaded to Database",
     "RC, Impact & CAPA Report is created",
     "RC, Impact & CAPA Report is uploaded to Athena for Critique",
@@ -214,7 +210,7 @@ export function Stepper({
         const clickable = step.path !== null;
         const isSkippable = step.key === "interview-questionnaire" && eventType === "Market Complaint";
         // Visual marker (dotted line + person icon) between steps 4-5 and 5-6, instead of the usual solid line.
-        const hasConnectorBox = index === 4 || index === 5;
+        const hasConnectorBox = index === 3 || index === 4;
         const lineColor = status === "completed" ? "var(--color-primary)" : "var(--color-open-border)";
 
         return (

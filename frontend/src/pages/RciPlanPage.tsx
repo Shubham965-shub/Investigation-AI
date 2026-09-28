@@ -332,7 +332,7 @@ export function RciPlanPage() {
     try {
       await downloadRciPlanDocument();
       setPushed(true);
-      setTimeout(() => navigate(recordPath(recordId, normalizedRciId, "data-interpretation")), 1500);
+      setTimeout(() => navigate(recordPath(recordId, normalizedRciId, "task-critique")), 1500);
     } catch (err) {
       setExportError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI plan document");
     }
