@@ -25,7 +25,12 @@ class Settings(BaseSettings):
     DS_SERVICE_CONNECT_TIMEOUT_SECONDS: float = 10.0
     DS_SERVICE_READ_TIMEOUT_SECONDS: float = 120.0
     # Critique/scoring endpoints are multi-LLM-call (scoring can fire ~20 concurrent calls) so they need a longer timeout.
-    DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS: float = 300.0
+    # Kept comfortably under Azure Container Apps' platform-level ingress request timeout
+    # (240s default) — at 300s, a slow-but-eventually-successful DS scoring call (task report
+    # upload's /score/report) could get killed by the platform before the backend ever responds,
+    # producing a raw network failure with no error detail on the frontend instead of a real
+    # timeout error message. 200s leaves headroom on both sides.
+    DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS: float = 200.0
 
     # ── CORS (comma-separated origins) ───────────────────────
     CORS_ORIGINS: str = "http://localhost:5173"
