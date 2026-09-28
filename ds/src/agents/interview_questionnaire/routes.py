@@ -42,6 +42,7 @@ async def generate_questionnaire(request: QuestionCollectionRequest) -> Question
         state = InterviewQuestionCollectionState(
             trackwise_fields=request.trackwise_fields,
             event_type=request.event_type,
+            rci_id=request.rci_id,
         )
         logger.info(f"Processing questionnaire for event_type: {request.event_type}")
 

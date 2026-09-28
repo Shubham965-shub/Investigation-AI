@@ -9,15 +9,16 @@ from typing import Optional
 from backend.clients.db_client import get_pool
 
 
-async def insert_rci_report_export(deviation_id: int, docx: bytes, approved_by: Optional[int]) -> None:
+async def insert_rci_report_export(deviation_id: int, docx: bytes, approved_by: Optional[int], rci_id: Optional[str] = None) -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO investigation_rci_report_exports (deviation_id, docx, approved_by)
-            VALUES ($1, $2, $3)
+            INSERT INTO investigation_rci_report_exports (deviation_id, rci_id, docx, approved_by)
+            VALUES ($1, $2, $3, $4)
             """,
             deviation_id,
+            rci_id,
             docx,
             approved_by,
         )

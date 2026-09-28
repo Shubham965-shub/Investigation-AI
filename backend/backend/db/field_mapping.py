@@ -217,3 +217,10 @@ def resolved_event_type(qe_type: Optional[str]) -> Optional[str]:
     if qe_type is None:
         return None
     return QE_TYPE_TO_EVENT_TYPE.get(qe_type)
+
+
+def normalize_rci_id(raw: str) -> Optional[str]:
+    """Normalizes a router path segment into the value passed to query
+    functions: the literal segment "none" (or an empty string) means "no RCI"
+    and must become real SQL NULL, never the string "none"."""
+    return None if raw in ("", "none") else raw

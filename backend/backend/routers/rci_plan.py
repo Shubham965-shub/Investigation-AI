@@ -9,7 +9,7 @@ from fastapi.responses import Response
 
 from backend.clients.ds_client import _raise_for_upstream_error, ds_post, get_client, raise_for_ds_request_error
 from backend.db.auth_queries import fetch_user_by_username
-from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
+from backend.db.field_mapping import build_trackwise_fields, normalize_rci_id, resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections, replace_rci_sections
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row, fetch_open_investigators
@@ -43,14 +43,15 @@ def _add_working_days(start: datetime.date, days: int) -> datetime.date:
     return current
 
 
-@router.post("/{record_id}/generate", response_model=RciPlanGenerateResponse)
+@router.post("/{record_id}/{rci_id}/generate", response_model=RciPlanGenerateResponse)
 async def generate_rci_plan(
-    record_id: str, request: RciPlanGenerateRequest, claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, request: RciPlanGenerateRequest, claims: dict = Depends(get_current_payload)
 ) -> RciPlanGenerateResponse:
+    resolved_rci_id = normalize_rci_id(rci_id)
     # Use the generated Problem Statement as "description", falling back to the raw TrackWise
     # column if none has been generated yet.
     try:
-        problem_statement = await fetch_problem_statement(int(record_id))
+        problem_statement = await fetch_problem_statement(int(record_id), rci_id=resolved_rci_id)
     except ValueError:
         problem_statement = None
     if problem_statement:
@@ -66,7 +67,7 @@ async def generate_rci_plan(
     # Assignee defaults to the investigation's own investigator, if any (still editable).
     default_assignee = None
     try:
-        row = await fetch_investigation_row(int(record_id))
+        row = await fetch_investigation_row(int(record_id), rci_id=resolved_rci_id)
         if row:
             default_assignee = row["investigator"]
     except ValueError:
@@ -92,6 +93,7 @@ async def generate_rci_plan(
                 }
                 for section in response.sections
             ],
+            rci_id=resolved_rci_id,
             generated_by=claims.get("uid"),
         )
     except Exception:
@@ -117,17 +119,18 @@ async def upload_rci_templates(file: UploadFile = File(...)) -> RciTemplateUploa
     return RciTemplateUploadResponse(**response.json())
 
 
-@router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.put("/{record_id}/{rci_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def update_rci_plan(
-    record_id: str, sections: list[RciSectionItem], claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, sections: list[RciSectionItem], claims: dict = Depends(get_current_payload)
 ) -> None:
     """Full replace of the persisted sections."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    if await any_task_critique_started(deviation_id):
+    if await any_task_critique_started(deviation_id, rci_id=resolved_rci_id):
         # replace_rci_sections deletes-then-recreates every section row (new IDs), which would
         # cascade-delete Task Critique history once a report exists against a section.
         raise HTTPException(
@@ -152,20 +155,22 @@ async def update_rci_plan(
             }
             for section in sections
         ],
+        rci_id=resolved_rci_id,
         generated_by=claims.get("uid"),
     )
 
 
-@router.get("/{record_id}/export")
-async def export_rci_plan(record_id: str, username: str = Depends(get_current_username)) -> Response:
+@router.get("/{record_id}/{rci_id}/export")
+async def export_rci_plan(record_id: str, rci_id: str, username: str = Depends(get_current_username)) -> Response:
     """Fills the RCI Plan .docx template and returns it; also persists a frozen approval snapshot
     (best-effort — must not block the download) that a separate process pushes into Trackwise."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -173,14 +178,14 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
     if event_type is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    persisted = await fetch_rci_sections(deviation_id)
+    persisted = await fetch_rci_sections(deviation_id, rci_id=resolved_rci_id)
     if not persisted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
     extended = event_type == "Deviation"
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
     # Same substitution as generate_rci_plan — show the generated Problem Statement, not raw TrackWise description.
-    problem_statement = await fetch_problem_statement(deviation_id)
+    problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id)
     if problem_statement:
         trackwise_fields["description"] = problem_statement
     sections = [RciSectionItem(**section) for section in persisted]
@@ -206,6 +211,7 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
             docx=docx_bytes,
             truncated_sections=truncated,
             approved_by=approver["id"] if approver else None,
+            rci_id=resolved_rci_id,
         )
     except Exception:
         logger.warning("Could not persist RCI plan export snapshot for record_id=%s", record_id, exc_info=True)
@@ -219,18 +225,19 @@ async def export_rci_plan(record_id: str, username: str = Depends(get_current_us
 
 @router.get("/investigators", response_model=list[str])
 async def get_open_investigators() -> list[str]:
-    """Investigators on an OPEN investigation only. Must stay registered before /{record_id}, or that catch-all route shadows this one (FastAPI matches by registration order)."""
+    """Investigators on an OPEN investigation only. Must stay registered before /{record_id}/{rci_id}, or that catch-all route shadows this one (FastAPI matches by registration order)."""
     return await fetch_open_investigators()
 
 
-@router.get("/{record_id}", response_model=RciPlanRecord)
-async def get_rci_plan(record_id: str) -> RciPlanRecord:
+@router.get("/{record_id}/{rci_id}", response_model=RciPlanRecord)
+async def get_rci_plan(record_id: str, rci_id: str) -> RciPlanRecord:
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -240,10 +247,10 @@ async def get_rci_plan(record_id: str) -> RciPlanRecord:
 
     # Deviation gets the extended field set only for rci-plan.
     extended = event_type == "Deviation"
-    persisted = await fetch_rci_sections(deviation_id)
+    persisted = await fetch_rci_sections(deviation_id, rci_id=resolved_rci_id)
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=extended)
     # Same substitution as generate_rci_plan/export_rci_plan — frontend reads this back as prefill.
-    problem_statement = await fetch_problem_statement(deviation_id)
+    problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id)
     if problem_statement:
         trackwise_fields["description"] = problem_statement
     return RciPlanRecord(
@@ -252,5 +259,5 @@ async def get_rci_plan(record_id: str) -> RciPlanRecord:
         trackwise_fields=trackwise_fields,
         sections=[RciSectionItem(**section) for section in persisted] if persisted else None,
         stage=stage_for(row["status"]),
-        locked_for_editing=await any_task_critique_started(deviation_id),
+        locked_for_editing=await any_task_critique_started(deviation_id, rci_id=resolved_rci_id),
     )

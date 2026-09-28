@@ -21,6 +21,9 @@ class QuestionCollectionRequest(BaseModel):
     trackwise_fields: Dict[str, Any] = Field(
         ..., description="Trackwise fields for the event type"
     )
+    rci_id: Optional[str] = Field(
+        default=None, description="Optional RCI identifier for events with multiple concurrent RCIs"
+    )
 
     @validator("trackwise_fields", pre=True)
     def _validate_trackwise_fields(cls, v, values):

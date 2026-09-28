@@ -23,6 +23,7 @@ import { scoreGrade } from "../utils/scoreGrade";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -348,7 +349,8 @@ function RecommendationGroup({
 }
 
 export function RcCapaCritiquePage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -394,8 +396,8 @@ export function RcCapaCritiquePage() {
     (async () => {
       try {
         const [data, psRecord] = await Promise.all([
-          getRcCapaCritique(recordId),
-          getProblemStatementRecord(recordId),
+          getRcCapaCritique(recordId, normalizedRciId),
+          getProblemStatementRecord(recordId, normalizedRciId),
         ]);
         if (cancelled) return;
         setState(data);
@@ -409,7 +411,7 @@ export function RcCapaCritiquePage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   if (!recordId) return null;
 
@@ -429,7 +431,7 @@ export function RcCapaCritiquePage() {
     return (
       <div className="empty-state">
         <p>Complete the earlier steps first — RC, Impact & CAPA Critique needs this investigation's record to exist.</p>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "task-critique"))}>
           Go to Task Critique
         </button>
       </div>
@@ -446,7 +448,7 @@ export function RcCapaCritiquePage() {
       setScoring("final_attempt");
     }
     try {
-      const updated = await uploadRcCapaCritiqueReport(recordId!, file);
+      const updated = await uploadRcCapaCritiqueReport(recordId!, normalizedRciId, file);
       setState(updated);
     } catch (err) {
       setUploadError(err instanceof ApiError ? String(err.detail) : "Failed to critique the uploaded report");
@@ -458,13 +460,13 @@ export function RcCapaCritiquePage() {
 
   // Shared by every RecommendationGroup — each drives its own UI, but every decision goes through this one page-level call.
   function decideRecommendation(recommendationId: number, decision: "accepted" | "rejected", reason?: string) {
-    return decideRcCapaRecommendation(recordId!, recommendationId, decision, reason);
+    return decideRcCapaRecommendation(recordId!, normalizedRciId, recommendationId, decision, reason);
   }
 
   function handleOpenHistory() {
     setShowHistory(true);
     setHistoryLoading(true);
-    getRcCapaHistory(recordId!)
+    getRcCapaHistory(recordId!, normalizedRciId)
       .then(setHistoryReports)
       .finally(() => setHistoryLoading(false));
   }
@@ -474,9 +476,9 @@ export function RcCapaCritiquePage() {
     setPushBusy(true);
     setPushError(null);
     try {
-      const updated = await pushRcCapaToSitReview(recordId!);
+      const updated = await pushRcCapaToSitReview(recordId!, normalizedRciId);
       setState(updated);
-      navigate(`/records/${recordId}/rci-report`);
+      navigate(recordPath(recordId!, normalizedRciId, "rci-report"));
     } catch (err) {
       setPushError(err instanceof ApiError ? String(err.detail) : "Failed to push for SIT review");
     } finally {

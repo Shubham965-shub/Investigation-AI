@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePanelState } from "./PanelStateContext";
+import { recordPath } from "../lib/rci";
 import backArrow from "../assets/icons/panel-back-arrow.svg";
 import closeIcon from "../assets/icons/panel-close.png";
 import calendarIcon from "../assets/icons/panel-calendar.svg";
@@ -22,6 +23,7 @@ const HEADER_HEIGHT = 83;
 
 export interface PreviewInvestigation {
   id: string;
+  rciId: string | null;
   title: string;
   eventType: string;
   investigator: string;
@@ -86,7 +88,7 @@ export function InvestigationPreviewPanel({
 
   function goToStep(path: string | null) {
     if (!investigation || !path) return;
-    navigate(`/records/${investigation.id}/${path}`);
+    navigate(recordPath(investigation.id, investigation.rciId, path));
   }
 
   return (

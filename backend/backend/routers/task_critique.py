@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
 from backend.clients.ds_client import HEAVY_DS_TIMEOUT, _raise_for_upstream_error, get_client, raise_for_ds_request_error
 from backend.db.critique_state import MAX_UPLOADS
-from backend.db.field_mapping import resolved_event_type
+from backend.db.field_mapping import normalize_rci_id, resolved_event_type
 from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
@@ -48,12 +48,14 @@ _MAX_RECOMMENDATIONS = 5
 router = APIRouter(prefix="/task-critique", tags=["Task Critique"])
 
 
-async def _get_source_document(deviation_id: int, record_id: str) -> Tuple[Optional[bytes], Optional[str]]:
+async def _get_source_document(
+    deviation_id: int, record_id: str, rci_id: Optional[str]
+) -> Tuple[Optional[bytes], Optional[str]]:
     """A manually uploaded / externally-fed document is always preferred; the RCI Plan export is only the fallback."""
-    uploaded = await fetch_source_document(deviation_id)
+    uploaded = await fetch_source_document(deviation_id, rci_id=rci_id)
     if uploaded is not None:
         return uploaded
-    docx = await fetch_latest_rci_plan_export_docx(deviation_id)
+    docx = await fetch_latest_rci_plan_export_docx(deviation_id, rci_id=rci_id)
     if docx is not None:
         return docx, f"RCI_Plan_{record_id}.docx"
     return None, None
@@ -128,13 +130,13 @@ def _build_section_response(section: Dict[str, Any]) -> TaskCritiqueSection:
     )
 
 
-async def _deviation_id_and_row(record_id: str):
+async def _deviation_id_and_row(record_id: str, rci_id: Optional[str]):
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -145,23 +147,24 @@ async def _deviation_id_and_row(record_id: str):
     return deviation_id, row, event_type
 
 
-async def _build_sections(deviation_id: int, docx_bytes: bytes) -> List[Dict[str, Any]]:
+async def _build_sections(deviation_id: int, docx_bytes: bytes, rci_id: Optional[str]) -> List[Dict[str, Any]]:
     extracted = extract_task_sections(docx_bytes)
-    reports_by_index = await fetch_reports_by_task_index(deviation_id)
+    reports_by_index = await fetch_reports_by_task_index(deviation_id, rci_id=rci_id)
     return [
         {**ext, "task_index": i, "report": reports_by_index.get(i)}
         for i, ext in enumerate(extracted)
     ]
 
 
-@router.get("/{record_id}", response_model=TaskCritiqueListResponse)
-async def get_task_critique(record_id: str) -> TaskCritiqueListResponse:
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
-    docx_bytes, file_name = await _get_source_document(deviation_id, record_id)
+@router.get("/{record_id}/{rci_id}", response_model=TaskCritiqueListResponse)
+async def get_task_critique(record_id: str, rci_id: str) -> TaskCritiqueListResponse:
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    docx_bytes, file_name = await _get_source_document(deviation_id, record_id, resolved_rci_id)
     if docx_bytes is None:
         return TaskCritiqueListResponse(record_id=record_id, sections=[], has_source_document=False)
 
-    sections = await _build_sections(deviation_id, docx_bytes)
+    sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     return TaskCritiqueListResponse(
         record_id=record_id,
         sections=[_build_section_response(s) for s in sections],
@@ -170,10 +173,11 @@ async def get_task_critique(record_id: str) -> TaskCritiqueListResponse:
     )
 
 
-@router.post("/{record_id}/source-document", response_model=TaskCritiqueListResponse)
-async def upload_source_document(record_id: str, file: UploadFile) -> TaskCritiqueListResponse:
+@router.post("/{record_id}/{rci_id}/source-document", response_model=TaskCritiqueListResponse)
+async def upload_source_document(record_id: str, rci_id: str, file: UploadFile) -> TaskCritiqueListResponse:
     """Manual/externally-fed upload; replaces any prior upload for this investigation."""
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
 
     file_bytes = await file.read()
     try:
@@ -183,20 +187,21 @@ async def upload_source_document(record_id: str, file: UploadFile) -> TaskCritiq
     if not extracted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tasks could be found in this document")
 
-    await upsert_source_document(deviation_id, file.filename or "report.docx", file_bytes)
-    return await get_task_critique(record_id)
+    await upsert_source_document(deviation_id, file.filename or "report.docx", file_bytes, rci_id=resolved_rci_id)
+    return await get_task_critique(record_id, rci_id)
 
 
-@router.post("/{record_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
+@router.post("/{record_id}/{rci_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
 async def upload_task_report(
-    record_id: str, task_index: int, file: UploadFile, claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, task_index: int, file: UploadFile, claims: dict = Depends(get_current_payload)
 ) -> TaskCritiqueSection:
-    deviation_id, row, event_type = await _deviation_id_and_row(record_id)
-    docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, row, event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    docx_bytes, _file_name = await _get_source_document(deviation_id, record_id, resolved_rci_id)
     if docx_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No RCI Plan document found for this investigation yet")
 
-    sections = await _build_sections(deviation_id, docx_bytes)
+    sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     section = _find_task(sections, task_index)
 
     state = compute_section_state(section["report"])
@@ -221,17 +226,17 @@ async def upload_task_report(
     if is_gospel:
         report_id = await upsert_report(
             deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
-            is_gospel=True, uploaded_by=claims.get("uid"),
+            is_gospel=True, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
         )
         # A gospel report is final the moment it's uploaded — no critique, no further review.
         task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
         await set_task_score(report_id, task_score, score_breakdown, critique_failed)
-        sections = await _build_sections(deviation_id, docx_bytes)
+        sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
         return _build_section_response(_find_task(sections, task_index))
 
     # Called BEFORE persisting anything, so a transient DS failure doesn't burn one of the 3 real upload attempts.
     # All fields go via `data=` (multipart), not `params=` — task_description can be several KB and previously went out as a URL query param, risking "URL too long" against some proxies.
-    problem_statement = await fetch_problem_statement(deviation_id) or row["description"] or row["title"]
+    problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
 
     # Run concurrently with the critique call below (needs only raw bytes, not its response) to cut latency to max(critique_time, scoring_time) instead of the sum.
@@ -293,10 +298,12 @@ async def upload_task_report(
 
     report_id = await upsert_report(
         deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
-        is_gospel=False, uploaded_by=claims.get("uid"),
+        is_gospel=False, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
     )
     await save_critique(report_id, summary, task_score=None, recommendations=recommendations, task_findings=task_findings)
-    await insert_recommendation_history(deviation_id, task_index, attempt_number, summary, recommendations)
+    await insert_recommendation_history(
+        deviation_id, task_index, attempt_number, summary, recommendations, rci_id=resolved_rci_id
+    )
 
     # The 3rd attempt is final regardless of decision mix — score it now (the scoring call was
     # already kicked off above concurrently with the critique call, so this just awaits it).
@@ -309,26 +316,27 @@ async def upload_task_report(
         task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
         await set_task_score(report_id, task_score, score_breakdown, critique_failed)
 
-    sections = await _build_sections(deviation_id, docx_bytes)
+    sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     return _build_section_response(_find_task(sections, task_index))
 
 
 @router.post(
-    "/{record_id}/sections/{task_index}/recommendations/{recommendation_id}/decision",
+    "/{record_id}/{rci_id}/sections/{task_index}/recommendations/{recommendation_id}/decision",
     response_model=TaskCritiqueSection,
 )
 async def decide_recommendation(
-    record_id: str, task_index: int, recommendation_id: int, request: RecommendationDecisionRequest
+    record_id: str, rci_id: str, task_index: int, recommendation_id: int, request: RecommendationDecisionRequest
 ) -> TaskCritiqueSection:
+    resolved_rci_id = normalize_rci_id(rci_id)
     if request.decision == "rejected" and not request.reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required to reject a recommendation")
 
-    deviation_id, _row, event_type = await _deviation_id_and_row(record_id)
-    docx_bytes, _file_name = await _get_source_document(deviation_id, record_id)
+    deviation_id, _row, event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    docx_bytes, _file_name = await _get_source_document(deviation_id, record_id, resolved_rci_id)
     if docx_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No RCI Plan document found for this investigation yet")
 
-    sections = await _build_sections(deviation_id, docx_bytes)
+    sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     section = _find_task(sections, task_index)
 
     state = compute_section_state(section["report"])
@@ -339,9 +347,11 @@ async def decide_recommendation(
     if recommendation_id not in recommendation_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such recommendation on this task's current report")
 
-    await set_recommendation_decision(deviation_id, task_index, recommendation_id, request.decision, request.reason)
+    await set_recommendation_decision(
+        deviation_id, task_index, recommendation_id, request.decision, request.reason, rci_id=resolved_rci_id
+    )
 
-    sections = await _build_sections(deviation_id, docx_bytes)
+    sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     section = _find_task(sections, task_index)
     new_state = compute_section_state(section["report"])
     if new_state["status"] == "complete" and new_state["latest"]["task_score"] is None:
@@ -350,18 +360,19 @@ async def decide_recommendation(
         if file_bytes is not None:
             task_score, score_breakdown, critique_failed = await _score_task_report(event_type, new_state["latest"]["file_name"], file_bytes, None)
             await set_task_score(new_state["latest"]["id"], task_score, score_breakdown, critique_failed)
-            sections = await _build_sections(deviation_id, docx_bytes)
+            sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
             section = _find_task(sections, task_index)
 
     return _build_section_response(section)
 
 
 @router.get(
-    "/{record_id}/sections/{task_index}/history",
+    "/{record_id}/{rci_id}/sections/{task_index}/history",
     response_model=List[RecommendationHistoryAttempt],
 )
-async def get_recommendation_history(record_id: str, task_index: int) -> List[RecommendationHistoryAttempt]:
+async def get_recommendation_history(record_id: str, rci_id: str, task_index: int) -> List[RecommendationHistoryAttempt]:
     """Full audit trail across every attempt; the main reports table only ever keeps the current attempt (replaced in place each upload), so this append-only log is the only place prior attempts survive."""
-    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id)
-    history = await fetch_recommendation_history(deviation_id, task_index)
+    resolved_rci_id = normalize_rci_id(rci_id)
+    deviation_id, _row, _event_type = await _deviation_id_and_row(record_id, resolved_rci_id)
+    history = await fetch_recommendation_history(deviation_id, task_index, rci_id=resolved_rci_id)
     return [RecommendationHistoryAttempt(**attempt) for attempt in history]

@@ -14,6 +14,7 @@ import { FileDropzone } from "../components/FileDropzone";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
 
@@ -24,7 +25,8 @@ const STATUS_LABEL: Record<TaskCritiqueSection["status"], string> = {
 };
 
 export function TaskCritiqueDetailPage() {
-  const { recordId, taskIndex: taskIndexParam } = useParams<{ recordId: string; taskIndex: string }>();
+  const { recordId, rciId, taskIndex: taskIndexParam } = useParams<{ recordId: string; rciId: string; taskIndex: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
   const taskIndex = Number(taskIndexParam);
 
@@ -63,7 +65,10 @@ export function TaskCritiqueDetailPage() {
     setDbError(null);
     (async () => {
       try {
-        const [data, historyData] = await Promise.all([getTaskCritique(recordId), getTaskCritiqueHistory(recordId, taskIndex)]);
+        const [data, historyData] = await Promise.all([
+          getTaskCritique(recordId, normalizedRciId),
+          getTaskCritiqueHistory(recordId, normalizedRciId, taskIndex),
+        ]);
         if (cancelled) return;
         const foundIndex = data?.sections.findIndex((s) => s.task_index === taskIndex) ?? -1;
         setSection(foundIndex >= 0 ? data!.sections[foundIndex] : null);
@@ -78,7 +83,7 @@ export function TaskCritiqueDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, taskIndex, retryKey]);
+  }, [recordId, rciId, taskIndex, retryKey]);
 
   if (!recordId || Number.isNaN(taskIndex)) return null;
 
@@ -99,7 +104,7 @@ export function TaskCritiqueDetailPage() {
       <div className="empty-state">
         <p>This task could not be found.</p>
         <div className="footer-actions">
-          <button type="button" className="btn-outline" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
+          <button type="button" className="btn-outline" onClick={() => navigate(recordPath(recordId, normalizedRciId, "task-critique"))}>
             Back to Task Critique History
           </button>
         </div>
@@ -117,14 +122,14 @@ export function TaskCritiqueDetailPage() {
       setScoring("final_attempt");
     }
     try {
-      const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
+      const updated = await uploadTaskCritiqueReport(recordId!, normalizedRciId, taskIndex, file);
       if (updated.locked) {
         // Final upload — nothing left to review, so go back to the list page instead of this now-closed detail page.
-        navigate(`/records/${recordId}/task-critique`);
+        navigate(recordPath(recordId!, normalizedRciId, "task-critique"));
         return;
       }
       setSection(updated);
-      getTaskCritiqueHistory(recordId!, taskIndex).then(setHistory);
+      getTaskCritiqueHistory(recordId!, normalizedRciId, taskIndex).then(setHistory);
     } catch (err) {
       setActionError(err instanceof ApiError ? String(err.detail) : "Failed to upload report");
     } finally {
@@ -141,11 +146,11 @@ export function TaskCritiqueDetailPage() {
     try {
       let updated = section!;
       for (const id of pendingIds) {
-        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, id, "accepted");
+        updated = await decideTaskCritiqueRecommendation(recordId!, normalizedRciId, taskIndex, id, "accepted");
       }
       if (updated.locked) {
         // Scored and closed out — go back to the list instead of this now-closed detail page.
-        navigate(`/records/${recordId}/task-critique`);
+        navigate(recordPath(recordId!, normalizedRciId, "task-critique"));
         return;
       }
       setSection(updated);
@@ -184,14 +189,14 @@ export function TaskCritiqueDetailPage() {
     try {
       let updated = section!;
       for (const rec of toAccept) {
-        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "accepted");
+        updated = await decideTaskCritiqueRecommendation(recordId!, normalizedRciId, taskIndex, rec.id, "accepted");
       }
       for (const rec of toReject) {
-        updated = await decideTaskCritiqueRecommendation(recordId!, taskIndex, rec.id, "rejected", deselectReasons[rec.id].trim());
+        updated = await decideTaskCritiqueRecommendation(recordId!, normalizedRciId, taskIndex, rec.id, "rejected", deselectReasons[rec.id].trim());
       }
       if (updated.locked) {
         // Scored and closed out — go back to the list instead of this now-closed detail page.
-        navigate(`/records/${recordId}/task-critique`);
+        navigate(recordPath(recordId!, normalizedRciId, "task-critique"));
         return;
       }
       setSection(updated);
@@ -227,7 +232,7 @@ export function TaskCritiqueDetailPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <button
             type="button"
-            onClick={() => navigate(`/records/${recordId}/task-critique`)}
+            onClick={() => navigate(recordPath(recordId, normalizedRciId, "task-critique"))}
             style={{ background: "none", border: "none" }}
             aria-label="Back to Task Critique History"
           >

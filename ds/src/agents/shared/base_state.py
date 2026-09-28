@@ -18,3 +18,5 @@ class BaseArchetypeState:
     # Historical search — used by the low-confidence fallback path in all workflows
     search_query: Optional[str] = None
     search_results: Optional[List[Dict[str, Any]]] = None
+    # Groundwork for per-RCI workflows — not yet used by any matching logic.
+    rci_id: Optional[str] = None

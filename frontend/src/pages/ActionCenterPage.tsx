@@ -548,9 +548,10 @@ export function ActionCenterPage() {
     });
   }
 
-  function toPreview(inv: InvestigationRowResponse): PreviewInvestigation {
+  function toPreview(inv: InvestigationRowResponse, rciId: string | null): PreviewInvestigation {
     return {
       id: inv.id,
+      rciId,
       title: inv.title,
       eventType: inv.event_type,
       investigator: inv.investigator ?? "",
@@ -571,7 +572,7 @@ export function ActionCenterPage() {
       .join("")
       .toUpperCase();
     return (
-      <div className="ac-card" key={`${inv.id}-${inv.rci_ids[0] ?? ""}`} onClick={() => setPreviewInvestigation(toPreview(inv))} style={{ cursor: "pointer" }}>
+      <div className="ac-card" key={`${inv.id}-${inv.rci_ids[0] ?? ""}`} onClick={() => setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null))} style={{ cursor: "pointer" }}>
         <div className="ac-inv-card-header">
           <span className="ac-pending-card-id">{inv.id}</span>
           <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
@@ -722,7 +723,7 @@ export function ActionCenterPage() {
                 <div
                   className="ac-card"
                   key={action.id}
-                  onClick={() => fullInvestigation && setPreviewInvestigation(toPreview(fullInvestigation))}
+                  onClick={() => fullInvestigation && setPreviewInvestigation(toPreview(fullInvestigation, fullInvestigation.rci_ids[0] ?? null))}
                   style={{ cursor: fullInvestigation ? "pointer" : undefined, gridRow }}
                 >
                   <div className="ac-pending-card-header">
@@ -989,7 +990,7 @@ export function ActionCenterPage() {
                   <tr
                     key={inv.id}
                     className={`ac-inv-row ${eventTypeAccentClass(inv.event_type)}`}
-                    onClick={() => (hasMultipleRci ? toggleExpanded(inv.id) : setPreviewInvestigation(toPreview(inv)))}
+                    onClick={() => (hasMultipleRci ? toggleExpanded(inv.id) : setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null)))}
                     style={{ cursor: "pointer" }}
                   >
                     <td>
@@ -1096,7 +1097,7 @@ export function ActionCenterPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (hasMultipleRci) toggleExpanded(inv.id);
-                          else setPreviewInvestigation(toPreview(inv));
+                          else setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null));
                         }}
                       >
                         <img
@@ -1118,12 +1119,15 @@ export function ActionCenterPage() {
                   const subRowKey = `${inv.id}-${rciId}`;
                   const subRemarkValue = remarkDrafts[subRowKey] ?? inv.remarks[rciId] ?? "";
                   const subInvestigator = rciId in inv.investigator_by_rci ? inv.investigator_by_rci[rciId] : inv.investigator;
+                  // Falls back to the parent row's scalar investigator_stage if the backend hasn't populated a per-rci entry for this id.
+                  const subStage = inv.investigator_stage_by_rci?.[rciId] ?? inv.investigator_stage;
+                  const subPercent = inv.total_stages ? Math.round((subStage / inv.total_stages) * 100) : 0;
                   return (
                     <tr
                       key={subRowKey}
                       className={`ac-inv-row ac-inv-subrow ${eventTypeAccentClass(inv.event_type)}`}
                       onClick={() =>
-                        setPreviewInvestigation(toPreview({ ...inv, rci_ids: [rciId], investigator: subInvestigator }))
+                        setPreviewInvestigation(toPreview({ ...inv, investigator: subInvestigator }, rciId))
                       }
                       style={{ cursor: "pointer" }}
                     >
@@ -1138,11 +1142,11 @@ export function ActionCenterPage() {
                         ) : (
                           <>
                             <div className="ac-progress-top">
-                              <span>{inv.investigator_stage}/{inv.total_stages} steps</span>
-                              <span>{percent}%</span>
+                              <span>{subStage}/{inv.total_stages} steps</span>
+                              <span>{subPercent}%</span>
                             </div>
                             <div className="ac-progress-track">
-                              <div className="ac-progress-fill" style={{ width: `${percent}%` }} />
+                              <div className="ac-progress-fill" style={{ width: `${subPercent}%` }} />
                             </div>
                           </>
                         )}

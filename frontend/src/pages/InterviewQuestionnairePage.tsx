@@ -7,6 +7,7 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AddItemDialog } from "../components/AddItemDialog";
+import { recordPath, fromRciSegment } from "../lib/rci";
 
 interface ChecklistItem {
   description: string;
@@ -20,7 +21,8 @@ import copyIcon from "../assets/icons/copy-icon.svg";
 import "./RecordModulePage.css";
 
 export function InterviewQuestionnairePage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
 
   const [recordLoading, setRecordLoading] = useState(true);
@@ -47,8 +49,8 @@ export function InterviewQuestionnairePage() {
     (async () => {
       try {
         const [psRecord, qRecord] = await Promise.all([
-          getProblemStatementRecord(recordId),
-          getQuestionnaireRecord(recordId),
+          getProblemStatementRecord(recordId, normalizedRciId),
+          getQuestionnaireRecord(recordId, normalizedRciId),
         ]);
         if (cancelled) return;
         setProblemStatement(psRecord?.problem_statement ?? null);
@@ -68,7 +70,7 @@ export function InterviewQuestionnairePage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   useEffect(() => {
     // Market Complaint investigations skip this module entirely — no point generating questions nobody will see.
@@ -76,7 +78,7 @@ export function InterviewQuestionnairePage() {
     if (eventType === "Market Complaint") return;
     setLoading(true);
     setError(null);
-    generateQuestionnaire(recordId, { event_type: eventType, trackwise_fields: trackwiseFields })
+    generateQuestionnaire(recordId, normalizedRciId, { event_type: eventType, trackwise_fields: trackwiseFields })
       .then((response) => {
         // Session-only display — the backend persists this (best-effort) as part of the generate call.
         setItems(response.questions.map((q) => ({ description: q.description, checked: true, isUserAdded: false })));
@@ -86,7 +88,7 @@ export function InterviewQuestionnairePage() {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, recordLoading, dbError, problemStatement, eventType, trackwiseFields]);
+  }, [recordId, rciId, recordLoading, dbError, problemStatement, eventType, trackwiseFields]);
 
   if (!recordId) return null;
 
@@ -106,7 +108,7 @@ export function InterviewQuestionnairePage() {
     return (
       <div className="empty-state">
         <p>Complete the Problem Statement step first — Interview Questionnaire needs it to generate questions.</p>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/problem-statement`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "problem-statement"))}>
           Go to Problem Statement
         </button>
       </div>
@@ -117,7 +119,7 @@ export function InterviewQuestionnairePage() {
     return (
       <div className="empty-state">
         <p>Interview Questionnaire is not required for Market Complaint investigations.</p>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/rci-plan`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "rci-plan"))}>
           Go to RCI Plan Creation
         </button>
       </div>
@@ -129,6 +131,7 @@ export function InterviewQuestionnairePage() {
     if (!recordId) return;
     updateQuestionnaireItems(
       recordId,
+      normalizedRciId,
       list.map((i) => ({ description: i.description, is_new: false, is_checked: i.checked }))
     ).catch((err) => {
       console.error("Failed to persist questionnaire items", err);
@@ -162,11 +165,12 @@ export function InterviewQuestionnairePage() {
   }
 
   function handleAgreeAndNext() {
+    if (!recordId) return;
     setShowConfirm(false);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
-      navigate(`/records/${recordId}/rci-plan`);
+      navigate(recordPath(recordId, normalizedRciId, "rci-plan"));
     }, 1500);
   }
 

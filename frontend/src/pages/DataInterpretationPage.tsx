@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import "./RecordModulePage.css";
 import "./DataInterpretationPage.css";
 
@@ -268,7 +269,8 @@ function TrendChartCard({ series }: { series: TrendSeries }) {
 }
 
 export function DataInterpretationPage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
   const [activeFailureModes, setActiveFailureModes] = useState<Set<string>>(new Set());
   const [priority, setPriority] = useState<"All" | Priority>("All");
@@ -388,10 +390,10 @@ export function DataInterpretationPage() {
       </div>
 
       <div className="footer-actions split">
-        <button type="button" className="btn-outline" onClick={() => navigate(`/records/${recordId}/rci-plan`)}>
+        <button type="button" className="btn-outline" onClick={() => navigate(recordPath(recordId, normalizedRciId, "rci-plan"))}>
           Back to RCI Plan Creation
         </button>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/task-critique`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "task-critique"))}>
           Next: Task Critique
         </button>
       </div>

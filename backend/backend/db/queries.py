@@ -7,7 +7,7 @@ import asyncpg
 
 from backend.clients.db_client import get_pool
 
-_INVESTIGATION_ROW_QUERY = """
+_INVESTIGATION_ROW_BASE_QUERY = """
 -- dim_event.status was renamed to dim_event.module; aliased back to `status`
 -- here since that's the key module_stage.stage_for() expects.
 SELECT
@@ -85,15 +85,27 @@ LEFT JOIN dim_batch b ON b.batch_key = f.batch_key
 LEFT JOIN dim_investigator di ON di.investigator_key = f.investigator_key
 LEFT JOIN dim_rci r ON r.rci_key = f.rci_key
 LEFT JOIN dim_department d ON d.department_key = f.department_key
-WHERE f.deviation_id = $1
-LIMIT 1
 """
 
 
-async def fetch_investigation_row(deviation_id: int) -> Optional[asyncpg.Record]:
+async def fetch_investigation_row(deviation_id: int, rci_id: Optional[str] = None) -> Optional[asyncpg.Record]:
     pool = get_pool()
     async with pool.acquire() as conn:
-        return await conn.fetchrow(_INVESTIGATION_ROW_QUERY, deviation_id)
+        if rci_id is not None:
+            try:
+                rci_key = int(rci_id)
+            except ValueError:
+                rci_key = None
+            if rci_key is not None:
+                row = await conn.fetchrow(
+                    _INVESTIGATION_ROW_BASE_QUERY + "WHERE f.deviation_id = $1 AND f.rci_key = $2 LIMIT 1",
+                    deviation_id, rci_key,
+                )
+                if row is not None:
+                    return row
+        # No rci_id given, or it didn't match any row for this deviation (defensive,
+        # shouldn't happen in practice) — preserves today's exact arbitrary-row behavior.
+        return await conn.fetchrow(_INVESTIGATION_ROW_BASE_QUERY + "WHERE f.deviation_id = $1 LIMIT 1", deviation_id)
 
 
 # Same open/closed/cancelled classification as action_center_queries.py;

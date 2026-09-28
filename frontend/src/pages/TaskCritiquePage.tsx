@@ -14,6 +14,7 @@ import { TaskCritiqueGuidelines } from "../components/TaskCritiqueGuidelines";
 import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { scoreGrade } from "../utils/scoreGrade";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -24,7 +25,8 @@ const STATUS_LABEL: Record<TaskCritiqueSection["status"], string> = {
 };
 
 export function TaskCritiquePage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,10 @@ export function TaskCritiquePage() {
     setDbError(null);
     (async () => {
       try {
-        const [data, psRecord] = await Promise.all([getTaskCritique(recordId), getProblemStatementRecord(recordId)]);
+        const [data, psRecord] = await Promise.all([
+          getTaskCritique(recordId, normalizedRciId),
+          getProblemStatementRecord(recordId, normalizedRciId),
+        ]);
         if (cancelled) return;
         setSections(data?.sections ?? null);
         setHasSourceDocument(data?.has_source_document ?? false);
@@ -60,7 +65,7 @@ export function TaskCritiquePage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   if (!recordId) return null;
 
@@ -80,7 +85,7 @@ export function TaskCritiquePage() {
     setSourceDocUploading(true);
     setSourceDocError(null);
     try {
-      const data = await uploadTaskCritiqueSourceDocument(recordId!, file);
+      const data = await uploadTaskCritiqueSourceDocument(recordId!, normalizedRciId, file);
       setSections(data.sections);
       setHasSourceDocument(data.has_source_document);
     } catch (err) {
@@ -110,7 +115,7 @@ export function TaskCritiquePage() {
           <FileDropzone disabled={sourceDocUploading} loading={sourceDocUploading} onFileSelected={handleSourceDocumentUpload} />
           {sourceDocError && <p className="error-banner">{sourceDocError}</p>}
           <div className="footer-actions">
-            <button type="button" className="btn-outline" onClick={() => navigate(`/records/${recordId}/rci-plan`)}>
+            <button type="button" className="btn-outline" onClick={() => navigate(recordPath(recordId, normalizedRciId, "rci-plan"))}>
               Go to RCI Plan Creation
             </button>
           </div>
@@ -130,14 +135,14 @@ export function TaskCritiquePage() {
       setScoring("final_attempt");
     }
     try {
-      const updated = await uploadTaskCritiqueReport(recordId!, taskIndex, file);
+      const updated = await uploadTaskCritiqueReport(recordId!, normalizedRciId, taskIndex, file);
       if (updated.locked) {
         // Final upload — nothing left to review, so stay on the list page instead of navigating to the detail page.
         setSections((prev) => (prev ? prev.map((s) => (s.task_index === taskIndex ? updated : s)) : prev));
         setBusyTaskIndex(null);
         setScoring(null);
       } else {
-        navigate(`/records/${recordId}/task-critique/${taskIndex}`);
+        navigate(recordPath(recordId!, normalizedRciId, `task-critique/${taskIndex}`));
       }
     } catch (err) {
       setUploadError((prev) => ({
@@ -173,7 +178,7 @@ export function TaskCritiquePage() {
           type="button"
           className="btn-primary"
           style={{ display: "flex", alignItems: "center", gap: 10 }}
-          onClick={() => navigate(`/records/${recordId}/rc-capa-critique`)}
+          onClick={() => navigate(recordPath(recordId, normalizedRciId, "rc-capa-critique"))}
         >
           <img src={exportIcon} alt="" width={16} height={16} />
           Agree and Push to RC, Impact & CAPA Critique
@@ -189,7 +194,7 @@ export function TaskCritiquePage() {
               <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "12px 16px" }}>
                 <div
                   style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}
-                  onClick={() => navigate(`/records/${recordId}/task-critique/${section.task_index}`)}
+                  onClick={() => navigate(recordPath(recordId, normalizedRciId, `task-critique/${section.task_index}`))}
                 >
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>

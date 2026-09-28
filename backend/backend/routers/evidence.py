@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.clients.ds_client import ds_post
-from backend.db.field_mapping import build_trackwise_fields, resolved_event_type
+from backend.db.field_mapping import build_trackwise_fields, normalize_rci_id, resolved_event_type
 from backend.db.generated_content_queries import fetch_evidence_items, replace_evidence_items
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row
@@ -24,10 +24,11 @@ _NOT_FOUND_DETAIL = "No evidence list found for this investigation yet"
 router = APIRouter(prefix="/evidence", tags=["Evidence Collection"])
 
 
-@router.post("/{record_id}/collect", response_model=EvidenceCollectionResponse)
+@router.post("/{record_id}/{rci_id}/collect", response_model=EvidenceCollectionResponse)
 async def collect_evidence(
-    record_id: str, request: EvidenceCollectionRequest, claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, request: EvidenceCollectionRequest, claims: dict = Depends(get_current_payload)
 ) -> EvidenceCollectionResponse:
+    resolved_rci_id = normalize_rci_id(rci_id)
     data = await ds_post("/evidence/collect", json=request.model_dump())
     response = EvidenceCollectionResponse(**data)
 
@@ -37,6 +38,7 @@ async def collect_evidence(
         await replace_evidence_items(
             deviation_id,
             [{"description": item.description, "is_checked": True} for item in response.evidence],
+            rci_id=resolved_rci_id,
             generated_by=claims.get("uid"),
         )
     except Exception:
@@ -45,14 +47,15 @@ async def collect_evidence(
     return response
 
 
-@router.get("/{record_id}", response_model=EvidenceCollectionRecord)
-async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
+@router.get("/{record_id}/{rci_id}", response_model=EvidenceCollectionRecord)
+async def get_evidence(record_id: str, rci_id: str) -> EvidenceCollectionRecord:
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    row = await fetch_investigation_row(deviation_id)
+    row = await fetch_investigation_row(deviation_id, rci_id=resolved_rci_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
@@ -60,7 +63,7 @@ async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
     if event_type is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
 
-    persisted = await fetch_evidence_items(deviation_id)
+    persisted = await fetch_evidence_items(deviation_id, rci_id=resolved_rci_id)
     return EvidenceCollectionRecord(
         record_id=record_id,
         event_type=event_type,
@@ -70,11 +73,12 @@ async def get_evidence(record_id: str) -> EvidenceCollectionRecord:
     )
 
 
-@router.put("/{record_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.put("/{record_id}/{rci_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def update_evidence(
-    record_id: str, items: list[EvidenceItem], claims: dict = Depends(get_current_payload)
+    record_id: str, rci_id: str, items: list[EvidenceItem], claims: dict = Depends(get_current_payload)
 ) -> None:
     """Full replace of persisted evidence state, triggered by user edits instead of generation."""
+    resolved_rci_id = normalize_rci_id(rci_id)
     try:
         deviation_id = int(record_id)
     except ValueError:
@@ -83,5 +87,6 @@ async def update_evidence(
     await replace_evidence_items(
         deviation_id,
         [{"description": item.description, "is_checked": item.is_checked, "is_new": item.is_new} for item in items],
+        rci_id=resolved_rci_id,
         generated_by=claims.get("uid"),
     )

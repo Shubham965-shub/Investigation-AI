@@ -14,6 +14,7 @@ import { getEventExplorerHandoffUrl } from "../api/auth";
 import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } from "../constants/trackwiseFields";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { recordPath, fromRciSegment } from "../lib/rci";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
@@ -46,7 +47,8 @@ function formatDdMmYyyy(iso: string): string {
 }
 
 export function RciPlanPage() {
-  const { recordId } = useParams<{ recordId: string }>();
+  const { recordId, rciId } = useParams<{ recordId: string; rciId: string }>();
+  const normalizedRciId = fromRciSegment(rciId) || null;
   const navigate = useNavigate();
   const persistTimerRef = useRef<number | null>(null);
   const minDueDate = useMemo(() => tomorrowIso(), []);
@@ -86,8 +88,8 @@ export function RciPlanPage() {
     (async () => {
       try {
         const [psRecord, rciRecord, investigatorNames] = await Promise.all([
-          getProblemStatementRecord(recordId),
-          getRciPlanRecord(recordId),
+          getProblemStatementRecord(recordId, normalizedRciId),
+          getRciPlanRecord(recordId, normalizedRciId),
           getOpenInvestigators(),
         ]);
         if (cancelled) return;
@@ -125,7 +127,7 @@ export function RciPlanPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordId, retryKey]);
+  }, [recordId, rciId, retryKey]);
 
   const additionalFields = useMemo(
     () => (eventType ? getAdditionalFieldsForModule("rci-plan", eventType) : []),
@@ -150,7 +152,7 @@ export function RciPlanPage() {
     return (
       <div className="empty-state">
         <p>Complete the Problem Statement step first — RCI Plan needs it to generate a plan.</p>
-        <button type="button" className="btn-primary" onClick={() => navigate(`/records/${recordId}/problem-statement`)}>
+        <button type="button" className="btn-primary" onClick={() => navigate(recordPath(recordId, normalizedRciId, "problem-statement"))}>
           Go to Problem Statement
         </button>
       </div>
@@ -170,7 +172,7 @@ export function RciPlanPage() {
             ? raw.split("\n").map((line) => line.trim()).filter(Boolean)
             : raw;
       }
-      const response = await generateRciPlan(recordId!, { event_type: eventType!, trackwise_fields: mergedFields });
+      const response = await generateRciPlan(recordId!, normalizedRciId, { event_type: eventType!, trackwise_fields: mergedFields });
       // Defaults each generated section's Target Date to today + 5 working days instead of leaving it blank; still freely editable after.
       const filled = response.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
       setSections(filled);
@@ -192,7 +194,7 @@ export function RciPlanPage() {
     if (!recordId) return;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
-      updateRciPlanSections(recordId, list)
+      updateRciPlanSections(recordId, normalizedRciId, list)
         .then(() => setPersistError(null))
         .catch((err) => {
           console.error("Failed to persist RCI plan sections", err);
@@ -309,7 +311,7 @@ export function RciPlanPage() {
   // Backend fills the company's RCI Plan Word template (assets/rci_plan_template.docx) with this investigation's persisted sections and returns the file directly.
   async function downloadRciPlanDocument() {
     if (!recordId) return;
-    const blob = await exportRciPlanDocx(recordId);
+    const blob = await exportRciPlanDocx(recordId, normalizedRciId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -324,13 +326,13 @@ export function RciPlanPage() {
   const missingAssignments = (sections ?? []).some((s) => (s.is_checked ?? true) && (!s.assignee || !s.due_date));
 
   async function handleAcceptAndPush() {
-    if (missingAssignments) return;
+    if (missingAssignments || !recordId) return;
     setShowConfirm(false);
     setExportError(null);
     try {
       await downloadRciPlanDocument();
       setPushed(true);
-      setTimeout(() => navigate(`/records/${recordId}/data-interpretation`), 1500);
+      setTimeout(() => navigate(recordPath(recordId, normalizedRciId, "data-interpretation")), 1500);
     } catch (err) {
       setExportError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI plan document");
     }

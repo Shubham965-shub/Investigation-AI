@@ -35,7 +35,7 @@ const STATIC_PAGEVIEW_IDS: Record<string, string> = {
 // map needed since :recordId varies per investigation.
 function pageIdForPath(pathname: string): string | null {
   if (STATIC_PAGEVIEW_IDS[pathname]) return STATIC_PAGEVIEW_IDS[pathname];
-  const match = pathname.match(/^\/records\/[^/]+\/([^/]+)(\/([^/]+))?/);
+  const match = pathname.match(/^\/records\/[^/]+\/[^/]+\/([^/]+)(\/([^/]+))?/);
   if (!match) return null;
   const [, step, , subSegment] = match;
   if (step === "task-critique" && subSegment) return "task-critique-detail";
@@ -74,30 +74,30 @@ export default function App() {
               <Route path="/user-management" element={<UserManagementPage />} />
               <Route path="/cxo-dashboard" element={<CxoDashboardPage />} />
 
-              <Route path="/records/:recordId" element={<Navigate to="problem-statement" replace />} />
-              <Route path="/records/:recordId/problem-statement" element={<RecordShell currentStep="problem-statement" />}>
+              <Route path="/records/:recordId" element={<Navigate to="none/problem-statement" replace />} />
+              <Route path="/records/:recordId/:rciId/problem-statement" element={<RecordShell currentStep="problem-statement" />}>
                 <Route index element={<ProblemStatementPage />} />
               </Route>
-              <Route path="/records/:recordId/evidence-collection" element={<RecordShell currentStep="evidence-collection" />}>
+              <Route path="/records/:recordId/:rciId/evidence-collection" element={<RecordShell currentStep="evidence-collection" />}>
                 <Route index element={<EvidenceCollectionPage />} />
               </Route>
-              <Route path="/records/:recordId/interview-questionnaire" element={<RecordShell currentStep="interview-questionnaire" />}>
+              <Route path="/records/:recordId/:rciId/interview-questionnaire" element={<RecordShell currentStep="interview-questionnaire" />}>
                 <Route index element={<InterviewQuestionnairePage />} />
               </Route>
-              <Route path="/records/:recordId/rci-plan" element={<RecordShell currentStep="rci-plan" />}>
+              <Route path="/records/:recordId/:rciId/rci-plan" element={<RecordShell currentStep="rci-plan" />}>
                 <Route index element={<RciPlanPage />} />
               </Route>
-              <Route path="/records/:recordId/data-interpretation" element={<RecordShell currentStep="data-interpretation" />}>
+              <Route path="/records/:recordId/:rciId/data-interpretation" element={<RecordShell currentStep="data-interpretation" />}>
                 <Route index element={<DataInterpretationPage />} />
               </Route>
-              <Route path="/records/:recordId/task-critique" element={<RecordShell currentStep="task-critique" />}>
+              <Route path="/records/:recordId/:rciId/task-critique" element={<RecordShell currentStep="task-critique" />}>
                 <Route index element={<TaskCritiquePage />} />
                 <Route path=":taskIndex" element={<TaskCritiqueDetailPage />} />
               </Route>
-              <Route path="/records/:recordId/rc-capa-critique" element={<RecordShell currentStep="rc-capa-critique" />}>
+              <Route path="/records/:recordId/:rciId/rc-capa-critique" element={<RecordShell currentStep="rc-capa-critique" />}>
                 <Route index element={<RcCapaCritiquePage />} />
               </Route>
-              <Route path="/records/:recordId/rci-report" element={<RecordShell currentStep="rci-report" />}>
+              <Route path="/records/:recordId/:rciId/rci-report" element={<RecordShell currentStep="rci-report" />}>
                 <Route index element={<RciReportPage />} />
               </Route>
             </Route>
