@@ -4,6 +4,7 @@ import { ArrowRight, Activity, Eye, EyeOff, Loader2, Moon, Sun } from "lucide-re
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 import { getPublicStats } from "../api/auth";
+import { track, EVENTS } from "../telemetry/events";
 import { Schematic } from "./Schematic";
 import stridesLogoDark from "../assets/icons/logo.png";
 import stridesIconLight from "../assets/icons/strides-icon.png";
@@ -40,7 +41,10 @@ export function LoginPage() {
   // Navigates only once isAuthenticated actually lands — navigating right after login() resolves
   // risks ProtectedRoute reading a stale isAuthenticated=false and bouncing back to /login.
   useEffect(() => {
-    if (isAuthenticated) navigate("/", { replace: true });
+    if (isAuthenticated) {
+      track(EVENTS.loginSucceeded);
+      navigate("/", { replace: true });
+    }
   }, [isAuthenticated, navigate]);
 
   async function signIn(e: React.FormEvent) {
@@ -51,7 +55,9 @@ export function LoginPage() {
     try {
       await login(username, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const message = err instanceof Error ? err.message : "Login failed";
+      setError(message);
+      track(EVENTS.loginFailed, { error: message });
     } finally {
       setSubmitting(false);
     }

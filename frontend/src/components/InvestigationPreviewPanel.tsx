@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePanelState } from "./PanelStateContext";
 import { recordPath } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import backArrow from "../assets/icons/panel-back-arrow.svg";
 import closeIcon from "../assets/icons/panel-close.png";
 import calendarIcon from "../assets/icons/panel-calendar.svg";
@@ -80,8 +81,14 @@ export function InvestigationPreviewPanel({
   const percent = investigation ? Math.round((investigation.step / investigation.totalSteps) * 100) : 0;
   const currentStepDef = investigation ? STEP_DEFS[investigation.step] : undefined;
 
-  function goToStep(path: string | null) {
+  function goToStep(path: string | null, trigger: "jump_banner" | "step_card" | "continue_button") {
     if (!investigation || !path) return;
+    track(EVENTS.previewStepOpened, {
+      investigationId: investigation.id,
+      rciId: investigation.rciId,
+      targetStep: path,
+      trigger,
+    });
     navigate(recordPath(investigation.id, investigation.rciId, path));
   }
 
@@ -210,7 +217,7 @@ export function InvestigationPreviewPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => goToStep(currentStepDef.path)}
+                      onClick={() => goToStep(currentStepDef.path, "jump_banner")}
                       style={{ background: "var(--color-open-bg)", border: "none", borderRadius: 4, padding: "5px 11px", display: "flex", alignItems: "center", gap: 4, color: "var(--color-info-text)", fontSize: "var(--font-size-xs)", fontWeight: 600 }}
                     >
                       Jump to step
@@ -246,10 +253,10 @@ export function InvestigationPreviewPanel({
                       </div>
                       <div style={{ flex: 1, minWidth: 0, paddingBottom: 16 }}>
                         <div
-                          onClick={stepDef.path ? () => goToStep(stepDef.path) : undefined}
+                          onClick={stepDef.path ? () => goToStep(stepDef.path, "step_card") : undefined}
                           role={stepDef.path ? "button" : undefined}
                           tabIndex={stepDef.path ? 0 : undefined}
-                          onKeyDown={stepDef.path ? (e) => (e.key === "Enter" || e.key === " ") && goToStep(stepDef.path) : undefined}
+                          onKeyDown={stepDef.path ? (e) => (e.key === "Enter" || e.key === " ") && goToStep(stepDef.path, "step_card") : undefined}
                           style={{
                             background: "var(--color-surface)",
                             border: `1px solid ${cardBorder}`,
@@ -308,7 +315,7 @@ export function InvestigationPreviewPanel({
                               </div>
                             )}
                             {status === "in-progress" && stepDef.path && (
-                              <button type="button" onClick={() => goToStep(stepDef.path)} style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 4, padding: "4px 16px", fontSize: "var(--font-size-base)", fontWeight: 700 }}>
+                              <button type="button" onClick={() => goToStep(stepDef.path, "continue_button")} style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 4, padding: "4px 16px", fontSize: "var(--font-size-base)", fontWeight: 700 }}>
                                 Continue
                               </button>
                             )}

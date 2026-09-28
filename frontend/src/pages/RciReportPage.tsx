@@ -35,6 +35,7 @@ import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
 import checkSingleIcon from "../assets/icons/rci-report-check-single.svg";
@@ -933,6 +934,7 @@ export function RciReportPage() {
       const record = await generateRciReport(recordId, normalizedRciId);
       setReport(record.report);
       setGeneratedAt(record.generated_at);
+      track(EVENTS.rciReportGenerated, { recordId, rciId: normalizedRciId });
     } catch (err) {
       setGenerateError(err instanceof ApiError ? String(err.detail) : "Failed to generate RCI Report");
     } finally {
@@ -956,6 +958,7 @@ export function RciReportPage() {
       a.remove();
       // Short delay before revoking — some browsers haven't finished writing the download yet when .click() returns.
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      track(EVENTS.rciReportDownloaded, { recordId, rciId: normalizedRciId });
     } catch (err) {
       setDownloadError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI report document");
     } finally {

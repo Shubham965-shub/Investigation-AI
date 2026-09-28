@@ -9,6 +9,7 @@ import { formatSiteLabel } from "../constants/siteLabels";
 import { ApiError } from "../api/client";
 import { getActionCenterSummary, updateInvestigationRemark, type ActionCenterSummaryResponse, type InvestigationRowResponse, type MonthlyTrend, type StatusCardResponse } from "../api/dashboard";
 import { useAuth } from "../auth/AuthContext";
+import { track, EVENTS } from "../telemetry/events";
 import iconUnassigned from "../assets/icons/status-unassigned.svg";
 import iconSearch from "../assets/icons/search.svg";
 import iconViewGrid from "../assets/icons/view-grid.png";
@@ -217,7 +218,15 @@ function renderAssignmentFilterCard(
         {/* Reuses .ac-criticality-toggle styling; "stretch" fills the wider card's width instead of a small inline pill. */}
         <div className="ac-criticality-toggle stretch">
           {ASSIGNMENT_FILTER_OPTIONS.map((opt) => (
-            <button type="button" key={opt.key} className={value === opt.key ? "active" : ""} onClick={() => onChange(opt.key)}>
+            <button
+              type="button"
+              key={opt.key}
+              className={value === opt.key ? "active" : ""}
+              onClick={() => {
+                onChange(opt.key);
+                track(EVENTS.filterChanged, { filterName: "assignment", value: opt.key });
+              }}
+            >
               {opt.label}
             </button>
           ))}
@@ -486,13 +495,17 @@ export function ActionCenterPage() {
   })();
 
   function handleSort(column: SortColumn) {
+    let newDirection: "asc" | "desc";
     if (sortColumn === column) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+      newDirection = sortDirection === "asc" ? "desc" : "asc";
+      setSortDirection(newDirection);
     } else {
+      newDirection = "asc";
       setSortColumn(column);
       setSortDirection("asc");
     }
     setPage(1);
+    track(EVENTS.sortChanged, { column, direction: newDirection });
   }
 
   // Native double-click fires click, click, then dblclick — without this, double-clicking the
@@ -511,17 +524,21 @@ export function ActionCenterPage() {
       window.clearTimeout(progressClickTimer.current);
       progressClickTimer.current = null;
     }
-    setShowTwStatusColumn((prev) => !prev);
+    const next = !showTwStatusColumn;
+    setShowTwStatusColumn(next);
+    track(EVENTS.progressColumnToggled, { showTwStatusColumn: next });
   }
 
   function setFilter(label: string) {
     setActiveFilter((prev) => (prev === label ? null : label));
     setPage(1);
+    track(EVENTS.filterChanged, { filterName: "event_type", value: label });
   }
 
   function setStatusCardFilter(key: string) {
     setStatusFilter((prev) => (prev === key ? null : key));
     setPage(1);
+    track(EVENTS.filterChanged, { filterName: "status", value: key });
   }
 
   // Autosaves on blur. rowKey mirrors the row's composite key (`${inv.id}-${rciId}`) so each accordion sub-row's draft stays independent.
@@ -532,14 +549,18 @@ export function ActionCenterPage() {
     setRemarkErrors((prev) => ({ ...prev, [rowKey]: "" }));
     try {
       await updateInvestigationRemark(inv.id, rciId, value);
+      track(EVENTS.remarkSaved, { investigationId: inv.id, rciId, success: true });
     } catch (err) {
       setRemarkErrors((prev) => ({ ...prev, [rowKey]: err instanceof ApiError ? String(err.detail) : "Failed to save remark" }));
+      track(EVENTS.remarkSaved, { investigationId: inv.id, rciId, success: false });
     } finally {
       setRemarkSaving((prev) => ({ ...prev, [rowKey]: false }));
     }
   }
 
-  function toggleExpanded(id: string) {
+  function toggleExpanded(id: string, rciCount: number) {
+    const willExpand = !expandedIds.has(id);
+    track(EVENTS.investigationRowExpanded, { investigationId: id, expanded: willExpand, rciCount });
     setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -562,6 +583,12 @@ export function ActionCenterPage() {
     };
   }
 
+  // Wraps setPreviewInvestigation so every row/sub-row/card opening path fires investigationOpened consistently.
+  function openPreview(inv: InvestigationRowResponse, rciId: string | null) {
+    track(EVENTS.investigationOpened, { investigationId: inv.id, rciId, eventType: inv.event_type });
+    setPreviewInvestigation(toPreview(inv, rciId));
+  }
+
   function renderInvestigationCard(inv: InvestigationRowResponse) {
     const percent = Math.round((inv.stage / inv.total_stages) * 100);
     const statusInfo = BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned;
@@ -572,7 +599,7 @@ export function ActionCenterPage() {
       .join("")
       .toUpperCase();
     return (
-      <div className="ac-card" key={`${inv.id}-${inv.rci_ids[0] ?? ""}`} onClick={() => setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null))} style={{ cursor: "pointer" }}>
+      <div className="ac-card" key={`${inv.id}-${inv.rci_ids[0] ?? ""}`} onClick={() => openPreview(inv, inv.rci_ids[0] ?? null)} style={{ cursor: "pointer" }}>
         <div className="ac-inv-card-header">
           <span className="ac-pending-card-id">{inv.id}</span>
           <span className={`status-pill ${statusInfo.status}`}>{statusInfo.label}</span>
@@ -640,6 +667,7 @@ export function ActionCenterPage() {
             onClick={() => {
               setActiveFilter(null);
               setPage(1);
+              track(EVENTS.filterChanged, { filterName: "event_type", value: null });
             }}
           >
             <div className="ac-kpi-card-header">OPEN INVESTIGATIONS</div>
@@ -772,6 +800,7 @@ export function ActionCenterPage() {
                   setSearchQuery(e.target.value);
                   setPage(1);
                 }}
+                onBlur={(e) => track(EVENTS.filterChanged, { filterName: "search", value: e.target.value })}
               />
             </div>
             <button type="button" className="ac-search-btn">Search</button>
@@ -785,6 +814,7 @@ export function ActionCenterPage() {
                 onClick={() => {
                   setCriticalityFilter("");
                   setPage(1);
+                  track(EVENTS.filterChanged, { filterName: "criticality", value: "" });
                 }}
               >
                 All
@@ -795,6 +825,7 @@ export function ActionCenterPage() {
                 onClick={() => {
                   setCriticalityFilter("critical");
                   setPage(1);
+                  track(EVENTS.filterChanged, { filterName: "criticality", value: "critical" });
                 }}
               >
                 Critical
@@ -807,6 +838,7 @@ export function ActionCenterPage() {
                     onClick={() => {
                       setCriticalityFilter("phase2");
                       setPage(1);
+                      track(EVENTS.filterChanged, { filterName: "criticality", value: "phase2" });
                     }}
                   >
                     Phase 2
@@ -819,6 +851,7 @@ export function ActionCenterPage() {
                   onClick={() => {
                     setCriticalityFilter("non_critical");
                     setPage(1);
+                    track(EVENTS.filterChanged, { filterName: "criticality", value: "non_critical" });
                   }}
                 >
                   Major & Minor
@@ -833,6 +866,7 @@ export function ActionCenterPage() {
                 onChange={(v) => {
                   setSiteFilter(v);
                   setPage(1);
+                  track(EVENTS.filterChanged, { filterName: "site", value: v });
                 }}
                 defaultLabel="All Sites"
                 options={summary.filter_options.sites}
@@ -844,6 +878,7 @@ export function ActionCenterPage() {
                 onChange={(v) => {
                   setDeptFilter(v);
                   setPage(1);
+                  track(EVENTS.filterChanged, { filterName: "department", value: v });
                 }}
                 defaultLabel="Dept"
                 options={summary.filter_options.departments}
@@ -854,6 +889,7 @@ export function ActionCenterPage() {
                 onChange={(v) => {
                   setProductFilter(v);
                   setPage(1);
+                  track(EVENTS.filterChanged, { filterName: "product", value: v });
                 }}
                 defaultLabel="Product"
                 options={summary.filter_options.products}
@@ -865,6 +901,7 @@ export function ActionCenterPage() {
                   onChange={(v) => {
                     setInvestigatorFilter(v);
                     setPage(1);
+                    track(EVENTS.filterChanged, { filterName: "investigator", value: v });
                   }}
                   defaultLabel="All Investigators"
                   options={summary.filter_options.investigators}
@@ -900,7 +937,10 @@ export function ActionCenterPage() {
               type="button"
               aria-label="List view"
               className={viewMode === "list" ? "active" : ""}
-              onClick={() => setViewMode("list")}
+              onClick={() => {
+                setViewMode("list");
+                track(EVENTS.viewModeChanged, { mode: "list" });
+              }}
             >
               <img src={iconViewList} alt="" width={14} height={14} />
               List View
@@ -909,7 +949,10 @@ export function ActionCenterPage() {
               type="button"
               aria-label="Card view"
               className={viewMode === "grid" ? "active" : ""}
-              onClick={() => setViewMode("grid")}
+              onClick={() => {
+                setViewMode("grid");
+                track(EVENTS.viewModeChanged, { mode: "grid" });
+              }}
             >
               <img src={iconViewGrid} alt="" width={14} height={14} />
               Card View
@@ -921,13 +964,34 @@ export function ActionCenterPage() {
         {viewMode === "grid" && (
           <div className="ac-details-header" style={{ marginTop: -8 }}>
             <div className="ac-criticality-toggle">
-              <button type="button" className={groupBy === "all" ? "active" : ""} onClick={() => setGroupBy("all")}>
+              <button
+                type="button"
+                className={groupBy === "all" ? "active" : ""}
+                onClick={() => {
+                  setGroupBy("all");
+                  track(EVENTS.filterChanged, { filterName: "group_by", value: "all" });
+                }}
+              >
                 All
               </button>
-              <button type="button" className={groupBy === "product" ? "active" : ""} onClick={() => setGroupBy("product")}>
+              <button
+                type="button"
+                className={groupBy === "product" ? "active" : ""}
+                onClick={() => {
+                  setGroupBy("product");
+                  track(EVENTS.filterChanged, { filterName: "group_by", value: "product" });
+                }}
+              >
                 By Product
               </button>
-              <button type="button" className={groupBy === "investigator" ? "active" : ""} onClick={() => setGroupBy("investigator")}>
+              <button
+                type="button"
+                className={groupBy === "investigator" ? "active" : ""}
+                onClick={() => {
+                  setGroupBy("investigator");
+                  track(EVENTS.filterChanged, { filterName: "group_by", value: "investigator" });
+                }}
+              >
                 By Investigator
               </button>
             </div>
@@ -990,7 +1054,7 @@ export function ActionCenterPage() {
                   <tr
                     key={inv.id}
                     className={`ac-inv-row ${eventTypeAccentClass(inv.event_type)}`}
-                    onClick={() => (hasMultipleRci ? toggleExpanded(inv.id) : setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null)))}
+                    onClick={() => (hasMultipleRci ? toggleExpanded(inv.id, inv.rci_ids.length) : openPreview(inv, inv.rci_ids[0] ?? null))}
                     style={{ cursor: "pointer" }}
                   >
                     <td>
@@ -1096,8 +1160,8 @@ export function ActionCenterPage() {
                         aria-label={hasMultipleRci ? `Toggle ${inv.id}` : `Preview ${inv.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (hasMultipleRci) toggleExpanded(inv.id);
-                          else setPreviewInvestigation(toPreview(inv, inv.rci_ids[0] ?? null));
+                          if (hasMultipleRci) toggleExpanded(inv.id, inv.rci_ids.length);
+                          else openPreview(inv, inv.rci_ids[0] ?? null);
                         }}
                       >
                         <img
@@ -1126,9 +1190,7 @@ export function ActionCenterPage() {
                     <tr
                       key={subRowKey}
                       className={`ac-inv-row ac-inv-subrow ${eventTypeAccentClass(inv.event_type)}`}
-                      onClick={() =>
-                        setPreviewInvestigation(toPreview({ ...inv, investigator: subInvestigator }, rciId))
-                      }
+                      onClick={() => openPreview({ ...inv, investigator: subInvestigator }, rciId)}
                       style={{ cursor: "pointer" }}
                     >
                       <td style={{ paddingLeft: 32 }}>

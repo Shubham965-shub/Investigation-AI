@@ -16,6 +16,7 @@ import {
   type FailurePatternsResponse,
   type RootCauseStatusResponse,
 } from "../api/dashboard";
+import { track, EVENTS } from "../telemetry/events";
 import "./AnalyticsPage.css";
 
 // Only Event, CAPA/Root-Cause presence, and Failure Pattern product/equipment frequency map onto real data (see backend/routers/analytics.py) — Investigation Quality, CAPA L1-L5 ranking, and Failure Pattern narrative/trend cards are still mock (marked below).
@@ -542,11 +543,58 @@ function AnalyticsFilterBar({
 }) {
   return (
     <div className="an-filters" style={{ marginBottom: 4 }}>
-      <FilterSelect className="an-filter-pill" value={siteFilter} onChange={setSiteFilter} defaultLabel="All Sites" options={options.sites} formatOption={formatSiteLabel} />
-      <FilterSelect className="an-filter-pill" value={deptFilter} onChange={setDeptFilter} defaultLabel="All Dept" options={options.departments} />
-      <FilterSelect className="an-filter-pill" value={productFilter} onChange={setProductFilter} defaultLabel="All Product" options={options.products} />
-      <FilterSelect className="an-filter-pill" value={equipmentFilter} onChange={setEquipmentFilter} defaultLabel="All Equipment" options={options.equipment} />
-      <FilterSelect className="an-filter-pill" value={datePreset} onChange={setDatePreset} defaultLabel="All Time" options={DATE_PRESET_OPTIONS} formatOption={formatDatePreset} />
+      <FilterSelect
+        className="an-filter-pill"
+        value={siteFilter}
+        onChange={(v) => {
+          track(EVENTS.filterChanged, { filterName: "site", value: v });
+          setSiteFilter(v);
+        }}
+        defaultLabel="All Sites"
+        options={options.sites}
+        formatOption={formatSiteLabel}
+      />
+      <FilterSelect
+        className="an-filter-pill"
+        value={deptFilter}
+        onChange={(v) => {
+          track(EVENTS.filterChanged, { filterName: "department", value: v });
+          setDeptFilter(v);
+        }}
+        defaultLabel="All Dept"
+        options={options.departments}
+      />
+      <FilterSelect
+        className="an-filter-pill"
+        value={productFilter}
+        onChange={(v) => {
+          track(EVENTS.filterChanged, { filterName: "product", value: v });
+          setProductFilter(v);
+        }}
+        defaultLabel="All Product"
+        options={options.products}
+      />
+      <FilterSelect
+        className="an-filter-pill"
+        value={equipmentFilter}
+        onChange={(v) => {
+          track(EVENTS.filterChanged, { filterName: "equipment", value: v });
+          setEquipmentFilter(v);
+        }}
+        defaultLabel="All Equipment"
+        options={options.equipment}
+      />
+      <FilterSelect
+        className="an-filter-pill"
+        value={datePreset}
+        onChange={(v) => {
+          track(EVENTS.filterChanged, { filterName: "date_preset", value: v });
+          setDatePreset(v);
+        }}
+        defaultLabel="All Time"
+        options={DATE_PRESET_OPTIONS}
+        formatOption={formatDatePreset}
+      />
     </div>
   );
 }

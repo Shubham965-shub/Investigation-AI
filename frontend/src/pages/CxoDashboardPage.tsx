@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { track, EVENTS } from "../telemetry/events";
 import "./ActionCenterPage.css";
 import "./CxoDashboardPage.css";
 
@@ -1151,7 +1152,10 @@ export function CxoDashboardPage() {
                 key={d.key}
                 type="button"
                 className={`cxo-domain-card ${d.key === activeDomain ? `active ${d.status}` : ""}`}
-                onClick={() => setActiveDomain(d.key)}
+                onClick={() => {
+                  track(EVENTS.cxoDomainChanged, { domain: d.key });
+                  setActiveDomain(d.key);
+                }}
               >
                 <div className="cxo-domain-label">{d.label}</div>
                 <div className={`cxo-domain-value ${d.status}`}>{d.value}</div>
