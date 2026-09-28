@@ -20,6 +20,7 @@ import "./RecordModulePage.css";
 
 const STATUS_LABEL: Record<TaskCritiqueSection["status"], string> = {
   pending: "Pending",
+  processing: "Processing",
   in_progress: "In Progress",
   complete: "Complete",
 };
@@ -66,6 +67,30 @@ export function TaskCritiquePage() {
       cancelled = true;
     };
   }, [recordId, rciId, retryKey]);
+
+  // Single shared poll loop covering every section, not one interval per task — the upload endpoint
+  // now returns almost immediately with status "processing" while DS critique/scoring runs in the
+  // background (Azure was killing the connection on the old synchronous call before DS could finish).
+  // Keeps polling as long as ANY section is still processing, so uploading to a second task while the
+  // first is still processing doesn't spawn a second overlapping interval. Stops itself (via the
+  // dependency on `sections`) the moment a poll comes back with nothing left in "processing".
+  useEffect(() => {
+    if (!recordId) return;
+    const hasProcessing = (sections ?? []).some(
+      (s) => s.status === "processing" || s.latest_report?.critique_pending
+    );
+    if (!hasProcessing) return;
+    const intervalId = setInterval(() => {
+      getTaskCritique(recordId, normalizedRciId)
+        .then((data) => {
+          if (data) setSections(data.sections);
+        })
+        .catch(() => {
+          // Transient poll failure — the interval keeps running and retries on the next tick.
+        });
+    }, 3500);
+    return () => clearInterval(intervalId);
+  }, [recordId, normalizedRciId, sections]);
 
   if (!recordId) return null;
 
@@ -244,6 +269,12 @@ export function TaskCritiquePage() {
                 <div style={{ flexShrink: 0, minWidth: 180 }} onClick={(e) => e.stopPropagation()}>
                   {section.can_upload && (
                     <FileDropzone compact disabled={busy} loading={busy} label="Upload Task Report" onFileSelected={(file) => handleUpload(section.task_index, file)} />
+                  )}
+                  {(section.status === "processing" || section.latest_report?.critique_pending) && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "16px 8px" }}>
+                      <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, color: "var(--color-primary)" }} />
+                      <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>Analyzing report…</span>
+                    </div>
                   )}
                   {hasScore && (() => {
                     const grade = scoreGrade(section.latest_report!.task_score!);

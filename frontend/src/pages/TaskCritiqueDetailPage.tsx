@@ -12,6 +12,7 @@ import { ApiError } from "../api/client";
 import { DbErrorModal } from "../components/DbErrorModal";
 import { FileDropzone } from "../components/FileDropzone";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
@@ -20,6 +21,7 @@ import "./RecordModulePage.css";
 
 const STATUS_LABEL: Record<TaskCritiqueSection["status"], string> = {
   pending: "Pending",
+  processing: "Processing",
   in_progress: "In Progress",
   complete: "Complete",
 };
@@ -84,6 +86,29 @@ export function TaskCritiqueDetailPage() {
       cancelled = true;
     };
   }, [recordId, rciId, taskIndex, retryKey]);
+
+  // The upload endpoint now returns almost immediately with status "processing" while DS
+  // critique/scoring for this task runs in the background (Azure was killing the connection on the
+  // old synchronous call before DS could finish) — poll this single task until that clears.
+  useEffect(() => {
+    if (!recordId || Number.isNaN(taskIndex)) return;
+    const isProcessing = section?.status === "processing" || section?.latest_report?.critique_pending;
+    if (!isProcessing) return;
+    const intervalId = setInterval(() => {
+      getTaskCritique(recordId, normalizedRciId)
+        .then((data) => {
+          const found = data?.sections.find((s) => s.task_index === taskIndex);
+          if (found) {
+            setSection(found);
+            getTaskCritiqueHistory(recordId, normalizedRciId, taskIndex).then(setHistory);
+          }
+        })
+        .catch(() => {
+          // Transient poll failure — the interval keeps running and retries on the next tick.
+        });
+    }, 3500);
+    return () => clearInterval(intervalId);
+  }, [recordId, normalizedRciId, taskIndex, section]);
 
   if (!recordId || Number.isNaN(taskIndex)) return null;
 
@@ -495,6 +520,13 @@ export function TaskCritiqueDetailPage() {
       )}
 
       {scoring && <ScoringDialog reason={scoring} />}
+
+      {!scoring && (section.status === "processing" || section.latest_report?.critique_pending) && (
+        <GeneratingDialog
+          heading="Analyzing report…"
+          message="This report has been uploaded and is being critiqued and scored — this can take a few seconds to a couple of minutes."
+        />
+      )}
 
       {showIncorporateDialog && <IncorporateChangesDialog onClose={() => setShowIncorporateDialog(false)} />}
     </div>

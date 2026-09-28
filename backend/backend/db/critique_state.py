@@ -29,6 +29,21 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
             "latest": None,
         }
 
+    if latest.get("critique_pending"):
+        # Upload persisted, DS critique/scoring still running in the background (see
+        # routers/task_critique.py's/_process_task_report_async and its RC&CAPA equivalent) —
+        # checked before every other branch below, since an in-flight row can otherwise look
+        # identical to "DS genuinely found nothing to flag" (empty recommendations) and lock
+        # itself as falsely complete before the background call has even run.
+        return {
+            "status": "processing",
+            "upload_count": upload_count,
+            "locked": False,
+            "can_upload": False,
+            "next_upload_is_final": False,
+            "latest": latest,
+        }
+
     if latest["is_gospel"]:
         return {
             "status": "complete",
@@ -58,8 +73,10 @@ def compute_upload_state(latest: Optional[Dict[str, Any]], upload_count: int) ->
     if latest.get("critique_failed"):
         # Original meaning here (not final attempt): bad report format / DS
         # found nothing to critique — never a genuine critique, so it must
-        # not lock or block a reupload. Unreachable for RC & CAPA (no
-        # critique_failed column, `.get` always falsy).
+        # not lock or block a reupload. Also reached by a background DS
+        # failure during async upload processing (both Task Critique and,
+        # since 2026-09-28, RC & CAPA Critique — see each router's
+        # _process_*_async).
         return {
             "status": "in_progress",
             "upload_count": upload_count,

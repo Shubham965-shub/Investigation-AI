@@ -14,6 +14,7 @@ from backend.db.generated_content_queries import fetch_problem_statement
 from backend.db.queries import fetch_investigation_row
 from backend.db.rci_plan_export_queries import fetch_latest_rci_plan_export_docx
 from backend.db.task_critique_queries import (
+    clear_critique_pending,
     compute_section_state,
     fetch_recommendation_history,
     fetch_report_file_bytes,
@@ -191,6 +192,108 @@ async def upload_source_document(record_id: str, rci_id: str, file: UploadFile) 
     return await get_task_critique(record_id, rci_id)
 
 
+async def _process_task_report_async(
+    deviation_id: int,
+    task_index: int,
+    report_id: int,
+    attempt_number: int,
+    event_type: str,
+    problem_statement: str,
+    task_description: str,
+    file_name: Optional[str],
+    file_bytes: bytes,
+    content_type: Optional[str],
+    is_gospel: bool,
+    is_final_attempt: bool,
+    rci_id: Optional[str],
+) -> None:
+    """Runs the slow DS critique/scoring calls AFTER the upload's HTTP response has already gone
+    out (see upload_task_report) — this is what keeps the request itself fast, instead of blocking
+    on DS synchronously and risking Azure Container Apps' platform-level request timeout (240s
+    default) killing the connection before DS ever replies (DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS
+    allows up to 200s on its own — see config/settings.py). Every path ends by clearing
+    critique_pending via the `finally` block, regardless of success/failure, so the row never gets
+    stuck showing "processing" forever."""
+    try:
+        if is_gospel:
+            # A gospel report is final the moment it's uploaded — no critique, no further review.
+            task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file_name, file_bytes, content_type)
+            await set_task_score(report_id, task_score, score_breakdown, critique_failed)
+            return
+
+        client = get_client()
+        try:
+            response = await client.post(
+                "/critique/analyse-task-report",
+                data={
+                    "problem_statement": problem_statement,
+                    "event_type": event_type,
+                    "task_description": task_description,
+                    "deviation_id": str(deviation_id),
+                    "task_index": str(task_index),
+                },
+                files={"file": (file_name, file_bytes, content_type)},
+                timeout=HEAVY_DS_TIMEOUT,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            # Can no longer reject synchronously before persisting (the response already went
+            # out) — marked critique_failed instead, which per critique_state.py doesn't lock and
+            # allows an immediate reupload, same as the "no analyzable tasks" case below. The one
+            # real tradeoff versus the old synchronous design: this DOES consume one of the 3
+            # upload attempts, where a pre-persist rejection previously wouldn't have.
+            logger.warning(
+                "Background task-report critique failed for deviation_id=%s task_index=%s",
+                deviation_id, task_index, exc_info=True,
+            )
+            await set_task_score(report_id, None, [], True)
+            return
+
+        if data.get("total_tasks_analyzed", 0) == 0:
+            # A file can pass the local format check yet still not be a genuine, parseable task
+            # report — same tradeoff/handling as the exception case above.
+            logger.warning(
+                "Task report for deviation_id=%s task_index=%s had no analyzable tasks",
+                deviation_id, task_index,
+            )
+            await set_task_score(report_id, None, [], True)
+            return
+
+        # ds returns one task_critiques entry per checklist item, each capped at 5 recommendations; re-cap after flattening, keeping still-unaddressed carried-forward items first.
+        # Summary is positive-only (strengths) — gaps are surfaced separately via recommendations.
+        strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
+        summary: Optional[str] = " ".join(strengths) if strengths else None
+        flattened_recommendations: List[str] = [
+            rec
+            for task in data.get("task_critiques", [])
+            for rec in task.get("recommendations", [])
+        ]
+        recommendations: List[str] = sorted(
+            flattened_recommendations, key=lambda r: not r.startswith(_UNADDRESSED_MARKER)
+        )[:_MAX_RECOMMENDATIONS]
+        # Stored as-is so RCI Report Section 5 can ground on the report's actual content, not just
+        # the strengths-only `summary` above (shared identically across every subtask).
+        task_findings: List[Dict[str, Any]] = data.get("task_evidence", [])
+
+        await save_critique(report_id, summary, task_score=None, recommendations=recommendations, task_findings=task_findings)
+        await insert_recommendation_history(
+            deviation_id, task_index, attempt_number, summary, recommendations, rci_id=rci_id
+        )
+
+        # The 3rd attempt is final regardless of decision mix — score it now.
+        if is_final_attempt:
+            task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file_name, file_bytes, content_type)
+            await set_task_score(report_id, task_score, score_breakdown, critique_failed)
+        elif not recommendations:
+            # Zero recommendations on a non-final attempt locks it as complete immediately (same as
+            # rejecting every recommendation), so it needs the same "score it now" trigger.
+            task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file_name, file_bytes, content_type)
+            await set_task_score(report_id, task_score, score_breakdown, critique_failed)
+    finally:
+        await clear_critique_pending(report_id)
+
+
 @router.post("/{record_id}/{rci_id}/sections/{task_index}/upload", response_model=TaskCritiqueSection)
 async def upload_task_report(
     record_id: str, rci_id: str, task_index: int, file: UploadFile, claims: dict = Depends(get_current_payload)
@@ -217,104 +320,35 @@ async def upload_task_report(
 
     missing_markers = missing_task_report_markers(file_bytes)
     if missing_markers:
-        # Rejected outright — no attempt consumed, no critique call.
+        # Rejected outright — no attempt consumed, no critique call. This local check is still
+        # synchronous/fast (no DS call), so this protection is unaffected by the async redesign
+        # below.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This document doesn't match the required task report format — please upload the correct report.",
         )
 
-    if is_gospel:
-        report_id = await upsert_report(
-            deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
-            is_gospel=True, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
-        )
-        # A gospel report is final the moment it's uploaded — no critique, no further review.
-        task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score, score_breakdown, critique_failed)
-        sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
-        return _build_section_response(_find_task(sections, task_index))
-
-    # Called BEFORE persisting anything, so a transient DS failure doesn't burn one of the 3 real upload attempts.
-    # All fields go via `data=` (multipart), not `params=` — task_description can be several KB and previously went out as a URL query param, risking "URL too long" against some proxies.
+    # Persisted immediately as "processing" and returned right away — the slow DS critique/
+    # scoring calls run in the background (_process_task_report_async above) instead of blocking
+    # this request on them. All fields for that background call go via `data=` (multipart), not
+    # `params=` — task_description can be several KB and previously went out as a URL query
+    # param, risking "URL too long" against some proxies.
     problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id) or row["description"] or row["title"]
     task_description = _describe_task(section)
-
-    # Run concurrently with the critique call below (needs only raw bytes, not its response) to cut latency to max(critique_time, scoring_time) instead of the sum.
-    score_task: Optional["asyncio.Task[Tuple[Optional[int], List[Dict[str, Any]], bool]]"] = None
-    if attempt_number >= MAX_UPLOADS:
-        score_task = asyncio.create_task(
-            _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        )
-
-    client = get_client()
-    try:
-        response = await client.post(
-            "/critique/analyse-task-report",
-            data={
-                "problem_statement": problem_statement,
-                "event_type": event_type,
-                "task_description": task_description,
-                "deviation_id": str(deviation_id),
-                "task_index": str(task_index),
-            },
-            files={"file": (file.filename, file_bytes, file.content_type)},
-            timeout=HEAVY_DS_TIMEOUT,
-        )
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        if score_task is not None:
-            score_task.cancel()
-        _raise_for_upstream_error(exc)
-    except httpx.RequestError as exc:
-        if score_task is not None:
-            score_task.cancel()
-        raise_for_ds_request_error(exc)
-
-    data = response.json()
-    if data.get("total_tasks_analyzed", 0) == 0:
-        # A file can pass the local format check yet still not be a genuine, parseable task report.
-        if score_task is not None:
-            score_task.cancel()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This document doesn't match the required task report format — please upload the correct report.",
-        )
-
-    # ds returns one task_critiques entry per checklist item, each capped at 5 recommendations; re-cap after flattening, keeping still-unaddressed carried-forward items first.
-    # Summary is positive-only (strengths) — gaps are surfaced separately via recommendations.
-    strengths = [task["strengths"] for task in data.get("task_critiques", []) if task.get("strengths")]
-    summary: Optional[str] = " ".join(strengths) if strengths else None
-    flattened_recommendations: List[str] = [
-        rec
-        for task in data.get("task_critiques", [])
-        for rec in task.get("recommendations", [])
-    ]
-    recommendations: List[str] = sorted(
-        flattened_recommendations, key=lambda r: not r.startswith(_UNADDRESSED_MARKER)
-    )[:_MAX_RECOMMENDATIONS]
-    # Stored as-is so RCI Report Section 5 can ground on the report's actual content, not just
-    # the strengths-only `summary` above (shared identically across every subtask).
-    task_findings: List[Dict[str, Any]] = data.get("task_evidence", [])
+    is_final_attempt = attempt_number >= MAX_UPLOADS
 
     report_id = await upsert_report(
         deviation_id, task_index, attempt_number, file.filename or "report", file_bytes,
-        is_gospel=False, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id,
-    )
-    await save_critique(report_id, summary, task_score=None, recommendations=recommendations, task_findings=task_findings)
-    await insert_recommendation_history(
-        deviation_id, task_index, attempt_number, summary, recommendations, rci_id=resolved_rci_id
+        is_gospel=is_gospel, uploaded_by=claims.get("uid"), rci_id=resolved_rci_id, critique_pending=True,
     )
 
-    # The 3rd attempt is final regardless of decision mix — score it now (the scoring call was
-    # already kicked off above concurrently with the critique call, so this just awaits it).
-    if score_task is not None:
-        task_score, score_breakdown, critique_failed = await score_task
-        await set_task_score(report_id, task_score, score_breakdown, critique_failed)
-    elif not recommendations:
-        # Zero recommendations on a non-final attempt locks it as complete immediately (same as
-        # rejecting every recommendation), so it needs the same "score it now" trigger.
-        task_score, score_breakdown, critique_failed = await _score_task_report(event_type, file.filename, file_bytes, file.content_type)
-        await set_task_score(report_id, task_score, score_breakdown, critique_failed)
+    asyncio.create_task(
+        _process_task_report_async(
+            deviation_id, task_index, report_id, attempt_number, event_type,
+            problem_statement, task_description, file.filename, file_bytes, file.content_type,
+            is_gospel, is_final_attempt, resolved_rci_id,
+        )
+    )
 
     sections = await _build_sections(deviation_id, docx_bytes, resolved_rci_id)
     return _build_section_response(_find_task(sections, task_index))

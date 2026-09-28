@@ -48,7 +48,8 @@ async def fetch_rc_capa_reports(deviation_id: int, rci_id: Optional[str] = None)
                        capa_summary, capa_recommendations,
                        rc_score, impact_score, capa_score, total_score, score_breakdown, uploaded_at,
                        rc_conclusion_text_raw, is_repeat_occurrence, impact_assessment_text,
-                       impact_conclusion_text, correction_remedial_text, capa_text_raw, capa_items
+                       impact_conclusion_text, correction_remedial_text, capa_text_raw, capa_items,
+                       critique_pending, critique_failed
                 FROM investigation_rc_capa_reports
                 WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2 ORDER BY attempt_number
                 """,
@@ -69,6 +70,8 @@ async def fetch_rc_capa_reports(deviation_id: int, rci_id: Optional[str] = None)
                 "capa_score": r["capa_score"],
                 "total_score": r["total_score"],
                 "score_breakdown": _parse_score_breakdown(r["score_breakdown"]),
+                "critique_pending": r["critique_pending"],
+                "critique_failed": r["critique_failed"],
                 "uploaded_at": r["uploaded_at"],
                 "critiques": [
                     {
@@ -105,14 +108,20 @@ async def insert_report(
     is_gospel: bool,
     rci_id: Optional[str] = None,
     uploaded_by: Optional[int] = None,
+    critique_pending: bool = False,
 ) -> int:
+    """critique_pending=True is the normal case now (see
+    routers/rc_capa_critique.py's upload_rc_capa_report): the row is persisted
+    before DS's critique/scoring calls run in the background, and cleared via
+    clear_critique_pending once they finish — mirrors task_critique_queries.py's
+    upsert_report."""
     pool = get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(
             """
             INSERT INTO investigation_rc_capa_reports
-                (deviation_id, rci_id, attempt_number, file_name, file_bytes, is_gospel, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (deviation_id, rci_id, attempt_number, file_name, file_bytes, is_gospel, uploaded_by, critique_pending)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id
             """,
             deviation_id,
@@ -122,6 +131,20 @@ async def insert_report(
             file_bytes,
             is_gospel,
             uploaded_by,
+            critique_pending,
+        )
+
+
+async def clear_critique_pending(report_id: int) -> None:
+    """Called as the very last step of background upload processing (routers/rc_capa_critique.py's
+    _process_rc_capa_report_async), regardless of which path it took (critique-only, critique+score,
+    gospel+score, or a DS failure) — single place marking "background processing is done". Mirrors
+    task_critique_queries.py's clear_critique_pending."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE investigation_rc_capa_reports SET critique_pending = FALSE WHERE id = $1",
+            report_id,
         )
 
 
@@ -204,17 +227,24 @@ async def set_rc_capa_scores(
     capa_score: Optional[int],
     total_score: Optional[int],
     score_breakdown: Optional[List[Dict[str, Any]]] = None,
+    critique_failed: bool = False,
 ) -> None:
+    """critique_failed=True means the background critique/scoring calls ran but did not produce a
+    real result (DS failure, or scoring incomplete) — mirrors task_critique_queries.py's
+    set_task_score. Lets compute_upload_state (db/critique_state.py) distinguish this from "DS
+    genuinely found nothing to flag", so a transient DS failure doesn't permanently lock the
+    report with no reupload allowed."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE investigation_rc_capa_reports SET rc_score = $2, impact_score = $3, capa_score = $4, total_score = $5, score_breakdown = $6::jsonb WHERE id = $1",
+            "UPDATE investigation_rc_capa_reports SET rc_score = $2, impact_score = $3, capa_score = $4, total_score = $5, score_breakdown = $6::jsonb, critique_failed = $7 WHERE id = $1",
             report_id,
             rc_score,
             impact_score,
             capa_score,
             total_score,
             json.dumps(score_breakdown) if score_breakdown is not None else None,
+            critique_failed,
         )
 
 

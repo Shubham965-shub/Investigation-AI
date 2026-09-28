@@ -207,6 +207,7 @@ textarea.field-value {
 }
 
 .status-pill.pending { color: var(--color-text-muted); border-color: var(--color-text-muted); }
+.status-pill.processing { color: var(--color-info-text); border-color: var(--color-info-text); }
 .status-pill.in_progress { color: var(--color-info-text); border-color: var(--color-info-text); }
 .status-pill.complete { color: var(--color-success-text); border-color: var(--color-success-text); }
 .status-pill.accepted { color: var(--color-accepted-text); border-color: var(--color-accepted-border); background: var(--color-accepted-bg); }
