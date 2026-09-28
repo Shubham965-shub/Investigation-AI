@@ -307,6 +307,9 @@ export interface TaskCritiqueReport {
   score_breakdown: ScoreBreakdownTable[];
   // True when ds's critique came back degenerate (no tasks found) — only possible for reports uploaded before pre-upload checks existed.
   critique_failed: boolean;
+  // True while the background DS critique/scoring call for this report is still running (upload endpoint
+  // now returns almost immediately — see TaskCritiqueSection.status's "processing" value, which this mirrors).
+  critique_pending: boolean;
   uploaded_at: string;
   recommendations: TaskCritiqueRecommendation[];
 }
@@ -319,7 +322,8 @@ export interface TaskCritiqueSection {
   task_count: number;
   due_date: string | null;
   assignee: string | null;
-  status: "pending" | "in_progress" | "complete";
+  // "processing": upload persisted, DS critique/scoring still running in the background — poll until it clears.
+  status: "pending" | "processing" | "in_progress" | "complete";
   upload_count: number;
   max_uploads: number;
   locked: boolean;
@@ -407,11 +411,18 @@ export interface RcCapaReport {
   score_breakdown: ScoreBreakdownTable[];
   uploaded_at: string;
   critiques: RcCapaCritique[];
+  // True while the background DS critique/scoring call for this report is still running — mirrors
+  // TaskCritiqueReport.critique_pending.
+  critique_pending: boolean;
+  // True when the background critique/scoring calls ran but failed — mirrors
+  // TaskCritiqueReport.critique_failed.
+  critique_failed: boolean;
 }
 
 export interface RcCapaState {
   record_id: string;
-  status: "pending" | "in_progress" | "complete";
+  // "processing": upload persisted, DS critique/scoring still running in the background — poll until it clears.
+  status: "pending" | "processing" | "in_progress" | "complete";
   upload_count: number;
   max_uploads: number;
   locked: boolean;

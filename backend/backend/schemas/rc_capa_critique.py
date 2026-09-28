@@ -40,11 +40,22 @@ class RcCapaReport(BaseModel):
     score_breakdown: List[ScoreBreakdownTable] = []
     uploaded_at: datetime.datetime
     critiques: List[RcCapaCritique] = []
+    # True while the background DS critique/scoring calls are still running (see
+    # routers/rc_capa_critique.py's _process_rc_capa_report_async) — mirrors
+    # TaskCritiqueReport.critique_pending.
+    critique_pending: bool = False
+    # True when the background critique/scoring calls ran but failed (DS error, or an incomplete
+    # scoring result) — mirrors TaskCritiqueReport.critique_failed. Distinguishes a real failure
+    # from "DS genuinely found nothing to flag", so compute_upload_state doesn't lock the report
+    # with no reupload allowed on a transient failure.
+    critique_failed: bool = False
 
 
 class RcCapaState(BaseModel):
     record_id: str
-    status: Literal["pending", "in_progress", "complete"]
+    # "processing": upload persisted, DS critique/scoring still running in the background — mirrors
+    # TaskCritiqueSection.status.
+    status: Literal["pending", "processing", "in_progress", "complete"]
     upload_count: int
     max_uploads: int = 3
     locked: bool

@@ -21,6 +21,7 @@ import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { BoldText } from "../components/BoldText";
 import { scoreGrade } from "../utils/scoreGrade";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
+import { GeneratingDialog } from "../components/GeneratingDialog";
 import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
@@ -413,6 +414,26 @@ export function RcCapaCritiquePage() {
     };
   }, [recordId, rciId, retryKey]);
 
+  // The upload endpoint now returns almost immediately with status "processing" while DS
+  // critique/scoring runs in the background (Azure was killing the connection on the old synchronous
+  // call before DS could finish) — poll until that clears. Only one report is ever in flight here (a
+  // single overall state, unlike Task Critique's list of sections), so a single interval suffices.
+  useEffect(() => {
+    if (!recordId) return;
+    const isProcessing = state?.status === "processing" || state?.latest_report?.critique_pending;
+    if (!isProcessing) return;
+    const intervalId = setInterval(() => {
+      getRcCapaCritique(recordId, normalizedRciId)
+        .then((data) => {
+          if (data) setState(data);
+        })
+        .catch(() => {
+          // Transient poll failure — the interval keeps running and retries on the next tick.
+        });
+    }, 3500);
+    return () => clearInterval(intervalId);
+  }, [recordId, normalizedRciId, state]);
+
   if (!recordId) return null;
 
   if (loading) {
@@ -791,6 +812,13 @@ export function RcCapaCritiquePage() {
       )}
 
       {scoring && <ScoringDialog reason={scoring} />}
+
+      {!scoring && (state.status === "processing" || state.latest_report?.critique_pending) && (
+        <GeneratingDialog
+          heading="Analyzing report…"
+          message="This report has been uploaded and is being critiqued and scored — this can take a few seconds to a couple of minutes."
+        />
+      )}
 
       {showScoreDetails && report && <ScoreDetailsDialog report={report} onClose={() => setShowScoreDetails(false)} />}
 

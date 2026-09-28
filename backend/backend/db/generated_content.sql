@@ -227,6 +227,17 @@ CREATE INDEX IF NOT EXISTS idx_investigation_task_critique_reports_deviation_id 
 
 ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS task_findings JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- Asynchronous upload processing (2026-09-28, per the user) — task report / RC&CAPA report
+-- uploads used to call DS's critique + scoring endpoints synchronously inside the request,
+-- which risked Azure Container Apps' platform-level request timeout (240s default) killing the
+-- connection before a slow-but-eventually-successful DS call ever returned (see
+-- DS_SERVICE_HEAVY_READ_TIMEOUT_SECONDS in config/settings.py) — the browser then saw a raw
+-- network failure with no error detail. Uploads now persist immediately with
+-- critique_pending=TRUE and return right away; the actual DS calls run in the background
+-- (routers/task_critique.py's _process_task_report_async), clearing this flag when done.
+-- critique_state.py's compute_upload_state surfaces this as a new "processing" status.
+ALTER TABLE investigation_task_critique_reports ADD COLUMN IF NOT EXISTS critique_pending BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Append-only audit log of every attempt's generated recommendation set
 -- (2026-08-07, per the user) — investigation_task_critique_reports above
 -- only ever holds the CURRENT attempt (replaced in place), so without this,
@@ -329,6 +340,20 @@ ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS impact_conclu
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS correction_remedial_text TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_text_raw TEXT;
 ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS capa_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- Asynchronous upload processing — same reasoning/pattern as
+-- investigation_task_critique_reports.critique_pending above.
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS critique_pending BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Without this, a background DS failure during async upload processing (see
+-- routers/rc_capa_critique.py's _process_rc_capa_report_async) has no way to signal "critiqued
+-- but failed" — the report is left with empty recommendations, which compute_upload_state
+-- (db/critique_state.py) reads as "DS genuinely found nothing to flag" and locks as complete
+-- with no reupload allowed. That's a real regression from the old synchronous design (a failed
+-- request consumed nothing and could be retried immediately). Adding this column makes
+-- critique_state.py's existing critique_failed branch reachable for RC & CAPA too, matching
+-- Task Critique's behavior exactly (doesn't lock, allows an immediate reupload).
+ALTER TABLE investigation_rc_capa_reports ADD COLUMN IF NOT EXISTS critique_failed BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- RCI Report (module step 7 of 7) — one row per investigation, upserted in
 -- place on regenerate (2026-08-21, per the user: no "attempt" concept in

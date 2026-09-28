@@ -67,7 +67,7 @@ async def fetch_reports_by_task_index(deviation_id: int, rci_id: Optional[str] =
                 """
                 SELECT id, task_index, attempt_number, file_name, is_gospel,
                        summary, task_score, score_breakdown, recommendations, task_findings,
-                       critique_failed, uploaded_at
+                       critique_failed, critique_pending, uploaded_at
                 FROM investigation_task_critique_reports
                 WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2
                 """,
@@ -87,6 +87,7 @@ async def fetch_reports_by_task_index(deviation_id: int, rci_id: Optional[str] =
                 "task_score": r["task_score"],
                 "score_breakdown": _parse_score_breakdown(r["score_breakdown"]),
                 "critique_failed": r["critique_failed"],
+                "critique_pending": r["critique_pending"],
                 "uploaded_at": r["uploaded_at"],
                 "recommendations": _parse_recommendations(r["recommendations"]),
                 "task_findings": _parse_task_findings(r["task_findings"]),
@@ -104,18 +105,23 @@ async def upsert_report(
     is_gospel: bool,
     rci_id: Optional[str] = None,
     uploaded_by: Optional[int] = None,
+    critique_pending: bool = False,
 ) -> int:
     """Replaces this task's report row in place (or creates it on the first
     upload) — critique fields are reset to blank until save_critique fills
-    them in again."""
+    them in again. critique_pending=True is the normal case now (see
+    routers/task_critique.py's upload_task_report): the row is persisted
+    before DS's critique/scoring calls run in the background, and cleared via
+    clear_critique_pending once they finish."""
     pool = get_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(
             """
             INSERT INTO investigation_task_critique_reports
                 (deviation_id, rci_id, task_index, attempt_number, file_name, file_bytes, is_gospel,
-                 summary, task_score, score_breakdown, recommendations, task_findings, critique_failed, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE, $8)
+                 summary, task_score, score_breakdown, recommendations, task_findings, critique_failed,
+                 critique_pending, uploaded_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, FALSE, $8, $9)
             ON CONFLICT (deviation_id, rci_id, task_index) DO UPDATE SET
                 attempt_number = EXCLUDED.attempt_number,
                 file_name = EXCLUDED.file_name,
@@ -127,6 +133,7 @@ async def upsert_report(
                 recommendations = '[]'::jsonb,
                 task_findings = '[]'::jsonb,
                 critique_failed = FALSE,
+                critique_pending = EXCLUDED.critique_pending,
                 uploaded_at = now(),
                 uploaded_by = EXCLUDED.uploaded_by
             RETURNING id
@@ -138,7 +145,20 @@ async def upsert_report(
             file_name,
             file_bytes,
             is_gospel,
+            critique_pending,
             uploaded_by,
+        )
+
+
+async def clear_critique_pending(report_id: int) -> None:
+    """Called as the very last step of background upload processing (routers/task_critique.py's
+    _process_task_report_async), regardless of which path it took (critique-only, critique+score,
+    gospel+score, or a DS failure) — single place marking "background processing is done"."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE investigation_task_critique_reports SET critique_pending = FALSE WHERE id = $1",
+            report_id,
         )
 
 

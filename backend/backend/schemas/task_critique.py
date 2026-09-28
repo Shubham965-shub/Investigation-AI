@@ -26,8 +26,13 @@ class TaskCritiqueReport(BaseModel):
     task_score: Optional[int] = None
     # Full per-checkpoint breakdown, set alongside task_score.
     score_breakdown: List[ScoreBreakdownTable] = []
-    # True when ds's critique came back degenerate (no real tasks found). Legacy only — new uploads that'd trigger this are rejected outright.
+    # True when ds's critique came back degenerate (no real tasks found) — surfaced via
+    # critique_failed rather than a permanent rejection now, since that outcome can only be
+    # discovered after the upload is already persisted (see critique_pending below).
     critique_failed: bool = False
+    # True while DS's critique/scoring calls are still running in the background — see
+    # TaskCritiqueSection.status's "processing" value, which this mirrors at the report level.
+    critique_pending: bool = False
     uploaded_at: datetime.datetime
     recommendations: List[TaskCritiqueRecommendation] = []
 
@@ -40,7 +45,8 @@ class TaskCritiqueSection(BaseModel):
     task_count: int
     due_date: Optional[str] = None
     assignee: Optional[str] = None
-    status: Literal["pending", "in_progress", "complete"]
+    # "processing": upload persisted, DS critique/scoring still running in the background.
+    status: Literal["pending", "processing", "in_progress", "complete"]
     upload_count: int
     max_uploads: int = 3
     locked: bool
