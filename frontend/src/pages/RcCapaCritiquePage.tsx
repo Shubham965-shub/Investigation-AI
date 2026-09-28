@@ -25,6 +25,7 @@ import { GeneratingDialog } from "../components/GeneratingDialog";
 import { RcCapaHistoryPanel } from "../components/RcCapaHistoryPanel";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -381,6 +382,11 @@ export function RcCapaCritiquePage() {
   // Fires only on a genuine can_upload false -> true transition (not undefined -> true on initial load) — catches every decision path without hooking each call site.
   const [showIncorporateDialog, setShowIncorporateDialog] = useState(false);
   const prevCanUploadRef = useRef<boolean | undefined>(undefined);
+  // Only one overall report here (unlike Task Critique's per-task list) — tracks whether
+  // rcCapaCritiqueUploadResolved has already fired for the current upload attempt, so the poll
+  // loop's resolution branch doesn't re-fire on every subsequent tick; reset in handleUpload
+  // whenever a new report is sent.
+  const resolvedFiredRef = useRef(false);
   useEffect(() => {
     const prev = prevCanUploadRef.current;
     if (prev === false && state?.can_upload === true) {
@@ -425,7 +431,18 @@ export function RcCapaCritiquePage() {
     const intervalId = setInterval(() => {
       getRcCapaCritique(recordId, normalizedRciId)
         .then((data) => {
-          if (data) setState(data);
+          if (data) {
+            const stillProcessing = data.status === "processing" || data.latest_report?.critique_pending;
+            if (!stillProcessing && !resolvedFiredRef.current) {
+              resolvedFiredRef.current = true;
+              track(EVENTS.rcCapaCritiqueUploadResolved, {
+                recordId,
+                rciId: normalizedRciId,
+                status: data.latest_report?.critique_failed ? "critique_failed" : "complete",
+              });
+            }
+            setState(data);
+          }
         })
         .catch(() => {
           // Transient poll failure — the interval keeps running and retries on the next tick.
@@ -468,6 +485,8 @@ export function RcCapaCritiquePage() {
     } else if (state!.upload_count + 1 >= state!.max_uploads) {
       setScoring("final_attempt");
     }
+    resolvedFiredRef.current = false;
+    track(EVENTS.rcCapaCritiqueUploaded, { recordId, rciId: normalizedRciId });
     try {
       const updated = await uploadRcCapaCritiqueReport(recordId!, normalizedRciId, file);
       setState(updated);
@@ -499,6 +518,7 @@ export function RcCapaCritiquePage() {
     try {
       const updated = await pushRcCapaToSitReview(recordId!, normalizedRciId);
       setState(updated);
+      track(EVENTS.rcCapaPushedToSitReview, { recordId, rciId: normalizedRciId });
       navigate(recordPath(recordId!, normalizedRciId, "rci-report"));
     } catch (err) {
       setPushError(err instanceof ApiError ? String(err.detail) : "Failed to push for SIT review");

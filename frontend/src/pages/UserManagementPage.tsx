@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
 import { createAdminUser, getAdminUsers, updateAdminUserRole, type AdminUserRow } from "../api/auth";
 import { CreateUserDialog } from "../components/CreateUserDialog";
+import { track, EVENTS } from "../telemetry/events";
 // Reuses shared classes from ActionCenterPage.css/RecordModulePage.css — plain CSS, no module scoping, same convention as other pages.
 import "./ActionCenterPage.css";
 import "./RecordModulePage.css";
@@ -73,6 +74,7 @@ export function UserManagementPage() {
   }
 
   async function handleRoleChange(userId: number, role: string) {
+    track(EVENTS.userRoleChanged, { userId, newRole: role });
     setSavingRoleFor(userId);
     setError(null);
     // Optimistic update, reverted on failure.
@@ -90,6 +92,7 @@ export function UserManagementPage() {
   }
 
   async function handleCreate(fields: { fullName: string; username: string; password: string; role: string }) {
+    track(EVENTS.userCreated, { role: fields.role });
     setCreating(true);
     setCreateError(null);
     try {

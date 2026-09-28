@@ -19,6 +19,7 @@ import { DbErrorModal } from "../components/DbErrorModal";
 import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ProblemStatementGuidelines } from "../components/ProblemStatementGuidelines";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import copyIcon from "../assets/icons/copy-icon.svg";
 import chevronEntry from "../assets/icons/chevron-entry.svg";
 import "./RecordModulePage.css";
@@ -154,6 +155,7 @@ export function ProblemStatementPage() {
       // Session-only display — the backend already persists this (best-effort) as part of the generate call.
       setProblemStatement(response.problem_statement);
       setDraftPs(response.problem_statement);
+      track(EVENTS.problemStatementGenerated, { recordId: rid, rciId: normalizedRciId });
       // Fire-and-forget: the "What Was Enhanced" panel populates itself once this resolves — a
       // slow/failed enhancements call must not block the primary problem-statement flow.
       loadEnhancements();
@@ -185,6 +187,7 @@ export function ProblemStatementPage() {
         setProblemStatement(draftPs);
         // The backend clears the persisted diff on edit too — it was computed against the pre-edit text.
         setEnhancements(null);
+        track(EVENTS.problemStatementEdited, { recordId: rid, rciId: normalizedRciId });
         navigate(recordPath(rid, normalizedRciId, "evidence-collection"));
       })
       .catch((err) => {

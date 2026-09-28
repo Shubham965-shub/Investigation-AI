@@ -15,6 +15,7 @@ import { ScoreBreakdownTooltip } from "../components/ScoreBreakdownTooltip";
 import { ScoringDialog, type ScoringReason } from "../components/ScoringDialog";
 import { scoreGrade } from "../utils/scoreGrade";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import "./RecordModulePage.css";
 
@@ -83,7 +84,29 @@ export function TaskCritiquePage() {
     const intervalId = setInterval(() => {
       getTaskCritique(recordId, normalizedRciId)
         .then((data) => {
-          if (data) setSections(data.sections);
+          if (data) {
+            // Fire taskCritiqueUploadResolved exactly once per task_index, the moment it transitions
+            // OUT of "processing" — comparing this closure's `sections` (the previous poll tick's
+            // state) against the freshly fetched data naturally prevents re-firing on later ticks,
+            // since the next effect instance's closure will already reflect the resolved state.
+            const prevProcessing = new Set(
+              (sections ?? [])
+                .filter((s) => s.status === "processing" || s.latest_report?.critique_pending)
+                .map((s) => s.task_index)
+            );
+            for (const s of data.sections) {
+              const stillProcessing = s.status === "processing" || s.latest_report?.critique_pending;
+              if (prevProcessing.has(s.task_index) && !stillProcessing) {
+                track(EVENTS.taskCritiqueUploadResolved, {
+                  recordId,
+                  rciId: normalizedRciId,
+                  taskIndex: s.task_index,
+                  status: s.latest_report?.critique_failed ? "critique_failed" : "complete",
+                });
+              }
+            }
+            setSections(data.sections);
+          }
         })
         .catch(() => {
           // Transient poll failure — the interval keeps running and retries on the next tick.
@@ -159,6 +182,7 @@ export function TaskCritiquePage() {
     } else if (section && section.upload_count + 1 >= section.max_uploads) {
       setScoring("final_attempt");
     }
+    track(EVENTS.taskCritiqueUploaded, { recordId, rciId: normalizedRciId, taskIndex });
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, normalizedRciId, taskIndex, file);
       if (updated.locked) {

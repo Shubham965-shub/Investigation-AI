@@ -15,6 +15,7 @@ import { getAdditionalFieldsForModule, type EventType, type TrackwiseFields } fr
 import { DbErrorModal } from "../components/DbErrorModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import rowChevronIcon from "../assets/icons/rci-row-chevron.svg";
 import exportIcon from "../assets/icons/rci-export-icon.svg";
 import penIcon from "../assets/icons/rci-pen-icon.svg";
@@ -178,6 +179,7 @@ export function RciPlanPage() {
       setSections(filled);
       // The generate call's own persist ran before this default was computed — push it through the normal persist path too.
       persistSections(filled);
+      track(EVENTS.rciPlanGenerated, { recordId, rciId: normalizedRciId });
     } catch (err) {
       setError(err instanceof ApiError ? String(err.detail) : "Failed to generate RCI plan");
     } finally {
@@ -296,6 +298,7 @@ export function RciPlanPage() {
 
   function handleExploreEvents() {
     setExploreEventsError(null);
+    track(EVENTS.eventExplorerOpened, { recordId });
     // Opened synchronously on the click, before the async handoff call — a tab opened after an awaited fetch resolves gets popup-blocked by most browsers.
     const newTab = window.open("", "_blank");
     getEventExplorerHandoffUrl()
@@ -332,6 +335,7 @@ export function RciPlanPage() {
     try {
       await downloadRciPlanDocument();
       setPushed(true);
+      track(EVENTS.rciPlanPushed, { recordId, rciId: normalizedRciId });
       setTimeout(() => navigate(recordPath(recordId, normalizedRciId, "task-critique")), 1500);
     } catch (err) {
       setExportError(err instanceof ApiError ? String(err.detail) : "Failed to export the RCI plan document");

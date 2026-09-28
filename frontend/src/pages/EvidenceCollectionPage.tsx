@@ -8,6 +8,7 @@ import { GeneratingDialog } from "../components/GeneratingDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AddItemDialog } from "../components/AddItemDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 
 interface ChecklistItem {
   description: string;
@@ -158,6 +159,7 @@ export function EvidenceCollectionPage() {
     if (!recordId) return;
     setShowConfirm(false);
     setSaved(true);
+    track(EVENTS.moduleStepAdvanced, { step: "evidence-collection", recordId, rciId: normalizedRciId });
     setTimeout(() => {
       setSaved(false);
       navigate(recordPath(recordId, normalizedRciId, "interview-questionnaire"));

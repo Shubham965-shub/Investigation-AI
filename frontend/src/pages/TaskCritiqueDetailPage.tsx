@@ -16,6 +16,7 @@ import { GeneratingDialog } from "../components/GeneratingDialog";
 import { formatAttemptTimestamp } from "../utils/formatTimestamp";
 import { IncorporateChangesDialog } from "../components/IncorporateChangesDialog";
 import { recordPath, fromRciSegment } from "../lib/rci";
+import { track, EVENTS } from "../telemetry/events";
 import backChevronIcon from "../assets/icons/back-chevron.svg";
 import "./RecordModulePage.css";
 
@@ -99,6 +100,19 @@ export function TaskCritiqueDetailPage() {
         .then((data) => {
           const found = data?.sections.find((s) => s.task_index === taskIndex);
           if (found) {
+            // This effect only starts (and keeps its interval alive) while `section` is processing —
+            // so the first tick where the fetched section is no longer processing is the one true
+            // resolution moment; the guard at the top of this effect stops further polling once
+            // setSection below re-renders with the resolved status.
+            const stillProcessing = found.status === "processing" || found.latest_report?.critique_pending;
+            if (!stillProcessing) {
+              track(EVENTS.taskCritiqueUploadResolved, {
+                recordId,
+                rciId: normalizedRciId,
+                taskIndex,
+                status: found.latest_report?.critique_failed ? "critique_failed" : "complete",
+              });
+            }
             setSection(found);
             getTaskCritiqueHistory(recordId, normalizedRciId, taskIndex).then(setHistory);
           }
@@ -146,6 +160,7 @@ export function TaskCritiqueDetailPage() {
     } else if (section!.upload_count + 1 >= section!.max_uploads) {
       setScoring("final_attempt");
     }
+    track(EVENTS.taskCritiqueUploaded, { recordId, rciId: normalizedRciId, taskIndex });
     try {
       const updated = await uploadTaskCritiqueReport(recordId!, normalizedRciId, taskIndex, file);
       if (updated.locked) {
