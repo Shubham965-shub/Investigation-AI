@@ -14,6 +14,7 @@ export function initPosthog() {
 
   const options: Partial<PostHogConfig> = {
     api_host: host,
+    defaults: '2026-05-30',
     person_profiles: "identified_only",
     capture_pageview: true,
     capture_pageleave: true,
@@ -34,7 +35,7 @@ export function initPosthog() {
   extra.capture_exceptions = true;
   extra.capture_dead_clicks = true;
 
-  posthog.init(token as string, options);
+  posthog.init(token as string, options)
 
   posthog.register({
     app: "investigation-ai",
