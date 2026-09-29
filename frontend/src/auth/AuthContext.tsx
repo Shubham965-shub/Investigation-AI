@@ -43,8 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // identities. The `email` property (also lowercased) lets this app's person profiles merge
     // with the sibling apps sharing this self-hosted PostHog project, which identify by email.
     const normalizedUsername = username.toLowerCase();
+
+    console.log({normalizedUsername, username});
+    
     posthog.identify(normalizedUsername, { name: fullName ?? username, email: normalizedUsername, roles });
     if (roles[0]) posthog.group("role", roles[0], { name: roles[0] });
+    // Re-opts in in case a previous logout in this tab opted out (see logout() below) — capture
+    // itself stays on by default from boot so pre-login events (loginFailed etc.) keep working;
+    // this only re-arms it after a logout, it's not a from-scratch consent gate like CPV's.
+    posthog.opt_in_capturing({ captureEventName: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, username]);
 
@@ -68,7 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("auth_username");
         setToken(null);
         setUsername(null);
-        if (posthogEnabled) posthog.reset();
+        if (posthogEnabled) {
+          posthog.reset();
+          // Stops tracking this now-signed-out session until the next login re-opts in above.
+          posthog.opt_out_capturing();
+        }
       },
     }),
     [username, token, viewAsInvestigator]
