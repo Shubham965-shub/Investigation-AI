@@ -280,6 +280,11 @@ function renderStatusCard(
   );
 }
 
+// Default lower bound for the "Start Date" filter (per the user, 2026-09-29): only investigations
+// opened on/after this date show by default. Still a plain filter state, not a hard cutoff — a
+// user can widen or clear it via the date input.
+const DEFAULT_START_DATE_FROM = "2026-09-19";
+
 const PAGE_SIZE = 10;
 
 // Shows first/last plus a window around the current page, collapsing the rest into an ellipsis for large page counts.
@@ -300,6 +305,10 @@ export function ActionCenterPage() {
   const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
   // Backend already scopes `summary` to this investigator's own rows; Open Investigations KPI and "All Investigators" filter are hidden here since they'd be redundant.
   const isInvestigatorRole = roles.includes("Investigator");
+  // Start Date filter + "Show all dates" control (per the user, 2026-09-29): Admin-only UI. The
+  // DEFAULT_START_DATE_FROM filter itself still applies for every role — only the ability to see
+  // or change it is restricted.
+  const isAdmin = roles.includes("Admin");
   // Remark column: viewable by SIT or Admin, editable by SIT only — the backend enforces both independently too.
   // Visible (read-only) to every role; only SIT can edit — see the textarea's readOnly below.
   const canViewRemarks = true;
@@ -338,6 +347,7 @@ export function ActionCenterPage() {
   const [deptFilter, setDeptFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [investigatorFilter, setInvestigatorFilter] = useState("");
+  const [startDateFrom, setStartDateFrom] = useState(DEFAULT_START_DATE_FROM);
   // Cancelled investigations are excluded by default.
   const [showCancelled, setShowCancelled] = useState(false);
   // Narrows stat cards/chart/pending actions and the table alike, unlike showCancelled.
@@ -375,6 +385,7 @@ export function ActionCenterPage() {
       department: deptFilter || undefined,
       product: productFilter || undefined,
       investigator: investigatorFilter || undefined,
+      startDateFrom: startDateFrom || undefined,
       status: showCancelled ? "cancelled" : "open",
       criticality:
         criticalityFilter === "critical" || criticalityFilter === "non_critical" ? criticalityFilter : undefined,
@@ -392,7 +403,7 @@ export function ActionCenterPage() {
     return () => {
       cancelled = true;
     };
-  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, showCancelled, criticalityFilter]);
+  }, [retryKey, siteFilter, deptFilter, productFilter, investigatorFilter, startDateFrom, showCancelled, criticalityFilter]);
 
   // Full-page skeleton only on first load — later refetches just dim existing content instead of unmounting.
   if (loading && !summary) {
@@ -907,6 +918,38 @@ export function ActionCenterPage() {
                   options={summary.filter_options.investigators}
                   formatOption={formatInvestigatorLabel}
                 />
+              )}
+              {/* Defaults to DEFAULT_START_DATE_FROM (see its declaration) but is a plain filter, not a hard
+                  cutoff — pick an earlier date to widen the view, or clear it to see every open investigation
+                  regardless of when it was opened. Admin-only UI (see isAdmin) — the default filter itself
+                  still applies for every other role, they just can't see or change it. */}
+              {isAdmin && (
+                <>
+                  <input
+                    type="date"
+                    className="ac-filter-pill"
+                    value={startDateFrom}
+                    title="Only show investigations opened on/after this date"
+                    onChange={(e) => {
+                      setStartDateFrom(e.target.value);
+                      setPage(1);
+                      track(EVENTS.filterChanged, { filterName: "start_date_from", value: e.target.value });
+                    }}
+                  />
+                  {startDateFrom && (
+                    <button
+                      type="button"
+                      className="ac-filter-pill"
+                      onClick={() => {
+                        setStartDateFrom("");
+                        setPage(1);
+                        track(EVENTS.filterChanged, { filterName: "start_date_from", value: null });
+                      }}
+                    >
+                      Show all dates
+                    </button>
+                  )}
+                </>
               )}
               {/* Cancelled deviations are never shown; showCancelled/setShowCancelled stay wired but unreachable. */}
               {false && (
