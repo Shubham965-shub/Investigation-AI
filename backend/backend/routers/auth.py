@@ -47,6 +47,13 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 _INVALID_CREDENTIALS_DETAIL = "Invalid username or password"
 
+# A valid bcrypt hash of a value nobody knows, checked against on every login for a
+# username that doesn't exist — so an unknown-username attempt costs the same bcrypt
+# time as a real user's wrong-password attempt. Without this, response latency alone
+# reveals which usernames are registered (2026-09-28, adopted from CPV_Platform's
+# AuthService.TIMING_EQUALISER_HASH pattern).
+_TIMING_EQUALISER_HASH = b"$2b$12$GmQsPKa8DlP8l/ZJKkTre.sfMMbeViiE/ncfFutquzAeiycnEIf4i"
+
 
 def uuid_for_user_id(user_id: int) -> str:
     """Deterministic UUID for a user id — `sub` must be UUID-shaped for cross-service interop."""
@@ -154,9 +161,11 @@ def require_sit(
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest) -> LoginResponse:
     user = await fetch_user_by_username(request.username)
-    if user is None or not user["is_active"]:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
-    if not bcrypt.checkpw(request.password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+    password_hash = user["password_hash"].encode("utf-8") if user else _TIMING_EQUALISER_HASH
+    password_ok = bcrypt.checkpw(request.password.encode("utf-8"), password_hash)
+    # is_active is checked after the password so a disabled account isn't distinguishable
+    # from a wrong password by an attacker who doesn't know the password.
+    if user is None or not password_ok or not user["is_active"]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
     roles = [user["role"]] if user["role"] else []
     token = issue_token(user["username"], user["id"], roles, user["full_name"], user["investigator_name"])

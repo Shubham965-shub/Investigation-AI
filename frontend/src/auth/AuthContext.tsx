@@ -37,7 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // session) — reactive on isAuthenticated rather than duplicated inside login() directly.
   useEffect(() => {
     if (!posthogEnabled || !isAuthenticated || !username) return;
-    posthog.identify(username, { name: fullName ?? username, roles });
+    // Lowercased: username is email-shaped in this app's data (routers/auth.py's own login is
+    // case-insensitive), and PostHog's distinct_id is case-sensitive — without this, the same
+    // person logging in with a different case at different times would fork into two PostHog
+    // identities. The `email` property (also lowercased) lets this app's person profiles merge
+    // with the sibling apps sharing this self-hosted PostHog project, which identify by email.
+    const normalizedUsername = username.toLowerCase();
+    posthog.identify(normalizedUsername, { name: fullName ?? username, email: normalizedUsername, roles });
     if (roles[0]) posthog.group("role", roles[0], { name: roles[0] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, username]);
