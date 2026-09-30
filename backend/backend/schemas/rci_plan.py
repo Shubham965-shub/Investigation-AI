@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.schemas.common import ArchetypeInfo, EventType, TrackwiseRequest
 
@@ -30,6 +30,16 @@ class RciSectionItem(BaseModel):
     id: Optional[int] = None
 
 
+class RciPrerequisiteChecklist(BaseModel):
+    """"1.5 Pre-requisite of Investigation Plan" — a human-filled compliance checklist, same
+    nature as a section's manual due_date/assignee; never LLM-generated."""
+
+    bench_top_verification_done: bool = False
+    preliminary_checklist_done: bool = False
+    personnel_interview_done: bool = False
+    photographic_evidence_collected: bool = False
+
+
 class RciPlanGenerateResponse(BaseModel):
     event_type: str
     failure_type: str
@@ -49,6 +59,7 @@ class RciPlanRecord(BaseModel):
     stage: int = 0
     # True once any section has Task Critique history — further edits would delete/recreate section rows and lose that history.
     locked_for_editing: bool = False
+    prerequisite_checklist: RciPrerequisiteChecklist = Field(default_factory=RciPrerequisiteChecklist)
 
 
 class RciTemplateUploadResponse(BaseModel):

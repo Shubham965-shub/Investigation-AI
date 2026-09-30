@@ -168,6 +168,62 @@ async def fetch_rci_sections(deviation_id: int, rci_id: Optional[str] = None) ->
         ]
 
 
+_PREREQUISITE_CHECKLIST_FIELDS = (
+    "bench_top_verification_done",
+    "preliminary_checklist_done",
+    "personnel_interview_done",
+    "photographic_evidence_collected",
+)
+
+
+async def fetch_rci_plan_prerequisites(deviation_id: int, rci_id: Optional[str] = None) -> Dict[str, bool]:
+    """Defaults every item to False (unchecked) when no row exists yet — same
+    "nothing generated/filled yet" convention as fetch_rci_sections."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            row = await conn.fetchrow(
+                f"""
+                SELECT {", ".join(_PREREQUISITE_CHECKLIST_FIELDS)}
+                FROM investigation_rci_plan_prerequisites
+                WHERE deviation_id = $1 AND rci_id IS NOT DISTINCT FROM $2
+                """,
+                deviation_id,
+                rci_id,
+            )
+        except asyncpg.exceptions.UndefinedTableError:
+            row = None
+        if row is None:
+            return {field: False for field in _PREREQUISITE_CHECKLIST_FIELDS}
+        return {field: row[field] for field in _PREREQUISITE_CHECKLIST_FIELDS}
+
+
+async def save_rci_plan_prerequisites(deviation_id: int, checklist: Dict[str, bool], rci_id: Optional[str] = None) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO investigation_rci_plan_prerequisites (
+                deviation_id, rci_id, bench_top_verification_done, preliminary_checklist_done,
+                personnel_interview_done, photographic_evidence_collected, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, now())
+            ON CONFLICT (deviation_id, rci_id) DO UPDATE SET
+                bench_top_verification_done = EXCLUDED.bench_top_verification_done,
+                preliminary_checklist_done = EXCLUDED.preliminary_checklist_done,
+                personnel_interview_done = EXCLUDED.personnel_interview_done,
+                photographic_evidence_collected = EXCLUDED.photographic_evidence_collected,
+                updated_at = now()
+            """,
+            deviation_id,
+            rci_id,
+            checklist["bench_top_verification_done"],
+            checklist["preliminary_checklist_done"],
+            checklist["personnel_interview_done"],
+            checklist["photographic_evidence_collected"],
+        )
+
+
 # Keyed by (deviation_id, rci_id), not deviation_id alone — a deviation with
 # multiple RCI IDs renders as multiple rows, each with its own remark. Empty
 # rci_id is normalized to SQL NULL to match the NULLS NOT DISTINCT key so

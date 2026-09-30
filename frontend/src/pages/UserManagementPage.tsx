@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
-import { createAdminUser, getAdminUsers, updateAdminUserRole, type AdminUserRow } from "../api/auth";
+import { adminSetUserPassword, createAdminUser, getAdminUsers, updateAdminUserRole, type AdminUserRow } from "../api/auth";
 import { CreateUserDialog } from "../components/CreateUserDialog";
+import { AdminResetPasswordDialog } from "../components/AdminResetPasswordDialog";
 import { track, EVENTS } from "../telemetry/events";
 // Reuses shared classes from ActionCenterPage.css/RecordModulePage.css — plain CSS, no module scoping, same convention as other pages.
 import "./ActionCenterPage.css";
@@ -37,6 +38,9 @@ export function UserManagementPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   // Tracks which row's role select is mid-save, so only that dropdown disables.
   const [savingRoleFor, setSavingRoleFor] = useState<number | null>(null);
+  const [resetPasswordFor, setResetPasswordFor] = useState<AdminUserRow | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -111,6 +115,20 @@ export function UserManagementPage() {
     }
   }
 
+  async function handleResetPassword(newPassword: string) {
+    if (!resetPasswordFor) return;
+    setResettingPassword(true);
+    setResetPasswordError(null);
+    try {
+      await adminSetUserPassword(resetPasswordFor.id, newPassword);
+      setResetPasswordFor(null);
+    } catch (err) {
+      setResetPasswordError(err instanceof ApiError ? String(err.detail) : "Failed to reset password");
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
   return (
     <div className="ac-page-bg">
       <div className="ac-page">
@@ -134,6 +152,7 @@ export function UserManagementPage() {
                   <th>Role</th>
                   <th>Created On</th>
                   <th>Last Logged In</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -160,6 +179,18 @@ export function UserManagementPage() {
                     </td>
                     <td>{formatTimestamp(u.created_at)}</td>
                     <td>{formatTimestamp(u.last_login)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => {
+                          setResetPasswordError(null);
+                          setResetPasswordFor(u);
+                        }}
+                      >
+                        Reset Password
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -178,6 +209,16 @@ export function UserManagementPage() {
             setCreateError(null);
           }}
           onConfirm={handleCreate}
+        />
+      )}
+
+      {resetPasswordFor && (
+        <AdminResetPasswordDialog
+          username={resetPasswordFor.username}
+          submitting={resettingPassword}
+          error={resetPasswordError}
+          onCancel={() => setResetPasswordFor(null)}
+          onConfirm={handleResetPassword}
         />
       )}
     </div>

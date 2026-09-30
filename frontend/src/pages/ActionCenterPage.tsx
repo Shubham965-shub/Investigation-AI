@@ -305,10 +305,11 @@ export function ActionCenterPage() {
   const showsSitDashboardTitle = roles.includes("SIT") || roles.includes("Admin");
   // Backend already scopes `summary` to this investigator's own rows; Open Investigations KPI and "All Investigators" filter are hidden here since they'd be redundant.
   const isInvestigatorRole = roles.includes("Investigator");
-  // Start Date filter + "Show all dates" control (per the user, 2026-09-29): Admin-only UI. The
+  // Start Date filter + "Show all dates" control (per the user, 2026-09-29; widened to Admin+SIT
+  // 2026-09-29): Admin/SIT-only UI, shown next to the List/Card view toggle. The
   // DEFAULT_START_DATE_FROM filter itself still applies for every role — only the ability to see
   // or change it is restricted.
-  const isAdmin = roles.includes("Admin");
+  const canSeeStartDateFilter = roles.includes("Admin") || roles.includes("SIT");
   // Remark column: viewable by SIT or Admin, editable by SIT only — the backend enforces both independently too.
   // Visible (read-only) to every role; only SIT can edit — see the textarea's readOnly below.
   const canViewRemarks = true;
@@ -919,38 +920,6 @@ export function ActionCenterPage() {
                   formatOption={formatInvestigatorLabel}
                 />
               )}
-              {/* Defaults to DEFAULT_START_DATE_FROM (see its declaration) but is a plain filter, not a hard
-                  cutoff — pick an earlier date to widen the view, or clear it to see every open investigation
-                  regardless of when it was opened. Admin-only UI (see isAdmin) — the default filter itself
-                  still applies for every other role, they just can't see or change it. */}
-              {isAdmin && (
-                <>
-                  <input
-                    type="date"
-                    className="ac-filter-pill"
-                    value={startDateFrom}
-                    title="Only show investigations opened on/after this date"
-                    onChange={(e) => {
-                      setStartDateFrom(e.target.value);
-                      setPage(1);
-                      track(EVENTS.filterChanged, { filterName: "start_date_from", value: e.target.value });
-                    }}
-                  />
-                  {startDateFrom && (
-                    <button
-                      type="button"
-                      className="ac-filter-pill"
-                      onClick={() => {
-                        setStartDateFrom("");
-                        setPage(1);
-                        track(EVENTS.filterChanged, { filterName: "start_date_from", value: null });
-                      }}
-                    >
-                      Show all dates
-                    </button>
-                  )}
-                </>
-              )}
               {/* Cancelled deviations are never shown; showCancelled/setShowCancelled stay wired but unreachable. */}
               {false && (
                 <button
@@ -975,31 +944,65 @@ export function ActionCenterPage() {
             <h2>Investigation Details</h2>
             <p>{summary.total_investigations} investigations total</p>
           </div>
-          <div className="ac-view-toggle">
-            <button
-              type="button"
-              aria-label="List view"
-              className={viewMode === "list" ? "active" : ""}
-              onClick={() => {
-                setViewMode("list");
-                track(EVENTS.viewModeChanged, { mode: "list" });
-              }}
-            >
-              <img src={iconViewList} alt="" width={14} height={14} />
-              List View
-            </button>
-            <button
-              type="button"
-              aria-label="Card view"
-              className={viewMode === "grid" ? "active" : ""}
-              onClick={() => {
-                setViewMode("grid");
-                track(EVENTS.viewModeChanged, { mode: "grid" });
-              }}
-            >
-              <img src={iconViewGrid} alt="" width={14} height={14} />
-              Card View
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Defaults to DEFAULT_START_DATE_FROM (see its declaration) but is a plain filter, not a hard
+                cutoff — pick an earlier date to widen the view, or clear it to see every open investigation
+                regardless of when it was opened. Admin/SIT-only UI (see canSeeStartDateFilter) — the default
+                filter itself still applies for every other role, they just can't see or change it. */}
+            {canSeeStartDateFilter && (
+              <>
+                <input
+                  type="date"
+                  className="ac-filter-pill"
+                  value={startDateFrom}
+                  title="Only show investigations opened on/after this date"
+                  onChange={(e) => {
+                    setStartDateFrom(e.target.value);
+                    setPage(1);
+                    track(EVENTS.filterChanged, { filterName: "start_date_from", value: e.target.value });
+                  }}
+                />
+                {startDateFrom && (
+                  <button
+                    type="button"
+                    className="ac-filter-pill"
+                    onClick={() => {
+                      setStartDateFrom("");
+                      setPage(1);
+                      track(EVENTS.filterChanged, { filterName: "start_date_from", value: null });
+                    }}
+                  >
+                    Show all dates
+                  </button>
+                )}
+              </>
+            )}
+            <div className="ac-view-toggle">
+              <button
+                type="button"
+                aria-label="List view"
+                className={viewMode === "list" ? "active" : ""}
+                onClick={() => {
+                  setViewMode("list");
+                  track(EVENTS.viewModeChanged, { mode: "list" });
+                }}
+              >
+                <img src={iconViewList} alt="" width={14} height={14} />
+                List View
+              </button>
+              <button
+                type="button"
+                aria-label="Card view"
+                className={viewMode === "grid" ? "active" : ""}
+                onClick={() => {
+                  setViewMode("grid");
+                  track(EVENTS.viewModeChanged, { mode: "grid" });
+                }}
+              >
+                <img src={iconViewGrid} alt="" width={14} height={14} />
+                Card View
+              </button>
+            </div>
           </div>
         </div>
 

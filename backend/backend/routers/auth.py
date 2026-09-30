@@ -23,17 +23,21 @@ from backend.db.auth_queries import (
     fetch_all_role_names,
     fetch_all_users,
     fetch_role_id_by_name,
+    fetch_user_by_id,
     fetch_user_by_username,
     record_login,
     update_user_investigator_name,
+    update_user_password,
     update_user_role,
 )
 from backend.schemas.auth import (
     AdminCreateUserRequest,
+    AdminSetPasswordRequest,
     AdminUpdateInvestigatorNameRequest,
     AdminUpdateUserRoleRequest,
     AdminUserListResponse,
     AdminUserRow,
+    ChangePasswordRequest,
     CurrentUser,
     EventExplorerHandoffResponse,
     LoginRequest,
@@ -178,6 +182,25 @@ async def me(username: str = Depends(get_current_username)) -> CurrentUser:
     return CurrentUser(username=username)
 
 
+_CURRENT_PASSWORD_WRONG_DETAIL = "Current password is incorrect"
+
+
+@router.put("/change-password")
+async def change_password(
+    request: ChangePasswordRequest, claims: dict = Depends(get_current_payload)
+) -> dict:
+    """Self-service password change; re-verifies the current password server-side rather than
+    trusting the JWT alone. Doesn't invalidate the caller's existing token — this app has no
+    session/revocation store, same as everywhere else here, so the change takes effect on next
+    login rather than terminating the current one."""
+    user = await fetch_user_by_id(claims["uid"])
+    if user is None or not bcrypt.checkpw(request.current_password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_CURRENT_PASSWORD_WRONG_DETAIL)
+    new_hash = bcrypt.hashpw(request.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    await update_user_password(user["id"], new_hash)
+    return {"status": "ok"}
+
+
 # Short-lived SSO handoff token InvestigationAI_BE exchanges for its own session; signed with a
 # separate secret (EVENT_EXPLORER_HANDOFF_SECRET), not settings.JWT_SECRET.
 _HANDOFF_TOKEN_TTL_SECONDS = 60
@@ -247,6 +270,21 @@ async def update_admin_user_role(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return AdminUserRow(**dict(row))
+
+
+@router.put("/admin/users/{user_id}/password")
+async def admin_set_user_password(
+    user_id: int, request: AdminSetPasswordRequest, _: str = Depends(require_admin)
+) -> dict:
+    """Admin resets another user's password directly — no current_password check, unlike the
+    self-service /auth/change-password. Doesn't invalidate that user's existing token, same
+    reasoning as change_password (no session/revocation store in this app)."""
+    user = await fetch_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    new_hash = bcrypt.hashpw(request.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    await update_user_password(user_id, new_hash)
+    return {"status": "ok"}
 
 
 @router.put("/admin/users/{user_id}/investigator-name", response_model=AdminUserRow)

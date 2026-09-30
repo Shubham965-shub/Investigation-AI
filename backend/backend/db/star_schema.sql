@@ -147,6 +147,14 @@ CREATE TABLE IF NOT EXISTS public.dim_rci (
             rci_supporting_documents TEXT
         );
 
+-- Added directly to the live DB by an external pipeline (2026-09-30) — flags which
+-- department an OOS/OOT deviation's parallel RCI belongs to, for deviations that open
+-- two independent RCI workflows simultaneously (one QC, one Manufacturing). TRUE =
+-- Manufacturing investigation, FALSE = QC investigation, NULL = not yet backfilled or
+-- not a dual-RCI case. Currently 100% NULL live — this ALTER just documents the
+-- already-live column in this schema file, no live DB change needed.
+ALTER TABLE public.dim_rci ADD COLUMN IF NOT EXISTS is_mfg_rci BOOLEAN;
+
 
 CREATE TABLE IF NOT EXISTS public.dim_capa (
             capa_record_id INT PRIMARY KEY,

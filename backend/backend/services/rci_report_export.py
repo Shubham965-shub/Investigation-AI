@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import docx
 from docx.oxml import OxmlElement
@@ -343,10 +343,79 @@ def _fill_initial_impact_assessment(cursor: _Cursor, section, event_type: str, e
     _set_bulleted_paragraphs(cursor, 107, _maybe_bullet(section.immediate_actions, event_type), hanging=is_deviation)
 
 
+# ── Investigation Team Members & Process Flow ───────────────────────────
+# Neither exists in the template at all — both are spliced in fresh, directly before the
+# Historical Review heading, via the same clone-XML-and-addprevious/addnext pattern already
+# used by _insert_heading_paragraph/_insert_why_why_table_and_grounding elsewhere in this file.
+# Unlike every other section, these get no page-break-before / TOC bookmark entry (a deliberate,
+# flagged scope reduction — see the RCI Plan/Report new-sections plan).
+
+def _insert_team_members_and_process_flow(
+    cursor: _Cursor, team_members: List[Tuple[str, str]], process_flow_text: str
+) -> None:
+    anchor = cursor.paragraph(110)  # "Summary of Historical Review:" heading, pre-insertion position
+    reference_style = cursor.doc.tables[1].style  # Description of Event — a plain 2-column table
+
+    def _insert_heading_before(text: str) -> None:
+        heading_p = copy.deepcopy(anchor._p)
+        anchor._p.addprevious(heading_p)
+        heading_para = Paragraph(heading_p, cursor.doc)
+        heading_para.style = "Heading 1"
+        run = heading_para.runs[0] if heading_para.runs else heading_para.add_run()
+        for extra in list(heading_para.runs[1:]):
+            extra.text = ""
+        run.text = text
+        run.bold = True
+        run.italic = False
+        run.font.color.rgb = RGBColor(0, 0, 0)
+        _apply_font(run)
+        cursor.offset += 1
+
+    _insert_heading_before("Investigation Team Members:")
+
+    table = cursor.doc.add_table(rows=1 + max(len(team_members), 1), cols=2)
+    table.style = reference_style
+    header_cells = table.rows[0].cells
+    _set_cell_text(header_cells[0], "Name")
+    _set_cell_text(header_cells[1], "Role")
+    for cell in header_cells:
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+    if team_members:
+        for row, (name, role) in zip(table.rows[1:], team_members):
+            _set_cell_text(row.cells[0], name)
+            _set_cell_text(row.cells[1], role)
+    else:
+        _set_cell_text(table.rows[1].cells[0], "N/A")
+        _set_cell_text(table.rows[1].cells[1], "N/A")
+    anchor._p.addprevious(table._tbl)
+    cursor.offset += 1  # one table = one body-level element, regardless of row count
+
+    _insert_heading_before("Process Flow:")
+
+    lines = [line for line in (process_flow_text or "").splitlines() if line.strip()] or ["N/A"]
+    for line in lines:
+        new_p = copy.deepcopy(anchor._p)
+        anchor._p.addprevious(new_p)
+        para = Paragraph(new_p, cursor.doc)
+        para.style = "Normal"
+        run = para.runs[0] if para.runs else para.add_run()
+        for extra in list(para.runs[1:]):
+            extra.text = ""
+        run.text = _xml_safe(line)
+        run.bold = False
+        run.italic = False
+        _apply_font(run)
+        cursor.offset += 1
+
+
 # ── 4. Summary of Historical Review ─────────────────────────────────────
 
 def _fill_history_review(cursor: _Cursor, section, errors: dict) -> None:
-    table = cursor.doc.tables[4]
+    # Table 5, not 4 — _insert_team_members_and_process_flow's new Team Members table (inserted
+    # earlier in the call sequence, before this one) shifts every table index from here on by +1.
+    table = cursor.doc.tables[5]
     if section is None:
         rows = _ensure_row_count(table, 1, 1)
         _set_cell_text(rows[0].cells[2], _missing_note(errors, "history_review"))
@@ -451,7 +520,7 @@ def _insert_why_why_table_and_grounding(doc, section, anchor) -> None:
 # ── 6. Root Cause conclusion ─────────────────────────────────────────────
 
 def _fill_root_cause_conclusion(cursor: _Cursor, section, errors: dict) -> None:
-    table = cursor.doc.tables[5]
+    table = cursor.doc.tables[6]  # was 5, +1 for the new Team Members table
     if section is None:
         _set_cell_text(table.rows[1].cells[0], _missing_note(errors, "root_cause_conclusion"))
         return
@@ -536,9 +605,10 @@ def _fill_correction_remedial_action(cursor: _Cursor, section, event_type: str, 
 # ── 9/10/11. CAPA (actions / interim controls / extrapolation) ─────────
 
 def _fill_capa(cursor: _Cursor, section, errors: dict) -> None:
-    actions_table = cursor.doc.tables[6]
-    interim_table = cursor.doc.tables[7]
-    extrapolation_table = cursor.doc.tables[8]
+    # Were 6/7/8, +1 for the new Team Members table.
+    actions_table = cursor.doc.tables[7]
+    interim_table = cursor.doc.tables[8]
+    extrapolation_table = cursor.doc.tables[9]
 
     if section is None:
         _set_paragraph_text(cursor, 180, _missing_note(errors, "capa"))
@@ -591,7 +661,7 @@ def _fill_capa(cursor: _Cursor, section, errors: dict) -> None:
 # ── 12. CAPA Effectiveness Check Plan ────────────────────────────────────
 
 def _fill_capa_effectiveness_check_plan(cursor: _Cursor, section, errors: dict) -> None:
-    table = cursor.doc.tables[9]
+    table = cursor.doc.tables[10]  # was 9, +1 for the new Team Members table
     if section is None:
         _set_paragraph_text(cursor, 188, _missing_note(errors, "capa_effectiveness_check_plan"), clear_italic=True)
         _ensure_row_count(table, 1, 1)
@@ -761,7 +831,7 @@ def _enable_field_auto_update(doc) -> None:
 # ── 13. Annexures & Approval (pure pass-through, never None) ────────────
 
 def _fill_annexures(cursor: _Cursor, section) -> None:
-    table = cursor.doc.tables[10]
+    table = cursor.doc.tables[11]  # was 10, +1 for the new Team Members table
     rows = _ensure_row_count(table, 1, len(section.items))
     for row, item in zip(rows, section.items):
         _set_cell_text(row.cells[0], item.annexure_no)
@@ -779,7 +849,7 @@ _APPROVAL_ROLE_LABELS = {
 
 
 def _fill_approval(cursor: _Cursor, section) -> None:
-    table = cursor.doc.tables[11]
+    table = cursor.doc.tables[12]  # was 11, +1 for the new Team Members table
     for row in section.rows:
         row_idx = _APPROVAL_ROLE_LABELS.get(row.role.strip().lower())
         if row_idx is None:
@@ -812,7 +882,14 @@ def _fill_header_table(doc, record_id: str, trackwise_fields: Dict[str, Any]) ->
     _set_cell_text(table.rows[3].cells[3], _tw_text(trackwise_fields, "Date Opened", "Date Complaint Received"))
 
 
-def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], report: RciReportSections, event_type: str) -> bytes:
+def build_rci_report_docx(
+    record_id: str,
+    trackwise_fields: Dict[str, Any],
+    report: RciReportSections,
+    event_type: str,
+    team_members: Optional[List[Tuple[str, str]]] = None,
+    manual_entries: Optional[Dict[str, str]] = None,
+) -> bytes:
     doc = docx.Document(str(TEMPLATE_PATH))
     errors = report.errors or {}
     # Sections MUST run in the same top-to-bottom order they appear in the document — each one that expands into several paragraphs grows cursor.offset immediately, so a call running out of order would resolve against the wrong paragraph.
@@ -824,6 +901,7 @@ def build_rci_report_docx(record_id: str, trackwise_fields: Dict[str, Any], repo
     _fill_executive_summary(cursor, report.executive_summary, event_type, errors)
     _fill_description_of_event(cursor, report.description_of_event, errors)
     _fill_initial_impact_assessment(cursor, report.initial_impact_assessment, event_type, errors)
+    _insert_team_members_and_process_flow(cursor, team_members or [], (manual_entries or {}).get("process_flow", ""))
     _fill_history_review(cursor, report.history_review, errors)
     investigation_task_anchor = _fill_investigation_task(cursor, report.investigation_task, errors)
     _fill_root_cause_conclusion(cursor, report.root_cause_conclusion, errors)

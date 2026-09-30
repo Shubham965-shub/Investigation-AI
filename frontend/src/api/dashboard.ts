@@ -224,6 +224,15 @@ export function generateRciPlan(
   return apiPost<RciPlanResponse>(`/rci-plan/${recordId}/${toRciSegment(rciId)}/generate`, request);
 }
 
+// "1.5 Pre-requisite of Investigation Plan" — a human-filled compliance checklist, saved
+// independent of the sections themselves (no lock, no LLM generation).
+export interface RciPrerequisiteChecklist {
+  bench_top_verification_done: boolean;
+  preliminary_checklist_done: boolean;
+  personnel_interview_done: boolean;
+  photographic_evidence_collected: boolean;
+}
+
 export interface RciPlanRecordResponse {
   record_id: string;
   event_type: EventType;
@@ -231,6 +240,15 @@ export interface RciPlanRecordResponse {
   sections: RciSectionItem[] | null;
   // True once Task Critique has started on any section — RCI Plan becomes read-only (see RciPlanPage.tsx's lockedForEditing).
   locked_for_editing?: boolean;
+  prerequisite_checklist: RciPrerequisiteChecklist;
+}
+
+export function updateRciPlanPrerequisites(
+  recordId: string,
+  rciId: string | null,
+  checklist: RciPrerequisiteChecklist
+): Promise<void> {
+  return apiPut<void>(`/rci-plan/${recordId}/${toRciSegment(rciId)}/prerequisites`, checklist);
 }
 
 export function getRciPlanRecord(recordId: string, rciId: string | null): Promise<RciPlanRecordResponse | null> {

@@ -10,6 +10,9 @@ import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { usePanelState } from "./PanelStateContext";
 import { AppFeedbackButton } from "./AppFeedbackButton";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { changePassword } from "../api/auth";
+import { ApiError } from "../api/client";
 
 // Temporary demo control — hardcoded to the investigator with the most open investigations; remove once demo need passes.
 const DEMO_VIEW_AS_INVESTIGATOR = "Dileep Dasampalli";
@@ -28,6 +31,18 @@ export function AppHeader() {
   const { isPanelOpen } = usePanelState();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changePasswordSubmitting, setChangePasswordSubmitting] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+
+  function handleChangePassword({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) {
+    setChangePasswordSubmitting(true);
+    setChangePasswordError(null);
+    changePassword({ current_password: currentPassword, new_password: newPassword })
+      .then(() => setChangePasswordOpen(false))
+      .catch((err) => setChangePasswordError(err instanceof ApiError ? String(err.detail) : "Failed to change password"))
+      .finally(() => setChangePasswordSubmitting(false));
+  }
 
   return (
     <header
@@ -180,6 +195,25 @@ export function AppHeader() {
 
                 <button
                   type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setChangePasswordError(null);
+                    setChangePasswordOpen(true);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "1px solid var(--color-card-border)",
+                    borderRadius: "var(--radius-btn)",
+                    padding: "6px 10px",
+                    color: "var(--color-text)",
+                    textAlign: "left",
+                  }}
+                >
+                  Change password
+                </button>
+
+                <button
+                  type="button"
                   onClick={logout}
                   style={{
                     background: "none",
@@ -197,6 +231,15 @@ export function AppHeader() {
           )}
         </div>
       </div>
+
+      {changePasswordOpen && (
+        <ChangePasswordDialog
+          submitting={changePasswordSubmitting}
+          error={changePasswordError}
+          onCancel={() => setChangePasswordOpen(false)}
+          onConfirm={handleChangePassword}
+        />
+      )}
     </header>
   );
 }

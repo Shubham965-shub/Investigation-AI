@@ -435,3 +435,18 @@ CREATE INDEX IF NOT EXISTS idx_investigation_rc_capa_reports_dev_rci ON investig
 -- Deliberately NOT migrated: investigation_problem_statements_llm /
 -- investigation_problem_statement_enhancements_llm — confirmed zero read/write path anywhere
 -- in the codebase; migrating dead tables adds untested-DDL risk for no behavioral benefit.
+
+-- RCI Plan's "1.5 Pre-requisite of Investigation Plan" checklist (2026-09-30, per the user) —
+-- a human-filled compliance checklist, same nature as a section's manual due_date/assignee,
+-- not LLM-generated. Created with the composite key from the start (this table is new, no
+-- existing single-column data to migrate around).
+CREATE TABLE IF NOT EXISTS investigation_rci_plan_prerequisites (
+    deviation_id INTEGER NOT NULL,
+    rci_id TEXT,
+    bench_top_verification_done BOOLEAN NOT NULL DEFAULT FALSE,
+    preliminary_checklist_done BOOLEAN NOT NULL DEFAULT FALSE,
+    personnel_interview_done BOOLEAN NOT NULL DEFAULT FALSE,
+    photographic_evidence_collected BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT investigation_rci_plan_prerequisites_devrci_key UNIQUE NULLS NOT DISTINCT (deviation_id, rci_id)
+);

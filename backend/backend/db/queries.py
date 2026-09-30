@@ -69,6 +69,7 @@ SELECT
     eq.instrument_equipment_id,
     di.investigator,
     r.rci_key AS rci_number,
+    r.is_mfg_rci,
     d.department,
     f.due_date,
     e.criticality,

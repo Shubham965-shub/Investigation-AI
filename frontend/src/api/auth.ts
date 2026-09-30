@@ -60,3 +60,13 @@ export function createAdminUser(request: {
 export function updateAdminUserRole(userId: number, role: string): Promise<AdminUserRow> {
   return apiPut<AdminUserRow>(`/auth/admin/users/${userId}/role`, { role });
 }
+
+// Self-service, any authenticated user — backend re-verifies current_password server-side.
+export function changePassword(request: { current_password: string; new_password: string }): Promise<{ status: string }> {
+  return apiPut<{ status: string }>("/auth/change-password", request);
+}
+
+// Admin-only: backend enforces 403 for non-Admin tokens (require_admin), no current_password needed.
+export function adminSetUserPassword(userId: number, newPassword: string): Promise<{ status: string }> {
+  return apiPut<{ status: string }>(`/auth/admin/users/${userId}/password`, { new_password: newPassword });
+}
