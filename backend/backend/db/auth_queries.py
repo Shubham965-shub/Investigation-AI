@@ -33,6 +33,23 @@ async def record_login(user_id: int) -> None:
         await conn.execute("UPDATE athena_users SET last_login = now() WHERE id = $1", user_id)
 
 
+async def fetch_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+    """For the self-service change-password flow, to re-verify the caller's current password
+    server-side rather than trusting the JWT alone."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, username, password_hash, is_active FROM athena_users WHERE id = $1", user_id
+        )
+        return dict(row) if row else None
+
+
+async def update_user_password(user_id: int, password_hash: str) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE athena_users SET password_hash = $1 WHERE id = $2", password_hash, user_id)
+
+
 # ── User Management (admin-only) ───────────────────────────────────────────
 
 

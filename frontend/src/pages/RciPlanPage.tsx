@@ -6,7 +6,9 @@ import {
   getOpenInvestigators,
   getProblemStatementRecord,
   getRciPlanRecord,
+  updateRciPlanPrerequisites,
   updateRciPlanSections,
+  type RciPrerequisiteChecklist,
   type RciSectionItem,
 } from "../api/dashboard";
 import { ApiError } from "../api/client";
@@ -63,6 +65,8 @@ export function RciPlanPage() {
   const [eventType, setEventType] = useState<EventType | undefined>(undefined);
   const [trackwiseFields, setTrackwiseFields] = useState<TrackwiseFields | undefined>(undefined);
   const [sections, setSections] = useState<RciSectionItem[] | null>(null);
+  const [checklist, setChecklist] = useState<RciPrerequisiteChecklist | null>(null);
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({});
   // Toggled by the header "Edit" button — gates every edit affordance in the plan; edits must only be possible in edit mode.
   const [editMode, setEditMode] = useState(false);
@@ -100,6 +104,7 @@ export function RciPlanPage() {
           setEventType(rciRecord.event_type);
           setTrackwiseFields(rciRecord.trackwise_fields);
           setLockedForEditing(rciRecord.locked_for_editing ?? false);
+          setChecklist(rciRecord.prerequisite_checklist);
           if (rciRecord.sections) {
             // Backfills a Target Date for plans generated before this default existed — skipped once the plan is locked.
             const filled = rciRecord.sections.map((s) => (s.due_date ? s : { ...s, due_date: defaultDueDateIso() }));
@@ -189,6 +194,18 @@ export function RciPlanPage() {
 
   function toggleSection(index: number) {
     setOpenSections((prev) => ({ ...prev, [index]: !prev[index] }));
+  }
+
+  // Saved immediately (no debounce needed — a checkbox toggle isn't a per-keystroke event).
+  function toggleChecklistItem(field: keyof RciPrerequisiteChecklist) {
+    if (!checklist || !recordId) return;
+    const next = { ...checklist, [field]: !checklist[field] };
+    setChecklist(next);
+    setChecklistError(null);
+    updateRciPlanPrerequisites(recordId, normalizedRciId, next).catch((err) => {
+      setChecklist(checklist);
+      setChecklistError(err instanceof ApiError ? String(err.detail) : "Failed to save checklist");
+    });
   }
 
   // Debounced 600ms — an undebounced full-replace PUT per keystroke, combined with a since-fixed backend race, used to produce duplicated sections with partial "Unassigned" substrings.
@@ -389,6 +406,34 @@ export function RciPlanPage() {
         </div>
         {exploreEventsError && <p style={{ margin: 0, color: "var(--color-danger-text)" }}>{exploreEventsError}</p>}
       </div>
+
+      {checklist && (
+        <div className="card">
+          <div className="card-header">
+            <p className="card-title">1.5 Pre-requisite of Investigation Plan</p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(
+              [
+                ["bench_top_verification_done", "Bench-top verification done?"],
+                ["preliminary_checklist_done", "Preliminary investigation checklist done?"],
+                ["personnel_interview_done", "Personnel interview done?"],
+                ["photographic_evidence_collected", "Photographic evidence collected?"],
+              ] as [keyof RciPrerequisiteChecklist, string][]
+            ).map(([field, label]) => (
+              <label key={field} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={checklist[field]}
+                  onChange={() => toggleChecklistItem(field)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          {checklistError && <p className="error-banner">{checklistError}</p>}
+        </div>
+      )}
 
       <div className="card-header">
         <p className="card-title">RCI Plan</p>

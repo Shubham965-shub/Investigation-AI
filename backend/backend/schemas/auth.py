@@ -22,6 +22,16 @@ class CurrentUser(BaseModel):
     username: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class AdminSetPasswordRequest(BaseModel):
+    # No current_password — an Admin resetting another user's password doesn't know it.
+    new_password: str = Field(..., min_length=8)
+
+
 class EventExplorerHandoffResponse(BaseModel):
     url: str
 

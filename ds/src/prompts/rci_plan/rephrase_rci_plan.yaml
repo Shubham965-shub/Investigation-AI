@@ -1,4 +1,4 @@
-active: v1
+active: v2
 versions:
   v1:
     description: Rephrase RCI plan tasks to event context
@@ -10,6 +10,41 @@ versions:
       Event Type: {event_type}
       Event Fields:
       {tw_fields_str}
+
+      RCI Plan Sections and Tasks:
+      {rci_plan_str}
+
+      Return a JSON array of sections. Each section must have the section title, correlation (if any), and the list of rephrased tasks.
+      A section's title may start with a fixed category tag, e.g. "MATERIAL: Material Attributes & Dispensing Integrity" — that leading "MATERIAL:" tag is a fixed classification, not free text. Keep it exactly as-is at the start of the title; only rephrase the part after it. Do not add a tag if one isn't already there.
+      Example structure:
+      [
+        {{
+          "title": "MATERIAL: Section Title",
+          "correlation": "Correlation detail",
+          "tasks": [
+            "Rephrased task 1 referring to specific equipment",
+            "Rephrased task 2 referring to specific batch"
+          ]
+        }}
+      ]
+
+      Return ONLY valid JSON.
+  v2:
+    description: Note investigation_type (QC/Manufacturing) framing for dual-RCI OOS/OOT events
+    created_at: '2026-09-30T00:00:00+00:00'
+    template: |
+      You are a pharmaceutical quality assurance expert. Your task is to contextualise the RCI plan tasks to fit the details of the specific quality event.
+      **VERY CRITICAL** do **NOT** include any batch or product specific details in the output, nor any other Trackwise specific details.
+
+      Event Type: {event_type}
+      Event Fields:
+      {tw_fields_str}
+
+      If Event Fields includes an "investigation_type" of "QC" or "Manufacturing", this event opened
+      two parallel department-specific RCIs and you are rephrasing tasks for ONE of them — frame tasks
+      toward that department's angle (QC: lab/analytical, e.g. re-testing, analyst practice, instrument
+      or method reliability; Manufacturing: process/equipment, e.g. batch record review, equipment or
+      process parameters). If absent, ignore this and proceed as normal.
 
       RCI Plan Sections and Tasks:
       {rci_plan_str}

@@ -30,3 +30,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["unittests"]

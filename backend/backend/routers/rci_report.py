@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
@@ -171,7 +171,26 @@ async def export_rci_report(record_id: str, rci_id: str, username: str = Depends
 
     trackwise_fields = build_trackwise_fields(row, row["qe_type"], extended=event_type == "Deviation", for_rci_report=True)
     report = RciReportSections(**stored["report"])
-    docx_bytes = build_rci_report_docx(record_id, trackwise_fields, report, event_type)
+
+    # Team Members re-derived fresh at export time (not trusted from whatever was true at
+    # generation time) — same "re-fetch, don't trust a stale snapshot" pattern RCI Plan's own
+    # export already uses. Investigator first, then each section's distinct assignee.
+    team_members: List[Tuple[str, str]] = []
+    seen_names = set()
+    primary_investigator = trackwise_fields.get("Investigator")
+    if primary_investigator:
+        team_members.append((primary_investigator, "Investigator"))
+        seen_names.add(primary_investigator)
+    rci_sections = await fetch_rci_sections(deviation_id, rci_id=resolved_rci_id)
+    for section in rci_sections:
+        name = section.get("assignee")
+        if name and name not in seen_names:
+            team_members.append((name, section.get("title") or "Task Owner"))
+            seen_names.add(name)
+
+    docx_bytes = build_rci_report_docx(
+        record_id, trackwise_fields, report, event_type, team_members, stored["manual_entries"] or {}
+    )
 
     try:
         approver = await fetch_user_by_username(username)

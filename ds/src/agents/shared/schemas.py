@@ -86,6 +86,9 @@ class OOSTrackwiseFields(BaseModel):
     name_of_the_instrument: Optional[str] = Field(None, alias="Name of the Instrument")
     name_of_the_test: Optional[str] = Field(None, alias="Name of the Test")
     sample_number: Optional[str] = Field(None, alias="Sample Number")
+    # Only present for a deviation that opened two parallel department-specific RCIs
+    # (dim_rci.is_mfg_rci on backend's side) — "QC" or "Manufacturing", absent otherwise.
+    investigation_type: Optional[str] = Field(None, description="'QC' or 'Manufacturing'")
 
     class Config:
         populate_by_name = True

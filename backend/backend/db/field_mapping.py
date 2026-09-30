@@ -103,6 +103,12 @@ def build_trackwise_fields(
     if fields:
         fields["Investigator"] = _val(row, "investigator")
         fields["RCI Number"] = _val(row, "rci_number")
+        # Only for OOS/OOT deviations that open two parallel department-specific RCIs
+        # (dim_rci.is_mfg_rci) — absent for single-RCI investigations or rows not yet
+        # backfilled, rather than sending a bare None/False through.
+        is_mfg_rci = row.get("is_mfg_rci")
+        if is_mfg_rci is not None:
+            fields["investigation_type"] = "Manufacturing" if is_mfg_rci else "QC"
     return fields
 
 

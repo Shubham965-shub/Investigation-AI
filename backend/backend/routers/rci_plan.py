@@ -10,7 +10,13 @@ from fastapi.responses import Response
 from backend.clients.ds_client import _raise_for_upstream_error, ds_post, get_client, raise_for_ds_request_error
 from backend.db.auth_queries import fetch_user_by_username
 from backend.db.field_mapping import build_trackwise_fields, normalize_rci_id, resolved_event_type
-from backend.db.generated_content_queries import fetch_problem_statement, fetch_rci_sections, replace_rci_sections
+from backend.db.generated_content_queries import (
+    fetch_problem_statement,
+    fetch_rci_plan_prerequisites,
+    fetch_rci_sections,
+    replace_rci_sections,
+    save_rci_plan_prerequisites,
+)
 from backend.db.module_stage import stage_for
 from backend.db.queries import fetch_investigation_row, fetch_open_investigators
 from backend.db.rci_plan_export_queries import insert_rci_plan_export
@@ -20,6 +26,7 @@ from backend.schemas.rci_plan import (
     RciPlanGenerateRequest,
     RciPlanGenerateResponse,
     RciPlanRecord,
+    RciPrerequisiteChecklist,
     RciSectionItem,
     RciTemplateUploadResponse,
 )
@@ -189,8 +196,9 @@ async def export_rci_plan(record_id: str, rci_id: str, username: str = Depends(g
     if problem_statement:
         trackwise_fields["description"] = problem_statement
     sections = [RciSectionItem(**section) for section in persisted]
+    checklist = RciPrerequisiteChecklist(**await fetch_rci_plan_prerequisites(deviation_id, rci_id=resolved_rci_id))
 
-    docx_bytes, truncated, owners_truncated = build_rci_plan_docx(record_id, trackwise_fields, sections)
+    docx_bytes, truncated, owners_truncated = build_rci_plan_docx(record_id, trackwise_fields, sections, checklist)
     if truncated:
         # Sections beyond the template's 6-slot task table are dropped entirely.
         logger.warning(
@@ -253,6 +261,7 @@ async def get_rci_plan(record_id: str, rci_id: str) -> RciPlanRecord:
     problem_statement = await fetch_problem_statement(deviation_id, rci_id=resolved_rci_id)
     if problem_statement:
         trackwise_fields["description"] = problem_statement
+    checklist = await fetch_rci_plan_prerequisites(deviation_id, rci_id=resolved_rci_id)
     return RciPlanRecord(
         record_id=record_id,
         event_type=event_type,
@@ -260,4 +269,17 @@ async def get_rci_plan(record_id: str, rci_id: str) -> RciPlanRecord:
         sections=[RciSectionItem(**section) for section in persisted] if persisted else None,
         stage=stage_for(row["status"]),
         locked_for_editing=await any_task_critique_started(deviation_id, rci_id=resolved_rci_id),
+        prerequisite_checklist=RciPrerequisiteChecklist(**checklist),
     )
+
+
+@router.put("/{record_id}/{rci_id}/prerequisites", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def update_rci_plan_prerequisites(record_id: str, rci_id: str, checklist: RciPrerequisiteChecklist) -> None:
+    """"1.5 Pre-requisite of Investigation Plan" checklist — a human-filled compliance checklist,
+    saved independent of the sections themselves (no lock, unlike update_rci_plan)."""
+    resolved_rci_id = normalize_rci_id(rci_id)
+    try:
+        deviation_id = int(record_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND_DETAIL)
+    await save_rci_plan_prerequisites(deviation_id, checklist.model_dump(), rci_id=resolved_rci_id)

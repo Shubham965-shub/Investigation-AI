@@ -13,7 +13,14 @@ from typing import Any, Dict, List, Optional
 import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-from backend.schemas.rci_plan import RciSectionItem
+from backend.schemas.rci_plan import RciPrerequisiteChecklist, RciSectionItem
+
+_PREREQUISITE_CHECKLIST_ITEMS = (
+    ("bench_top_verification_done", "Bench-top verification done?"),
+    ("preliminary_checklist_done", "Preliminary investigation checklist done?"),
+    ("personnel_interview_done", "Personnel interview done?"),
+    ("photographic_evidence_collected", "Photographic evidence collected?"),
+)
 
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "assets" / "rci_plan_template.docx"
 
@@ -77,10 +84,44 @@ def _set_problem_statement_label(doc) -> None:
             run.font.bold = True
 
 
+def _insert_prerequisite_checklist_rows(outer, checklist: RciPrerequisiteChecklist) -> None:
+    """Inserts "1.5 Pre-requisite of Investigation Plan" as 2 new rows directly before the
+    "2.0 Investigation tasks" header row (outer.rows[5] at the time this runs, before either
+    insertion) — a header row (cloned from that same row's merged-header style) plus a content
+    row holding a small nested Y/N table (cloned from the Investigation tasks row's "wide merged
+    cell holding a nested table" structure, then swapped for a fresh 2-column checklist table).
+    Every row index from here on shifts by +2 — callers must use the POST-insertion indices."""
+    tasks_header_row = outer.rows[5]
+    tasks_content_row = outer.rows[6]
+
+    # Header row: clone the tasks header's merged-cell style, relabel to "1.5".
+    new_header_tr = copy.deepcopy(tasks_header_row._tr)
+    tasks_header_row._tr.addprevious(new_header_tr)
+    new_header_row = outer.rows[5]  # the row we just inserted, now at the old tasks-header's slot
+    _set_cell_text(new_header_row.cells[0], "1.5")
+    _set_cell_text(new_header_row.cells[1], "Pre-requisite of Investigation Plan")
+
+    # Content row: clone the tasks content row's "wide merged cell holding a nested table" style,
+    # then discard the cloned nested table (an unwanted copy of the — still empty at this point —
+    # Investigation tasks table) and build a fresh checklist table in its place.
+    new_content_tr = copy.deepcopy(tasks_content_row._tr)
+    tasks_header_row._tr.addprevious(new_content_tr)  # still before the (now-shifted) tasks header
+    new_content_row = outer.rows[6]
+    wide_cell = new_content_row.cells[1]
+    for nested_tbl in list(wide_cell.tables):
+        nested_tbl._tbl.getparent().remove(nested_tbl._tbl)
+    checklist_table = wide_cell.add_table(rows=len(_PREREQUISITE_CHECKLIST_ITEMS), cols=2)
+    checklist_dict = checklist.model_dump()
+    for row, (field, label) in zip(checklist_table.rows, _PREREQUISITE_CHECKLIST_ITEMS):
+        _set_cell_text(row.cells[0], label)
+        _set_cell_text(row.cells[1], "Yes" if checklist_dict[field] else "No")
+
+
 def build_rci_plan_docx(
     record_id: str,
     trackwise_fields: Dict[str, Any],
     sections: List[RciSectionItem],
+    checklist: RciPrerequisiteChecklist,
 ) -> tuple[bytes, int, int]:
     """Returns (docx_bytes, truncated_section_count, truncated_owner_count)."""
     # Unchecked sections are excluded entirely — same "checked = keep it" convention as RciTaskItem.is_checked.
@@ -109,8 +150,14 @@ def build_rci_plan_docx(
     _set_problem_statement_label(doc)
     _set_description_paragraph(doc, trackwise_fields.get("description") or trackwise_fields.get("title") or "")
 
+    # ── 1.5 Pre-requisite of Investigation Plan ─────────────────────────
+    # Inserts 2 new rows before the (at this point still original-indexed) "2.0 Investigation
+    # tasks" header — every row index below is the POST-insertion index (+2 from the template's
+    # raw layout, see this file's module docstring).
+    _insert_prerequisite_checklist_rows(outer, checklist)
+
     # ── 2.0 Investigation tasks ─────────────────────────────────────────
-    tasks_table = outer.rows[6].cells[1].tables[0]
+    tasks_table = outer.rows[8].cells[1].tables[0]
     truncated = max(0, len(sections) - MAX_TEMPLATE_SECTIONS)
     # Each 3-row block only gets its first row filled; the other two are deleted. Deletion happens in descending row order so earlier deletions don't shift later indices.
     rows_to_delete: List[int] = []
@@ -138,9 +185,10 @@ def build_rci_plan_docx(
         row._tr.getparent().remove(row._tr)
 
     # ── 3.0 RCI Plan Sign-off ────────────────────────────────────────────
-    # Flat table, headers at row 8: ['', 'Investigator', 'Task Owner 1'..'Task Owner 4'] — cell 0 is a blank label column, NOT the Investigator slot.
-    sign_off_row = outer.rows[9]
-    header_row = outer.rows[8]
+    # Flat table, headers at row 10 (was row 8 before the 1.5 checklist's 2 new rows above):
+    # ['', 'Investigator', 'Task Owner 1'..'Task Owner 4'] — cell 0 is a blank label column, NOT the Investigator slot.
+    sign_off_row = outer.rows[11]
+    header_row = outer.rows[10]
     # Dedup by name (preserving first-appearance order) — otherwise a repeat name could burn a slot while a distinct owner further down gets none.
     unique_owners: List[str] = []
     for section in sections:

@@ -5,6 +5,7 @@ import {
   getRciReportRecord,
   generateRciReport,
   updateRciReportSections,
+  updateRciReportInputs,
   exportRciReportDocx,
   SIX_M_FACTOR_OPTIONS,
   DURATION_TIER_OPTIONS,
@@ -810,6 +811,9 @@ export function RciReportPage() {
 
   const [report, setReport] = useState<RciReportSections | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [mcConfirmed, setMcConfirmed] = useState<boolean | null>(null);
+  const [manualEntries, setManualEntries] = useState<Record<string, string>>({});
+  const [processFlowError, setProcessFlowError] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -840,6 +844,8 @@ export function RciReportPage() {
           setTrackwiseFields(reportRecord.trackwise_fields ?? null);
           const rci = reportRecord.trackwise_fields?.["RCI Number"];
           setRciNumber((Array.isArray(rci) ? rci.join(", ") : rci) || null);
+          setMcConfirmed(reportRecord.mc_confirmed);
+          setManualEntries(reportRecord.manual_entries ?? {});
         }
       } catch (err) {
         if (!cancelled) setDbError(err instanceof ApiError ? String(err.detail) : "Could not reach the database.");
@@ -864,6 +870,19 @@ export function RciReportPage() {
 
   if (dbError) {
     return <DbErrorModal message={dbError} onRetry={() => setRetryKey((k) => k + 1)} />;
+  }
+
+  // Saved on blur, not per-keystroke — same debounce-avoidance reasoning as Action Center's remark textareas.
+  // Merges into the existing manual_entries object rather than overwriting it (the backend upsert
+  // replaces the whole JSON blob, so a naive {process_flow: value} would clobber other keys).
+  function saveProcessFlow(value: string) {
+    if (!recordId) return;
+    const next = { ...manualEntries, process_flow: value };
+    setManualEntries(next);
+    setProcessFlowError(null);
+    updateRciReportInputs(recordId, normalizedRciId, mcConfirmed, next).catch((err) => {
+      setProcessFlowError(err instanceof ApiError ? String(err.detail) : "Failed to save Process Flow");
+    });
   }
 
   function persistReport(newReport: RciReportSections) {
@@ -1005,6 +1024,18 @@ export function RciReportPage() {
             {problemStatement || "No problem statement recorded for this investigation yet."}
           </p>
         </div>
+      </div>
+
+      <div className="card" style={{ gap: 8 }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-lg)" }}>Process Flow</p>
+        <textarea
+          className="field-value"
+          style={{ height: "auto", minHeight: 100 }}
+          defaultValue={manualEntries.process_flow ?? ""}
+          placeholder="Describe the relevant process/analytical workflow for this investigation…"
+          onBlur={(e) => saveProcessFlow(e.target.value)}
+        />
+        {processFlowError && <p className="error-banner">{processFlowError}</p>}
       </div>
 
       {!report && (
