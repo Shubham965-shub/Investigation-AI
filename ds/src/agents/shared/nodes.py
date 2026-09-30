@@ -80,6 +80,46 @@ async def fetch_archetypes(state: Any) -> Any:
     return state
 
 
+# Matches a "<base name>_Mfg" / "<base name>_Lab" archetype naming convention (the RCI Plan
+# library's one deliberate department split today, e.g. "Assay Failure_Mfg"/"Assay Failure_Lab")
+# — case-insensitive, trailing whitespace tolerant (the source Excel's own "Assay Failure_Lab "
+# sheet tab has a trailing space, stripped at ingestion time).
+_DEPARTMENT_SUFFIX_RE = re.compile(r"_(mfg|lab)\s*$", re.IGNORECASE)
+
+
+def _filter_archetypes_by_department(archetypes: list, investigation_type: Optional[str]) -> list:
+    """Deterministically excludes the wrong-department half of a "_Mfg"/"_Lab" archetype pair
+    (per the functional team, 2026-09-30: only Assay Failure has this split today, but the rule
+    is name-convention-based so it covers any future pair without a code change) — rather than
+    leaving that choice to the LLM's fuzzy name/definition match in map_to_archetype below.
+    Archetypes with no such suffix (the other ~96 in the library) are untouched. No-op when
+    investigation_type is unset (event isn't a dual-RCI OOS/OOT, or dim_rci.is_mfg_rci isn't
+    backfilled for it yet) — every candidate stays in play, same as before this existed.
+    """
+    if not investigation_type:
+        return archetypes
+
+    wanted_suffix = "mfg" if investigation_type.strip().lower() == "manufacturing" else "lab"
+
+    by_base: dict = {}
+    for a in archetypes:
+        match = _DEPARTMENT_SUFFIX_RE.search(a["name"])
+        base = _DEPARTMENT_SUFFIX_RE.sub("", a["name"]).strip().lower() if match else None
+        by_base.setdefault(base, []).append(a)
+
+    filtered = []
+    for base, group in by_base.items():
+        if base is None:
+            filtered.extend(group)  # no _Mfg/_Lab suffix — not part of a department split
+            continue
+        by_suffix = {_DEPARTMENT_SUFFIX_RE.search(a["name"]).group(1).lower(): a for a in group}
+        if "mfg" in by_suffix and "lab" in by_suffix:
+            filtered.append(by_suffix[wanted_suffix])  # genuine pair — keep only the matching half
+        else:
+            filtered.extend(group)  # only one variant exists for this base name — keep it as-is
+    return filtered
+
+
 async def map_to_archetype(state: Any, rci_id: Optional[str] = None) -> Any:
     """Map the full event context to the closest existing archetype.
 
@@ -99,9 +139,12 @@ async def map_to_archetype(state: Any, rci_id: Optional[str] = None) -> Any:
         llm = LLMClient()
 
     registry = get_prompt_registry()
+    candidates = _filter_archetypes_by_department(
+        state.all_archetypes, state.trackwise_fields.get("investigation_type")
+    )
     archetype_list = "\n".join(
         f"- {a['name']}: {a['definition']}" if a.get("definition") else f"- {a['name']}"
-        for a in state.all_archetypes
+        for a in candidates
     )
     tw_fields_str = "\n".join(
         f"  {k}: {v}" for k, v in state.trackwise_fields.items() if v
