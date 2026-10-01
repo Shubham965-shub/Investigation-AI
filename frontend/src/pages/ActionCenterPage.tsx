@@ -19,28 +19,25 @@ import { formatLastUpdated } from "../utils/formatTimestamp";
 import { toRciSegment } from "../lib/rci";
 import { AuditTrailModal } from "../components/AuditTrailModal";
 import iconAuditTrail from "../assets/icons/rci-report-icon-history-review.svg";
+import {
+  matchesStatusCard,
+  BUCKET_TO_STATUS,
+  formatInvestigatorLabel,
+  type SortColumn,
+  parseDisplayDateMs,
+  getSortValue,
+  compareForSort,
+  trendTone,
+  eventTypeAccentClass,
+  classificationFlag,
+  niceAxisMax,
+  pageNumbers,
+} from "./actionCenterHelpers";
 import "./ActionCenterPage.css";
 
 // Only "Unassigned" gets an icon; renderStatusCard skips the <img> when a card's key has no entry here.
 const STATUS_ICONS: Record<string, string> = {
   unassigned: iconUnassigned,
-};
-
-// Unassigned and L5-L1 are independent dimensions, not a partition — an investigation can be both Unassigned and L1, so this uses `bucket` rather than deriving "unassigned" from a missing escalation_level.
-function matchesStatusCard(inv: InvestigationRowResponse, cardKey: string): boolean {
-  // Phase 1/Phase 2 are standalone cards, independent of assignment status — only present when scoped to OOS/OOT.
-  if (cardKey === "phase1") return inv.oos_oot_phase === "Phase 1";
-  if (cardKey === "phase2") return inv.oos_oot_phase === "Phase 2";
-  if (cardKey === "unassigned") return inv.bucket === "unassigned";
-  return inv.escalation_level === cardKey;
-}
-
-// Real backend bucket -> the table/grid status-pill styling + label.
-const BUCKET_TO_STATUS: Record<string, { status: string; label: string }> = {
-  unassigned: { status: "unassigned", label: "Unassigned" },
-  delay: { status: "due-soon", label: "At Risk of Delay" },
-  on_track: { status: "in-progress", label: "In Progress" },
-  overdue: { status: "overdue", label: "Overdue" },
 };
 
 // escalation_level ("L1".."L5") -> one distinct tone per level, matching the status cards above.
@@ -60,17 +57,6 @@ const DEFAULT_SORT_BUCKET_PRIORITY: Record<string, number> = {
   unassigned: 3,
 };
 
-
-// Must match the backend's _UNASSIGNED_INVESTIGATOR_FILTER sentinel exactly.
-const UNASSIGNED_INVESTIGATOR_FILTER = "__unassigned__";
-
-function formatInvestigatorLabel(investigator: string): string {
-  return investigator === UNASSIGNED_INVESTIGATOR_FILTER ? "Unassigned" : investigator;
-}
-
-// Every column except "Investigation" itself is sortable.
-type SortColumn = "product" | "investigator" | "progress" | "start_date" | "due_date" | "status";
-
 const SORTABLE_COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "product", label: "Product" },
   { key: "investigator", label: "Investigator" },
@@ -80,72 +66,8 @@ const SORTABLE_COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "status", label: "Status" },
 ];
 
-// Dates are pre-formatted strings ("29 Jul 2026"), not ISO — parse to a timestamp so sort is chronological, not alphabetical by month name.
-function parseDisplayDateMs(value: string | null): number | null {
-  if (!value) return null;
-  const ms = new Date(value).getTime();
-  return Number.isNaN(ms) ? null : ms;
-}
-
-function getSortValue(inv: InvestigationRowResponse, column: SortColumn): string | number | null {
-  switch (column) {
-    case "product":
-      return inv.product;
-    case "investigator":
-      return inv.investigator;
-    case "progress":
-      return inv.total_stages ? inv.investigator_stage / inv.total_stages : 0;
-    case "start_date":
-      return parseDisplayDateMs(inv.start_date);
-    case "due_date":
-      return parseDisplayDateMs(inv.due_date);
-    case "status":
-      return inv.is_cancelled ? "Cancelled" : (BUCKET_TO_STATUS[inv.bucket] ?? BUCKET_TO_STATUS.unassigned).label;
-  }
-}
-
-// Nulls always sort to the end regardless of direction — flipping them on "desc" would put blanks first.
-function compareForSort(a: string | number | null, b: string | number | null, direction: "asc" | "desc"): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  const cmp = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-  return direction === "asc" ? cmp : -cmp;
-}
-
-// Grey (neutral) when trend is 0/undefined — previous month's count was 0, so a % change isn't meaningful.
-function trendTone(trendPercent: number | null): "neutral" | "warm" | "cool" {
-  if (!trendPercent) return "neutral";
-  return trendPercent < 0 ? "warm" : "cool";
-}
-
-// Static per event type, independent of the MoM trend coloring above.
-function eventTypeAccentClass(label: string): "event-deviation" | "event-oos" | "event-oot" | "event-mc" {
-  if (label === "OOS") return "event-oos";
-  if (label === "OOT") return "event-oot";
-  if (label === "Market Complaint") return "event-mc";
-  return "event-deviation";
-}
-
-// Only Major/Minor show here, no "Non Critical" tag — null means unclassified or no Major/Minor concept (OOS/OOT), not "non-critical". Critical itself is a separate badge driven by criticality.
-function classificationFlag(inv: InvestigationRowResponse): { label: string; className: string } | null {
-  if (inv.event_classification === "Major") return { label: "Major", className: "classification-major" };
-  if (inv.event_classification === "Minor") return { label: "Minor", className: "classification-minor" };
-  return null;
-}
-
 // Bar heights are computed as a JS pixel value, not CSS %, since % height doesn't resolve reliably through this flex chain.
 const KPI_CHART_HEIGHT_PX = 40;
-
-// Rounds max up to a "nice" axis ceiling (1-2-5-10 step sequence) so bars stay proportional to a real 0 baseline, with headroom above the tallest bar.
-function niceAxisMax(max: number, targetSteps = 4): number {
-  if (max <= 0) return 1;
-  const rawStep = max / targetSteps;
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
-  const normalized = rawStep / magnitude;
-  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
-  return Math.ceil(max / step) * step;
-}
 
 // forceTone="neutral" opts a card out of trend-based coloring (used for Open Investigations). invertTrendColor flips good/bad direction for "Opened / month", where more is bad unlike "Closed / month".
 function renderKpiChart(trend: MonthlyTrend, caption: string, forceTone?: "neutral", invertTrendColor = false) {
@@ -289,18 +211,6 @@ function renderStatusCard(
 const DEFAULT_START_DATE_FROM = "2026-09-19";
 
 const PAGE_SIZE = 10;
-
-// Shows first/last plus a window around the current page, collapsing the rest into an ellipsis for large page counts.
-function pageNumbers(current: number, total: number): (number | "…")[] {
-  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
-  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
-  const result: (number | "…")[] = [];
-  sorted.forEach((p, idx) => {
-    if (idx > 0 && p - sorted[idx - 1] > 1) result.push("…");
-    result.push(p);
-  });
-  return result;
-}
 
 export function ActionCenterPage() {
   const { roles, viewAsInvestigator } = useAuth();

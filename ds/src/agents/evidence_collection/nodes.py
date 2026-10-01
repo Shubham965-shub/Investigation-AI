@@ -60,7 +60,7 @@ async def fetch_evidence(state: EvidenceCollectionState) -> EvidenceCollectionSt
             state.evidence_list = [
                 {"id": r["id"], "description": r["description"]}
                 for r in rows
-                if _department_relevant(r["department"], investigation_type)
+                if _department_relevant(r.get("department"), investigation_type)
             ]
             logger.info(
                 f"Fetched {len(rows)} evidence items, {len(state.evidence_list)} relevant "

@@ -28,7 +28,9 @@ def extract_task_sections(docx_bytes: bytes) -> List[Dict[str, Any]]:
     """
     doc = docx.Document(io.BytesIO(docx_bytes))
     outer = doc.tables[0]
-    tasks_table = outer.rows[6].cells[1].tables[0]
+    # Row 8, not 6 — the "1.5 Pre-requisite of Investigation Plan" checklist rci_plan_export.py
+    # now inserts before the tasks table shifted every row index here by +2 (2026-10-01).
+    tasks_table = outer.rows[8].cells[1].tables[0]
 
     sections: List[Dict[str, Any]] = []
     for row in tasks_table.rows[1:]:  # row 0 is the header

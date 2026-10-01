@@ -879,15 +879,18 @@ def _fake_risk_factors():
 
 
 def _fake_executive_summary():
+    # Every field is List[str] (a bullet list), not a bare string — confirmed 2026-10-01 against
+    # the real ExecutiveSummarySection schema; this fixture predates that field type and was
+    # never updated, which is what made this test fail with 8 Pydantic list_type errors.
     return ExecutiveSummarySection(
-        summary="Blender speed setpoint error caused an out-of-range granulation run.",
-        problem_description="Blender exceeded its validated speed range during granulation.",
-        immediate_containment_action="Batch B-001 was placed on hold.",
-        determination_of_root_cause="Investigation traced the deviation to a misconfigured speed setpoint.",
-        root_cause_probable_cause_statement="Incorrect blender speed setpoint.",
-        impact_assessment="Limited to the one affected batch, which was placed on hold.",
-        correction_conclusion_preventive_actions="SOP revised and operators retrained; cable replaced.",
-        conclusion_statement="Batch B-001 disposition pending CAPA closure.",
+        summary=["Blender speed setpoint error caused an out-of-range granulation run."],
+        problem_description=["Blender exceeded its validated speed range during granulation."],
+        immediate_containment_action=["Batch B-001 was placed on hold."],
+        determination_of_root_cause=["Investigation traced the deviation to a misconfigured speed setpoint."],
+        root_cause_probable_cause_statement=["Incorrect blender speed setpoint."],
+        impact_assessment=["Limited to the one affected batch, which was placed on hold."],
+        correction_conclusion_preventive_actions=["SOP revised and operators retrained; cable replaced."],
+        conclusion_statement=["Batch B-001 disposition pending CAPA closure."],
     )
 
 

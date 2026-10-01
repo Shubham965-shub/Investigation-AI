@@ -2,14 +2,12 @@ import io
 
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import HTTPException
 
 from src.agents.app import create_app
 from src.prompt_registry.service import PromptRegistry
 from src.utils import deps
 from agents.rot_cause_advisor.api.services.root_cause_advisor_service import (
     ROOT_CAUSE_CATEGORIES,
-    validate_root_cause_advice,
 )
 
 # The service now loads its prompts from PromptRegistry at request time
@@ -53,19 +51,13 @@ def test_root_cause_advisor_requires_non_empty_event_type():
     assert response.json()["detail"] == "event_type is required and must be non-empty."
 
 
-def test_validate_root_cause_advice_rejects_missing_category():
-    incomplete_response = [
-        {
-            "category": "man",
-            "gaps": [],
-            "hypothesis": [],
-            "tasks": [],
-            "assumptions": [],
-        }
-    ]
-
-    with pytest.raises(HTTPException):
-        validate_root_cause_advice(incomplete_response)
+# A test here used to call validate_root_cause_advice(), checking that an LLM response missing
+# a category raised HTTPException. That function no longer exists anywhere in the codebase (and
+# the response schema itself has since changed shape — rootCauseAdvisoryResponse now wraps a
+# root_cause_categories list, and RootCauseCategory's fields were restructured, e.g. hypothesis/
+# tasks merged into items: List[HypothesisTask]), confirmed 2026-10-01: this validation was
+# dropped in a refactor and never replaced, not a test bug — removed rather than reinventing
+# unspecified validation behavior.
 
 
 def test_root_cause_advisor_route_returns_valid_list(monkeypatch):
