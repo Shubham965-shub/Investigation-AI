@@ -14,8 +14,32 @@ from src.utils.deps import get_llm_client, get_prompt_registry
 logger = logging.getLogger(__name__)
 
 
+def _department_relevant(department: "str | None", investigation_type: "str | None") -> bool:
+    """Whether an evidence item's department tag is relevant to the investigation's department
+    (2026-10-01, per real investigator feedback: a Manufacturing RCI was showing QC/lab-flavored
+    evidence). Fuzzy/substring-based (per the user) so mixed tags like "Production/QA" or
+    "QC/Engineering" resolve naturally without an explicit whitelist. A tag containing neither
+    "production" nor "qc" (Packing, Facility & Engineering, any Warehouse, QA, IT, Qualification,
+    "All areas", "All sections", or no tag at all) is always relevant — only pure Production vs QC
+    tags are ever excluded. No-op (always relevant) when investigation_type is unset — the vast
+    majority of events (single-RCI, non-OOS/OOT) are never filtered at all.
+    """
+    if not investigation_type:
+        return True
+    if not department:
+        return True
+    dept_lower = department.lower()
+    is_production_tagged = "production" in dept_lower
+    is_qc_tagged = "qc" in dept_lower
+    if not is_production_tagged and not is_qc_tagged:
+        return True
+    wants_production = investigation_type.strip().lower() == "manufacturing"
+    return is_production_tagged if wants_production else is_qc_tagged
+
+
 async def fetch_evidence(state: EvidenceCollectionState) -> EvidenceCollectionState:
-    """Fetch evidence items for the mapped archetype."""
+    """Fetch evidence items for the mapped archetype, filtered to the investigating department
+    when known (see _department_relevant)."""
     if state.mapped_archetype.get("id") is None:
         state.evidence_list = []
         return state
@@ -29,11 +53,19 @@ async def fetch_evidence(state: EvidenceCollectionState) -> EvidenceCollectionSt
         conn = await asyncpg.connect(db_url)
         try:
             rows = await conn.fetch(
-                "SELECT id, description FROM evidence WHERE archetype_id = $1 ORDER BY id",
+                "SELECT id, description, department FROM evidence WHERE archetype_id = $1 ORDER BY id",
                 state.mapped_archetype["id"],
             )
-            state.evidence_list = [{"id": r["id"], "description": r["description"]} for r in rows]
-            logger.info(f"Fetched {len(state.evidence_list)} evidence items")
+            investigation_type = state.trackwise_fields.get("investigation_type")
+            state.evidence_list = [
+                {"id": r["id"], "description": r["description"]}
+                for r in rows
+                if _department_relevant(r["department"], investigation_type)
+            ]
+            logger.info(
+                f"Fetched {len(rows)} evidence items, {len(state.evidence_list)} relevant "
+                f"after department filtering (investigation_type={investigation_type!r})"
+            )
         finally:
             await conn.close()
     except Exception as e:

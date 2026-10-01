@@ -2,9 +2,17 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
-import { adminSetUserPassword, createAdminUser, getAdminUsers, updateAdminUserRole, type AdminUserRow } from "../api/auth";
+import {
+  adminSetUserPassword,
+  createAdminUser,
+  getAdminUsers,
+  updateAdminUserActiveStatus,
+  updateAdminUserRole,
+  type AdminUserRow,
+} from "../api/auth";
 import { CreateUserDialog } from "../components/CreateUserDialog";
 import { AdminResetPasswordDialog } from "../components/AdminResetPasswordDialog";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { track, EVENTS } from "../telemetry/events";
 // Reuses shared classes from ActionCenterPage.css/RecordModulePage.css — plain CSS, no module scoping, same convention as other pages.
 import "./ActionCenterPage.css";
@@ -41,6 +49,9 @@ export function UserManagementPage() {
   const [resetPasswordFor, setResetPasswordFor] = useState<AdminUserRow | null>(null);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  // Only deactivating asks for confirmation (locks someone out) — reactivating is benign, no dialog.
+  const [confirmDeactivateFor, setConfirmDeactivateFor] = useState<AdminUserRow | null>(null);
+  const [savingActiveFor, setSavingActiveFor] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -129,6 +140,24 @@ export function UserManagementPage() {
     }
   }
 
+  // Reactivating calls this directly; deactivating goes through the confirm dialog first (see confirmDeactivateFor).
+  async function handleSetActive(userId: number, isActive: boolean) {
+    setSavingActiveFor(userId);
+    setError(null);
+    const previous = users;
+    setUsers((prev) => prev?.map((u) => (u.id === userId ? { ...u, is_active: isActive } : u)) ?? prev);
+    try {
+      const updated = await updateAdminUserActiveStatus(userId, isActive);
+      setUsers((prev) => prev?.map((u) => (u.id === userId ? updated : u)) ?? prev);
+    } catch (err) {
+      setUsers(previous);
+      setError(err instanceof ApiError ? String(err.detail) : "Failed to update user status");
+    } finally {
+      setSavingActiveFor(null);
+      setConfirmDeactivateFor(null);
+    }
+  }
+
   return (
     <div className="ac-page-bg">
       <div className="ac-page">
@@ -150,6 +179,7 @@ export function UserManagementPage() {
                   <th>Full Name</th>
                   <th>Email / Username</th>
                   <th>Role</th>
+                  <th>Status</th>
                   <th>Created On</th>
                   <th>Last Logged In</th>
                   <th />
@@ -177,9 +207,14 @@ export function UserManagementPage() {
                         ))}
                       </select>
                     </td>
+                    <td>
+                      <span className={`status-pill ${u.is_active ? "in-progress" : "overdue"}`}>
+                        {u.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
                     <td>{formatTimestamp(u.created_at)}</td>
                     <td>{formatTimestamp(u.last_login)}</td>
-                    <td>
+                    <td style={{ display: "flex", gap: 8 }}>
                       <button
                         type="button"
                         className="btn-outline"
@@ -189,6 +224,14 @@ export function UserManagementPage() {
                         }}
                       >
                         Reset Password
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        disabled={savingActiveFor === u.id}
+                        onClick={() => (u.is_active ? setConfirmDeactivateFor(u) : handleSetActive(u.id, true))}
+                      >
+                        {u.is_active ? "Deactivate" : "Activate"}
                       </button>
                     </td>
                   </tr>
@@ -219,6 +262,15 @@ export function UserManagementPage() {
           error={resetPasswordError}
           onCancel={() => setResetPasswordFor(null)}
           onConfirm={handleResetPassword}
+        />
+      )}
+
+      {confirmDeactivateFor && (
+        <ConfirmDialog
+          title="Deactivate this user?"
+          message={`${confirmDeactivateFor.full_name ?? confirmDeactivateFor.username} won't be able to log in until reactivated. Their generated content and history are kept.`}
+          onCancel={() => setConfirmDeactivateFor(null)}
+          onConfirm={() => handleSetActive(confirmDeactivateFor.id, false)}
         />
       )}
     </div>

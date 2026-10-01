@@ -16,6 +16,9 @@ import iconViewGrid from "../assets/icons/view-grid.png";
 import iconViewList from "../assets/icons/view-list.png";
 import iconRowArrow from "../assets/icons/row-arrow.svg";
 import { formatLastUpdated } from "../utils/formatTimestamp";
+import { toRciSegment } from "../lib/rci";
+import { AuditTrailModal } from "../components/AuditTrailModal";
+import iconAuditTrail from "../assets/icons/rci-report-icon-history-review.svg";
 import "./ActionCenterPage.css";
 
 // Only "Unassigned" gets an icon; renderStatusCard skips the <img> when a card's key has no entry here.
@@ -310,6 +313,9 @@ export function ActionCenterPage() {
   // DEFAULT_START_DATE_FROM filter itself still applies for every role — only the ability to see
   // or change it is restricted.
   const canSeeStartDateFilter = roles.includes("Admin") || roles.includes("SIT");
+  // Audit Trail button (2026-10-01, per the user): Admin-only, unlike the date filter above.
+  const canViewAuditTrail = roles.includes("Admin");
+  const [auditTrailTarget, setAuditTrailTarget] = useState<{ recordId: string; rciSegment: string } | null>(null);
   // Remark column: viewable by SIT or Admin, editable by SIT only — the backend enforces both independently too.
   // Visible (read-only) to every role; only SIT can edit — see the textarea's readOnly below.
   const canViewRemarks = true;
@@ -1200,24 +1206,48 @@ export function ActionCenterPage() {
                       </td>
                     )}
                     <td>
-                      <button
-                        type="button"
-                        className="ac-row-arrow"
-                        aria-label={hasMultipleRci ? `Toggle ${inv.id}` : `Preview ${inv.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (hasMultipleRci) toggleExpanded(inv.id, inv.rci_ids.length);
-                          else openPreview(inv, inv.rci_ids[0] ?? null);
-                        }}
-                      >
-                        <img
-                          src={iconRowArrow}
-                          alt=""
-                          width={14}
-                          height={14}
-                          style={{ transform: hasMultipleRci ? (isExpanded ? "rotate(90deg)" : "rotate(0deg)") : "rotate(180deg)" }}
-                        />
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                        {canViewAuditTrail && (
+                          // Fixed-width slot reserved whether or not the button itself renders
+                          // (multi-RCI summary rows have no single rci_id to show it for) — keeps
+                          // the row-arrow button's position consistent down the column instead of
+                          // shifting row-to-row.
+                          <div style={{ width: 32, height: 32, flexShrink: 0 }}>
+                            {!hasMultipleRci && (
+                              <button
+                                type="button"
+                                className="ac-row-arrow"
+                                aria-label={`View audit trail for ${inv.id}`}
+                                title="View audit trail"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAuditTrailTarget({ recordId: inv.id, rciSegment: toRciSegment(primaryRciId || null) });
+                                }}
+                              >
+                                <img src={iconAuditTrail} alt="" width={14} height={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          className="ac-row-arrow"
+                          aria-label={hasMultipleRci ? `Toggle ${inv.id}` : `Preview ${inv.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasMultipleRci) toggleExpanded(inv.id, inv.rci_ids.length);
+                            else openPreview(inv, inv.rci_ids[0] ?? null);
+                          }}
+                        >
+                          <img
+                            src={iconRowArrow}
+                            alt=""
+                            width={14}
+                            height={14}
+                            style={{ transform: hasMultipleRci ? (isExpanded ? "rotate(90deg)" : "rotate(0deg)") : "rotate(180deg)" }}
+                          />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1299,7 +1329,24 @@ export function ActionCenterPage() {
                           )}
                         </td>
                       )}
-                      <td />
+                      <td>
+                        {canViewAuditTrail && (
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="ac-row-arrow"
+                              aria-label={`View audit trail for ${inv.id} RCI ${rciId}`}
+                              title="View audit trail"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAuditTrailTarget({ recordId: inv.id, rciSegment: toRciSegment(rciId) });
+                              }}
+                            >
+                              <img src={iconAuditTrail} alt="" width={14} height={14} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   );
                 });
@@ -1379,6 +1426,13 @@ export function ActionCenterPage() {
     </div>
     </div>
     <InvestigationPreviewPanel investigation={previewInvestigation} onClose={() => setPreviewInvestigation(null)} />
+    {auditTrailTarget && (
+      <AuditTrailModal
+        recordId={auditTrailTarget.recordId}
+        rciSegment={auditTrailTarget.rciSegment}
+        onClose={() => setAuditTrailTarget(null)}
+      />
+    )}
     </>
   );
 }

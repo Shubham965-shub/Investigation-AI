@@ -69,6 +69,28 @@ class AdminUpdateUserRoleRequest(BaseModel):
     role: str = Field(..., min_length=1)
 
 
+class AdminUpdateUserActiveRequest(BaseModel):
+    is_active: bool
+
+
 class AdminUpdateInvestigatorNameRequest(BaseModel):
     # "" clears it to NULL; kept non-Optional so an omitted field isn't ambiguous with "clear it".
     investigator_name: str = Field(default="")
+
+
+class AuditTrailEntry(BaseModel):
+    created_at: datetime
+    method: str
+    path: str
+    status_code: Optional[int] = None
+    duration_ms: Optional[int] = None
+    # None for a call made before the user existed, or by an unauthenticated/expired request.
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    # The user's CURRENT role, not necessarily the role held at call time — see
+    # db/auth_queries.py's fetch_audit_trail docstring.
+    role: Optional[str] = None
+
+
+class AuditTrailResponse(BaseModel):
+    entries: List[AuditTrailEntry]

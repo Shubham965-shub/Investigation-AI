@@ -22,10 +22,12 @@ from backend.db.auth_queries import (
     create_user,
     fetch_all_role_names,
     fetch_all_users,
+    fetch_audit_trail,
     fetch_role_id_by_name,
     fetch_user_by_id,
     fetch_user_by_username,
     record_login,
+    update_user_active_status,
     update_user_investigator_name,
     update_user_password,
     update_user_role,
@@ -34,9 +36,11 @@ from backend.schemas.auth import (
     AdminCreateUserRequest,
     AdminSetPasswordRequest,
     AdminUpdateInvestigatorNameRequest,
+    AdminUpdateUserActiveRequest,
     AdminUpdateUserRoleRequest,
     AdminUserListResponse,
     AdminUserRow,
+    AuditTrailResponse,
     ChangePasswordRequest,
     CurrentUser,
     EventExplorerHandoffResponse,
@@ -285,6 +289,32 @@ async def admin_set_user_password(
     new_hash = bcrypt.hashpw(request.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     await update_user_password(user_id, new_hash)
     return {"status": "ok"}
+
+
+@router.get("/admin/audit-trail/{record_id}/{rci_id}", response_model=AuditTrailResponse)
+async def get_audit_trail(record_id: str, rci_id: str, _: str = Depends(require_admin)) -> AuditTrailResponse:
+    # Matched against the literal HTTP path text (athena_api_call_trails.path), which always has
+    # a real path segment here — either a real rci_id or the literal "none" sentinel — never a
+    # missing segment. Deliberately NOT normalize_rci_id(rci_id): that collapses "none" to Python
+    # None for DB-query purposes elsewhere, but every logged path still spells out "none" literally.
+    entries = await fetch_audit_trail(record_id, rci_id)
+    return AuditTrailResponse(entries=entries)
+
+
+@router.put("/admin/users/{user_id}/status", response_model=AdminUserRow)
+async def update_admin_user_active_status(
+    user_id: int, request: AdminUpdateUserActiveRequest, _: str = Depends(require_admin)
+) -> AdminUserRow:
+    """Deactivation is this app's "remove a user" mechanism — see update_user_active_status's
+    docstring for why a hard delete isn't used instead."""
+    updated = await update_user_active_status(user_id, request.is_active)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    rows = await fetch_all_users()
+    row = next((r for r in rows if r["id"] == user_id), None)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return AdminUserRow(**dict(row))
 
 
 @router.put("/admin/users/{user_id}/investigator-name", response_model=AdminUserRow)
