@@ -103,6 +103,27 @@ def test_oos_uses_failure_type_directly():
     assert fields["Failure type"] == "Assay"
 
 
+def test_oos_batches_details_joins_batch_numbers_only():
+    fields = build_trackwise_fields(
+        row(
+            title="t",
+            investigator="inv",
+            rci_number="r1",
+            batches_details_batch_no_ar_no=["7550360", "7550361"],
+        ),
+        "Out Of Specification",
+    )
+    assert fields["Batches Details"] == "7550360, 7550361"
+
+
+def test_oos_batches_details_none_when_column_empty():
+    fields = build_trackwise_fields(
+        row(title="t", investigator="inv", rci_number="r1"),
+        "Out Of Specification",
+    )
+    assert fields["Batches Details"] is None
+
+
 def test_oot_merges_root_cause_category_narrowest_to_broadest():
     fields = build_trackwise_fields(
         row(

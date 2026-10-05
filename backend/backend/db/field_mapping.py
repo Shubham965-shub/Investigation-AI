@@ -2,7 +2,6 @@
 InvestigationAi_DS both expect (confirmed identical between the two).
 
 Known gaps (best-effort, flagged for the DB owner, not silently guessed):
-- OOS/OOT "Batches Details" has no clear source column; omitted.
 - "Equipment Name"/"Name of the Instrument" both resolve to instrument_equipment
   (no second source column exists).
 - Deviation-extended "Equipment ID" and "Equipment Number" both reuse
@@ -178,6 +177,9 @@ def _type_specific_trackwise_fields(
             "Stability Protocol Number": _val(row, "stability_protocol_number"),
             "Labelled Storage Conditions": _val(row, "labelled_storage_conditions"),
             "Failure type": _merge_root_cause_category(row) if event_type == "OOT" else _val(row, "failure_type"),
+            # Product/material name already surfaced separately via "Product Name / Material Name";
+            # this just joins the batch/AR numbers from the same "Batch Details" grid's parallel column.
+            "Batches Details": _val_joined(row, "batches_details_batch_no_ar_no"),
             "Observation Time": _val(row, "observation_time"),
             "Product Type": _val(row, "product_type"),
             "STP Number": _val(row, "stp_number"),
