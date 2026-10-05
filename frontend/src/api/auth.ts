@@ -61,6 +61,12 @@ export function updateAdminUserRole(userId: number, role: string): Promise<Admin
   return apiPut<AdminUserRow>(`/auth/admin/users/${userId}/role`, { role });
 }
 
+// Deactivation is this app's "remove a user" mechanism, not a hard delete (keeps their generated
+// content's attribution history intact; a deactivated account just can't log in anymore).
+export function updateAdminUserActiveStatus(userId: number, isActive: boolean): Promise<AdminUserRow> {
+  return apiPut<AdminUserRow>(`/auth/admin/users/${userId}/status`, { is_active: isActive });
+}
+
 // Self-service, any authenticated user — backend re-verifies current_password server-side.
 export function changePassword(request: { current_password: string; new_password: string }): Promise<{ status: string }> {
   return apiPut<{ status: string }>("/auth/change-password", request);
@@ -69,4 +75,27 @@ export function changePassword(request: { current_password: string; new_password
 // Admin-only: backend enforces 403 for non-Admin tokens (require_admin), no current_password needed.
 export function adminSetUserPassword(userId: number, newPassword: string): Promise<{ status: string }> {
   return apiPut<{ status: string }>(`/auth/admin/users/${userId}/password`, { new_password: newPassword });
+}
+
+// Admin-only: backend enforces 403 for non-Admin tokens (require_admin).
+export interface AuditTrailEntry {
+  created_at: string;
+  method: string;
+  path: string;
+  status_code: number | null;
+  duration_ms: number | null;
+  username: string | null;
+  full_name: string | null;
+  // The user's CURRENT role, not necessarily the role they held at the time of the call.
+  role: string | null;
+}
+
+export interface AuditTrailResponse {
+  entries: AuditTrailEntry[];
+}
+
+// rciId is the raw path segment (e.g. "none" for a no-RCI record) — same convention as
+// toRciSegment elsewhere, since the backend matches against literal logged path text.
+export function getAuditTrail(recordId: string, rciSegment: string): Promise<AuditTrailResponse> {
+  return apiGet<AuditTrailResponse>(`/auth/admin/audit-trail/${recordId}/${rciSegment}`);
 }

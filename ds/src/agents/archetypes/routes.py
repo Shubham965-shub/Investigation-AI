@@ -113,6 +113,7 @@ async def _upload_library_excel(
     definition_col_candidates: List[str],
     item_col_candidates: List[str],
     item_table: str,
+    department_col_candidates: Optional[List[str]] = None,
 ) -> LibraryUploadResponse:
     """Shared bulk-upload logic for the Evidence and Interview Questionnaire
     libraries: one flat sheet, archetype name repeated/blank-filled down
@@ -121,6 +122,11 @@ async def _upload_library_excel(
     Each archetype is upserted by name: its child items are replaced
     wholesale so re-uploading a corrected file reflects the new content,
     matching the per-archetype replace semantics of POST /rci/upload.
+
+    department_col_candidates (2026-10-01, per the user): only passed for
+    Evidence — Interview Questionnaire has no department concept. Same
+    merged-cell/forward-fill treatment as name/definition (confirmed live:
+    tagged once per archetype block, not per individual item row).
     """
     filename = (file.filename or "").strip()
     suffix = filename.split(".")[-1].lower() if "." in filename else ""
@@ -150,6 +156,7 @@ async def _upload_library_excel(
         name_col = _find_col(name_col_candidates, df.columns)
         definition_col = _find_col(definition_col_candidates, df.columns)
         item_col = _find_col(item_col_candidates, df.columns)
+        department_col = _find_col(department_col_candidates, df.columns) if department_col_candidates else None
 
         if not name_col or not item_col:
             raise HTTPException(
@@ -162,10 +169,15 @@ async def _upload_library_excel(
             )
 
         # Merged/blank-continuation cells: forward-fill the archetype name
-        # (and definition, if present) down to the item rows beneath them.
+        # (and definition/department, if present) down to the item rows beneath them.
+        # Confirmed live (2026-10-01): department is tagged once per archetype block, same
+        # merged-cell convention as name/definition — NOT per individual item row as first
+        # assumed; leaving it un-ffilled left every item but the first NULL.
         df[name_col] = df[name_col].ffill()
         if definition_col:
             df[definition_col] = df[definition_col].ffill()
+        if department_col:
+            df[department_col] = df[department_col].ffill()
 
         df = df.dropna(subset=[item_col])
         if df.empty:
@@ -227,16 +239,29 @@ async def _upload_library_excel(
 
                     archetypes_processed.append(archetype_name)
 
-                    item_values = [
-                        str(v).strip() for v in group[item_col].tolist()
-                        if str(v).strip() and str(v).strip().lower() != "nan"
-                    ]
-                    if item_values:
-                        await conn.executemany(
-                            f"INSERT INTO {item_table} (description, archetype_id) VALUES ($1, $2)",
-                            [(v, archetype_id) for v in item_values],
+                    item_rows = [
+                        (
+                            str(item_v).strip(),
+                            (str(dept_v).strip() if department_col and pd.notna(dept_v) else None),
                         )
-                        items_created += len(item_values)
+                        for item_v, dept_v in zip(
+                            group[item_col].tolist(),
+                            group[department_col].tolist() if department_col else [None] * len(group),
+                        )
+                        if str(item_v).strip() and str(item_v).strip().lower() != "nan"
+                    ]
+                    if item_rows:
+                        if department_col:
+                            await conn.executemany(
+                                f"INSERT INTO {item_table} (description, department, archetype_id) VALUES ($1, $2, $3)",
+                                [(desc, dept, archetype_id) for desc, dept in item_rows],
+                            )
+                        else:
+                            await conn.executemany(
+                                f"INSERT INTO {item_table} (description, archetype_id) VALUES ($1, $2)",
+                                [(desc, archetype_id) for desc, _ in item_rows],
+                            )
+                        items_created += len(item_rows)
 
         return LibraryUploadResponse(
             status="success",
@@ -384,6 +409,7 @@ async def upload_evidence_library(file: UploadFile = File(...)) -> LibraryUpload
         definition_col_candidates=["Description/Definition", "Definition"],
         item_col_candidates=["Evidence to Collect", "Evidence"],
         item_table="evidence",
+        department_col_candidates=["Department"],
     )
 
 

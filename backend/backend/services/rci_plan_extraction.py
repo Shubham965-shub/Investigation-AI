@@ -28,7 +28,18 @@ def extract_task_sections(docx_bytes: bytes) -> List[Dict[str, Any]]:
     """
     doc = docx.Document(io.BytesIO(docx_bytes))
     outer = doc.tables[0]
-    tasks_table = outer.rows[6].cells[1].tables[0]
+    # Locate the "2.0 Investigation tasks" header row by its section-number label rather than a
+    # hardcoded row index — a fixed index broke every already-exported docx from before the "1.5
+    # Pre-requisite of Investigation Plan" checklist was inserted (2026-10-01), which shifted this
+    # row by +2 and crashed Task Critique with an IndexError for ~90% of existing records. The
+    # "2.0" cell itself is stable across both the old and new template layouts.
+    header_row_index = next(
+        (i for i, row in enumerate(outer.rows) if (row.cells[0].text or "").strip() == "2.0"),
+        None,
+    )
+    if header_row_index is None:
+        raise ValueError("Could not locate the \"2.0 Investigation tasks\" section in this RCI Plan export")
+    tasks_table = outer.rows[header_row_index + 1].cells[1].tables[0]
 
     sections: List[Dict[str, Any]] = []
     for row in tasks_table.rows[1:]:  # row 0 is the header

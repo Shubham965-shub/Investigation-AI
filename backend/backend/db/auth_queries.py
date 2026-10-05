@@ -2,6 +2,7 @@
 athena_roles/athena_api_call_trails, applied to the shared DB 2026-07-31."""
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -106,6 +107,17 @@ async def update_user_role(user_id: int, role_id: int) -> bool:
         return result == "UPDATE 1"
 
 
+async def update_user_active_status(user_id: int, is_active: bool) -> bool:
+    """Deactivation is this app's "remove a user" mechanism (2026-10-01, per the user) — a hard
+    DELETE would violate the FK every generated_by/uploaded_by column holds against athena_users,
+    and would destroy real attribution history (see this session's Manikandan K case). Deactivated
+    accounts fail login (routers/auth.py's login() checks is_active) but keep all their history."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("UPDATE athena_users SET is_active = $1 WHERE id = $2", is_active, user_id)
+        return result == "UPDATE 1"
+
+
 async def update_user_investigator_name(user_id: int, investigator_name: Optional[str]) -> bool:
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -113,6 +125,33 @@ async def update_user_investigator_name(user_id: int, investigator_name: Optiona
             "UPDATE athena_users SET investigator_name = $1 WHERE id = $2", investigator_name or None, user_id
         )
         return result == "UPDATE 1"
+
+
+async def fetch_audit_trail(record_id: str, rci_id: str) -> List[Dict[str, Any]]:
+    """Admin-only audit trail for one record/RCI (2026-10-01, per the user) — every API call
+    whose path contains "/<record_id>/<rci_id>" as consecutive path segments (not a naive
+    substring match, which could false-positive on e.g. record_id "5039" inside "50390"). `rci_id`
+    is the raw path segment as logged — including the literal "none" sentinel for a no-RCI
+    record — never the DB-normalized None; every logged path spells out a real segment here.
+    Role shown is the user's CURRENT role (athena_users.role_id), not necessarily the role they
+    held at call time — this app doesn't version roles historically anywhere, same caveat as
+    require_admin's own JWT-roles-claim check elsewhere in this file."""
+    pool = get_pool()
+    pattern = rf"(^|/){re.escape(record_id)}/{re.escape(rci_id)}(/|$)"
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT t.created_at, t.method, t.path, t.status_code, t.duration_ms,
+                   u.username, u.full_name, r.name AS role
+            FROM athena_api_call_trails t
+            LEFT JOIN athena_users u ON u.id = t.user_id
+            LEFT JOIN athena_roles r ON r.id = u.role_id
+            WHERE t.path ~ $1 AND t.method != 'OPTIONS'
+            ORDER BY t.created_at DESC
+            """,
+            pattern,
+        )
+        return [dict(row) for row in rows]
 
 
 async def record_api_call(

@@ -412,7 +412,7 @@ export function ProblemStatementPage() {
 
         <div className="footer-actions">
           <button type="button" className="btn-primary" onClick={handleSaveAndNext} disabled={savingEdit}>
-            Save Problem Statement
+            {recordExists ? "Next" : "Save Problem Statement"}
           </button>
         </div>
       </div>

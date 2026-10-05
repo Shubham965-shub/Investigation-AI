@@ -38,6 +38,7 @@ SELECT
     e.market,
     e.related_market,
     e.laboratory_details,
+    e.batches_details_batch_no_ar_no,
     e.name_of_test,
     e.sample_number,
     e.specification_number,
