@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
   workflow_dispatch:
 
 permissions:
@@ -58,6 +56,7 @@ jobs:
           path: |
             qa/target/surefire-reports/
             qa/target/test-results/
+          if-no-files-found: warn
 
   frontend-coverage:
     name: Frontend Coverage Check
@@ -78,17 +77,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-          registry-url: https://npm.pkg.github.com
 
       - name: Install Dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Run Frontend Tests with Coverage
         run: npm run test:coverage
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Check Frontend Coverage
         run: |
@@ -99,11 +93,9 @@ jobs:
 
           COVERAGE=$(node -e "
             const fs = require('fs');
-
             const data = JSON.parse(
               fs.readFileSync('coverage/coverage-summary.json', 'utf8')
             );
-
             console.log(data.total.lines.pct);
           ")
 
@@ -113,7 +105,12 @@ jobs:
           echo "======================================"
 
           node -e "
-            const coverage = Number('$COVERAGE');
+            const coverage = Number('${COVERAGE}');
+
+            if (!Number.isFinite(coverage)) {
+              console.error('ERROR: Invalid frontend coverage value.');
+              process.exit(1);
+            }
 
             if (coverage >= 80) {
               console.log('Frontend coverage is 80% or higher. PASS');
@@ -129,6 +126,7 @@ jobs:
         with:
           name: frontend-coverage-report
           path: frontend/coverage/
+          if-no-files-found: warn
 
   backend-coverage:
     name: Backend Coverage Check
@@ -171,7 +169,7 @@ jobs:
           COVERAGE=$(python -c "
           import json
 
-          with open('coverage.json') as f:
+          with open('coverage.json', 'r') as f:
               data = json.load(f)
 
           print(data['totals']['percent_covered'])
@@ -200,3 +198,4 @@ jobs:
         with:
           name: backend-coverage-report
           path: backend/htmlcov/
+          if-no-files-found: warn
