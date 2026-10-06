@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
   workflow_dispatch:
 
 permissions:
@@ -65,41 +63,64 @@ jobs:
         run: npm ci
 
       - name: Start Frontend
-        working-directory: frontend
         run: |
-          nohup npm run dev -- --host 0.0.0.0 > frontend.log 2>&1 &
-          echo $! > frontend.pid
+          mkdir -p "$GITHUB_WORKSPACE/frontend"
+
+          nohup npm --prefix frontend run dev -- \
+            --host 0.0.0.0 \
+            --port 5173 \
+            > "$GITHUB_WORKSPACE/frontend/frontend.log" 2>&1 &
+
+          FRONTEND_PID=$!
+          echo "$FRONTEND_PID" > "$GITHUB_WORKSPACE/frontend/frontend.pid"
+
+          echo "Frontend PID: $FRONTEND_PID"
 
       - name: Wait for Frontend
         run: |
-          echo "Waiting for frontend on http://localhost:5173..."
+          echo "Waiting for frontend on http://127.0.0.1:5173/login..."
 
           for i in {1..60}; do
-            if curl --silent --fail http://localhost:5173/login > /dev/null; then
+            if curl --silent --fail http://127.0.0.1:5173/login > /dev/null; then
               echo "Frontend is available."
-              break
+              exit 0
             fi
 
-            if [ "$i" -eq 60 ]; then
-              echo "Frontend failed to start."
-              echo "======================================"
-              cat frontend/frontend.log || true
-              echo "======================================"
-              exit 1
+            if [ -f "$GITHUB_WORKSPACE/frontend/frontend.log" ]; then
+              echo "Frontend log:"
+              tail -20 "$GITHUB_WORKSPACE/frontend/frontend.log"
             fi
 
+            echo "Attempt $i/60 - frontend is not ready."
             sleep 2
           done
 
-      - name: Verify Frontend
+          echo "Frontend failed to start."
+
+          echo "======================================"
+          echo "Frontend Log"
+          echo "======================================"
+
+          cat "$GITHUB_WORKSPACE/frontend/frontend.log" || true
+
+          echo "======================================"
+          echo "Listening Ports"
+          echo "======================================"
+
+          ss -lntp || true
+
+          exit 1
+
+      - name: Verify Frontend Login Page
         run: |
-          curl --fail http://localhost:5173/login
+          curl --fail --show-error http://127.0.0.1:5173/login
 
       - name: Run Sanity Tests
         run: |
           mvn -f qa/pom.xml clean test \
             -Dgroups=sanity \
-            -Dheadless=true
+            -Dheadless=true \
+            -DbaseUrl=http://127.0.0.1:5173
 
       - name: Upload TestNG Reports
         if: always()
@@ -116,7 +137,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-logs
-          path: frontend/frontend.log
+          path: |
+            frontend/frontend.log
+            frontend/frontend.pid
           if-no-files-found: warn
 
   frontend-coverage:
