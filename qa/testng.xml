@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+
+<suite name="InvestigationAI UI Tests" parallel="false">
+
+    <listeners>
+        <listener class-name="com.investigationai.qa.reporting.ExtentReportListener"/>
+    </listeners>
+
+    <test name="Smoke Tests">
+        <groups>
+            <run>
+                <include name="smoke"/>
+            </run>
+        </groups>
+
+        <packages>
+            <package name="com.investigationai.qa.tests"/>
+        </packages>
+    </test>
+
+    <test name="Sanity Tests">
+        <groups>
+            <run>
+                <include name="sanity"/>
+            </run>
+        </groups>
+
+        <packages>
+            <package name="com.investigationai.qa.tests"/>
+        </packages>
+    </test>
+
+</suite>

@@ -1,6 +1,26 @@
 # Deploy rollback snapshots (contain resource state, keep local)
 deploy/.qa-rollback-*.json
-.creds.DS_Store
+
+# macOS
+.DS_Store
 
 # Workspace
 InvestigationAI.code-workspace
+
+# IDE
+.vscode/
+
+# Python virtual environment
+.venv/
+
+# Maven build output
+qa/target/
+
+# Backend coverage
+backend/.coverage
+
+# Frontend coverage
+frontend/coverage/
+
+# Node dependencies
+node_modules/
