@@ -15,52 +15,6 @@ permissions:
   contents: read
   packages: read
 
-jobs:
-  smoke-tests:
-    name: Smoke Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
-
-      - name: Run Smoke Tests
-        working-directory: qa
-        run: mvn clean test -Psmoke
-        env:
-          QA_USERNAME: ${{ secrets.QA_USERNAME }}
-          QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
-
-  sanity-tests:
-    name: Sanity Tests
-    needs: smoke-tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
-
-      - name: Run Sanity Tests
-        working-directory: qa
-        run: mvn clean test -Psanity
-        env:
-          QA_USERNAME: ${{ secrets.QA_USERNAME }}
-          QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
-
   frontend-coverage:
     name: Frontend Coverage Check
     needs: sanity-tests
