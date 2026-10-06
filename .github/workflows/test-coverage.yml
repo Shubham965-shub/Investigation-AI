@@ -25,11 +25,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "17"
           distribution: "temurin"
           cache: maven
+          cache-dependency-path: qa/pom.xml
 
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@v1
@@ -40,10 +41,12 @@ jobs:
       - name: Verify Maven
         run: mvn -version
 
+      - name: Verify QA Maven Project
+        run: test -f qa/pom.xml
+
       - name: Run Sanity Tests
-        working-directory: qa
         run: |
-          mvn clean test \
+          mvn -f qa/pom.xml clean test \
             -Dgroups=sanity \
             -Dheadless=true
 
@@ -160,6 +163,11 @@ jobs:
       - name: Check Backend Coverage
         working-directory: backend
         run: |
+          if [ ! -f coverage.json ]; then
+            echo "ERROR: coverage.json was not generated."
+            exit 1
+          fi
+
           COVERAGE=$(python -c "
           import json
 
