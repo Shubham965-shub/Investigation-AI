@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest --config vitetest.config.ts",
+    "test:coverage": "vitest run --config vitetest.config.ts --coverage",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -24,18 +24,19 @@
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "jsdom": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "jsdom": "^30.1.1",
     "oxlint": "^1.71.0",
     "patch-package": "^8.0.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.3"
   },
   "allowScripts": {
     "fsevents@2.3.3": true
